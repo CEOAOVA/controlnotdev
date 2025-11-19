@@ -1,0 +1,225 @@
+{
+  "compraventa": {
+    "parte_a": {
+      "nombre": "Documentos del Vendedor",
+      "icono": "📤",
+      "descripcion": "Documentos de identificación y propiedad del vendedor",
+      "documentos": [
+        "INE/IFE del Vendedor",
+        "Acta de Nacimiento del Vendedor",
+        "CURP del Vendedor",
+        "RFC/Constancia SAT del Vendedor",
+        "Comprobante de Domicilio del Vendedor",
+        "Acta de Matrimonio del Vendedor (si aplica)"
+      ]
+    },
+    "parte_b": {
+      "nombre": "Documentos del Comprador",
+      "icono": "📥",
+      "descripcion": "Documentos de identificación del comprador",
+      "documentos": [
+        "INE/IFE del Comprador",
+        "Acta de Nacimiento del Comprador",
+        "CURP del Comprador",
+        "RFC/Constancia SAT del Comprador",
+        "Comprobante de Domicilio del Comprador",
+        "Acta de Matrimonio del Comprador (si aplica)"
+      ]
+    },
+    "otros": {
+      "nombre": "Documentos del Inmueble y Antecedentes",
+      "icono": "📋",
+      "descripcion": "Documentación legal del inmueble",
+      "documentos": [
+        "Escritura o Contrato Antecedente",
+        "Certificado Catastral",
+        "Constancia de No Adeudo Predial",
+        "Boleta del Registro Público",
+        "Avalúo del Inmueble",
+        "Planos y Medidas"
+      ]
+    }
+  },
+  "donacion": {
+    "parte_a": {
+      "nombre": "Documentos del Donador",
+      "icono": "🎁",
+      "descripcion": "Documentos de identificación y propiedad del donador",
+      "documentos": [
+        "INE/IFE del Donador",
+        "Acta de Nacimiento del Donador",
+        "CURP del Donador",
+        "RFC/Constancia SAT del Donador",
+        "Comprobante de Domicilio del Donador (CFE/Luz)",
+        "Acta de Matrimonio del Donador (si aplica)"
+      ]
+    },
+    "parte_b": {
+      "nombre": "Documentos del Donatario",
+      "icono": "🎉",
+      "descripcion": "Documentos de identificación del donatario",
+      "documentos": [
+        "INE/IFE del Donatario",
+        "Acta de Nacimiento del Donatario",
+        "CURP del Donatario",
+        "RFC/Constancia SAT del Donatario",
+        "Comprobante de Domicilio del Donatario",
+        "Documento de Parentesco (si aplica)"
+      ]
+    },
+    "otros": {
+      "nombre": "Documentos del Inmueble y Antecedentes",
+      "icono": "📋",
+      "descripcion": "Documentación legal del inmueble",
+      "documentos": [
+        "Escritura o Contrato Antecedente",
+        "Certificado Catastral",
+        "Constancia de No Adeudo Predial",
+        "Boleta del Registro Público",
+        "Avalúo del Inmueble",
+        "Planos y Medidas"
+      ]
+    }
+  },
+  "testamento": {
+    "parte_a": {
+      "nombre": "Documentos del Testador",
+      "icono": "📝",
+      "descripcion": "Documentos de identificación del testador",
+      "documentos": [
+        "INE/IFE del Testador",
+        "Acta de Nacimiento del Testador",
+        "CURP del Testador",
+        "RFC del Testador",
+        "Comprobante de Domicilio"
+      ]
+    },
+    "parte_b": {
+      "nombre": "Documentos de Herederos/Legatarios",
+      "icono": "👥",
+      "descripcion": "Documentos de identificación de beneficiarios",
+      "documentos": [
+        "INE/IFE de Herederos",
+        "Actas de Nacimiento de Herederos",
+        "CURP de Herederos",
+        "Documentos que acrediten parentesco"
+      ]
+    },
+    "otros": {
+      "nombre": "Documentos Patrimoniales",
+      "icono": "📋",
+      "descripcion": "Documentación de bienes y patrimonio",
+      "documentos": [
+        "Escrituras de Propiedades",
+        "Estados de Cuenta Bancarios",
+        "Comprobantes de Inversiones",
+        "Testamentos Anteriores (para revocar)"
+      ]
+    }
+  },
+  "poder": {
+    "parte_a": {
+      "nombre": "Documentos del Otorgante",
+      "icono": "👤",
+      "descripcion": "Documentos de quien otorga el poder",
+      "documentos": [
+        "INE/IFE del Otorgante",
+        "Acta de Nacimiento del Otorgante",
+        "CURP del Otorgante",
+        "RFC del Otorgante",
+        "Comprobante de Domicilio del Otorgante"
+      ]
+    },
+    "parte_b": {
+      "nombre": "Documentos del Apoderado",
+      "icono": "🤝",
+      "descripcion": "Documentos de quien recibe el poder",
+      "documentos": [
+        "INE/IFE del Apoderado",
+        "Acta de Nacimiento del Apoderado",
+        "CURP del Apoderado",
+        "RFC del Apoderado",
+        "Comprobante de Domicilio del Apoderado"
+      ]
+    },
+    "otros": {
+      "nombre": "Documentos Adicionales",
+      "icono": "📋",
+      "descripcion": "Otros documentos relevantes",
+      "documentos": [
+        "Poderes Anteriores (si se revocan)",
+        "Documentos que acrediten facultades especiales",
+        "Comprobantes de relación (laboral, familiar, etc.)"
+      ]
+    }
+  },
+  "sociedad": {
+    "parte_a": {
+      "nombre": "Documentos de Socios",
+      "icono": "👥",
+      "descripcion": "Documentos de todos los socios fundadores",
+      "documentos": [
+        "INE/IFE de cada Socio",
+        "Actas de Nacimiento de Socios",
+        "CURP de cada Socio",
+        "RFC de cada Socio",
+        "Comprobantes de Domicilio"
+      ]
+    },
+    "parte_b": {
+      "nombre": "Documentos de Administradores",
+      "icono": "💼",
+      "descripcion": "Documentos de representantes legales",
+      "documentos": [
+        "INE/IFE de Administradores",
+        "Documentos de Aceptación del Cargo",
+        "Comprobantes de Capacidad Legal"
+      ]
+    },
+    "otros": {
+      "nombre": "Documentos Corporativos",
+      "icono": "📋",
+      "descripcion": "Documentación corporativa y legal",
+      "documentos": [
+        "Permiso de Denominación Social",
+        "Comprobante de Domicilio Social",
+        "Estatutos Sociales",
+        "Plan de Negocios",
+        "Comprobantes de Aportación de Capital"
+      ]
+    }
+  },
+  "default": {
+    "parte_a": {
+      "nombre": "Documentos Parte A",
+      "icono": "📄",
+      "descripcion": "Documentos de la primera parte",
+      "documentos": [
+        "Documentos de identificación"
+      ]
+    },
+    "parte_b": {
+      "nombre": "Documentos Parte B",
+      "icono": "📄",
+      "descripcion": "Documentos de la segunda parte",
+      "documentos": [
+        "Documentos de identificación"
+      ]
+    },
+    "otros": {
+      "nombre": "Otros Documentos",
+      "icono": "📋",
+      "descripcion": "Documentación adicional",
+      "documentos": [
+        "Documentos adicionales"
+      ]
+    }
+  },
+  "metadata": {
+    "version": "2.0.0",
+    "total_document_types": 5,
+    "migrated_from": "por_partes.py",
+    "source_lines": "1959-2182",
+    "category_types": ["parte_a", "parte_b", "otros"]
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "types": {
+    "compraventa": {
+      "id": "compraventa",
+      "nombre": "Compraventa",
+      "model": "CompraventaKeys",
+      "total_fields": 47,
+      "common_fields": 5,
+      "specific_fields": 42,
+      "description": "Contrato de compraventa de bienes inmuebles",
+      "partes": ["vendedor", "comprador"]
+    },
+    "donacion": {
+      "id": "donacion",
+      "nombre": "Donación",
+      "model": "DonacionKeys",
+      "total_fields": 49,
+      "common_fields": 5,
+      "specific_fields": 44,
+      "description": "Contrato de donación de bienes inmuebles",
+      "partes": ["donador", "donatario"],
+      "features": {
+        "temporal_logic": true,
+        "parentesco": true
+      }
+    },
+    "testamento": {
+      "id": "testamento",
+      "nombre": "Testamento",
+      "model": "TestamentoKeys",
+      "total_fields": 20,
+      "common_fields": 5,
+      "specific_fields": 15,
+      "description": "Testamento público o privado",
+      "partes": ["testador"]
+    },
+    "poder": {
+      "id": "poder",
+      "nombre": "Poder Notarial",
+      "model": "PoderKeys",
+      "total_fields": 20,
+      "common_fields": 5,
+      "specific_fields": 15,
+      "description": "Poder notarial general o especial",
+      "partes": ["otorgante", "apoderado"]
+    },
+    "sociedad": {
+      "id": "sociedad",
+      "nombre": "Constitución de Sociedad",
+      "model": "SociedadKeys",
+      "total_fields": 20,
+      "common_fields": 5,
+      "specific_fields": 15,
+      "description": "Acta constitutiva de sociedad mercantil",
+      "partes": ["socios"]
+    }
+  },
+  "metadata": {
+    "version": "2.0.0",
+    "total_types": 5,
+    "total_unique_fields": 119,
+    "migrated_from": "por_partes.py",
+    "source_lines": "1363-1384"
+  }
+}
