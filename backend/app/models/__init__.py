@@ -8,6 +8,7 @@ from app.models.donacion import DonacionKeys
 from app.models.testamento import TestamentoKeys
 from app.models.poder import PoderKeys
 from app.models.sociedad import SociedadKeys
+from app.models.cancelacion import CancelacionKeys
 
 __all__ = [
     "BaseKeys",
@@ -16,4 +17,5 @@ __all__ = [
     "TestamentoKeys",
     "PoderKeys",
     "SociedadKeys",
+    "CancelacionKeys",
 ]

@@ -10,6 +10,7 @@ export interface CategoryInfo {
   name: string;
   description: string;
   expected_documents: string[];
+  icon?: string;
 }
 
 export interface CategoriesResponse {

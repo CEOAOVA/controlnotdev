@@ -13,6 +13,7 @@ export interface TemplateInfo {
   source: 'drive' | 'local' | 'uploaded';
   placeholders?: string[];
   uploadedFile?: File;
+  createdAt?: string;
 }
 
 interface TemplateState {

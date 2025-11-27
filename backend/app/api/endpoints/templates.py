@@ -27,13 +27,14 @@ from app.services import (
     extract_placeholders_from_template,
     detect_document_type,
     map_placeholders_to_keys_by_type,
-    DriveStorageService,
-    LocalStorageService,
-    get_all_document_types
+    get_all_document_types,
+    SessionManager,
+    get_session_manager
 )
+from app.services.supabase_storage_service import SupabaseStorageService
 from app.core.dependencies import (
-    get_drive_service,
-    get_local_storage
+    get_supabase_storage,
+    get_optional_tenant_id
 )
 from app.core.config import settings
 
@@ -41,13 +42,10 @@ logger = structlog.get_logger()
 router = APIRouter(prefix="/templates", tags=["Templates"])
 
 
-# Session storage simple (en producción usar Redis)
-_template_sessions = {}
-
-
 @router.post("/upload", response_model=PlaceholderExtractionResponse)
 async def upload_template(
-    file: UploadFile = File(..., description="Archivo .docx del template")
+    file: UploadFile = File(..., description="Archivo .docx del template"),
+    session_manager: SessionManager = Depends(get_session_manager)
 ):
     """
     Sube un template Word y extrae sus placeholders
@@ -103,14 +101,17 @@ async def upload_template(
         # Generar ID de sesión
         template_id = f"tpl_{uuid.uuid4().hex[:12]}"
 
-        # Guardar en sesión
-        _template_sessions[template_id] = {
-            'content': content,
-            'filename': file.filename,
-            'placeholders': placeholders,
-            'document_type': document_type,
-            'placeholder_mapping': placeholder_mapping
-        }
+        # Guardar en SessionManager (almacenamiento temporal)
+        session_manager.store_template_session(
+            template_id=template_id,
+            data={
+                'content': content,
+                'filename': file.filename,
+                'placeholders': placeholders,
+                'document_type': document_type,
+                'placeholder_mapping': placeholder_mapping
+            }
+        )
 
         logger.info(
             "Template procesado exitosamente",
@@ -146,55 +147,42 @@ async def upload_template(
 
 @router.get("/list", response_model=TemplateListResponse)
 async def list_templates(
-    source: Optional[str] = Query(
-        None,
-        description="Filtrar por fuente: 'drive', 'local', o None para ambos"
+    include_public: bool = Query(
+        True,
+        description="Incluir templates públicos"
     ),
-    drive_service: DriveStorageService = Depends(get_drive_service),
-    local_storage: LocalStorageService = Depends(get_local_storage)
+    tenant_id: Optional[str] = Depends(get_optional_tenant_id),
+    supabase_storage: SupabaseStorageService = Depends(get_supabase_storage)
 ):
     """
-    Lista templates disponibles de Google Drive y/o almacenamiento local
+    Lista templates disponibles desde Supabase Storage
 
-    Basado en por_partes.py líneas 1814-1854
+    - Templates públicos (carpeta 'public')
+    - Templates del tenant autenticado (si hay token)
     """
-    logger.info("Listando templates", source=source)
+    logger.info("Listando templates desde Supabase", tenant_id=tenant_id, include_public=include_public)
 
     try:
-        all_templates = []
-        sources_count = {}
+        templates = supabase_storage.get_templates(
+            tenant_id=tenant_id,
+            include_public=include_public
+        )
 
-        # Obtener de Drive si corresponde
-        if source in [None, 'drive']:
-            try:
-                drive_templates = drive_service.get_templates()
-                all_templates.extend(drive_templates)
-                sources_count['drive'] = len(drive_templates)
-                logger.debug("Templates de Drive obtenidos", count=len(drive_templates))
-            except Exception as e:
-                logger.warning("Error al obtener templates de Drive", error=str(e))
-                sources_count['drive'] = 0
-
-        # Obtener de Local si corresponde
-        if source in [None, 'local']:
-            try:
-                local_templates = local_storage.get_templates()
-                all_templates.extend(local_templates)
-                sources_count['local'] = len(local_templates)
-                logger.debug("Templates locales obtenidos", count=len(local_templates))
-            except Exception as e:
-                logger.warning("Error al obtener templates locales", error=str(e))
-                sources_count['local'] = 0
+        sources_count = {
+            'supabase': len(templates),
+            'public': sum(1 for t in templates if t.get('folder') == 'public'),
+            'tenant': sum(1 for t in templates if t.get('folder') != 'public')
+        }
 
         logger.info(
             "Templates listados",
-            total=len(all_templates),
+            total=len(templates),
             sources=sources_count
         )
 
         return TemplateListResponse(
-            templates=all_templates,
-            total_count=len(all_templates),
+            templates=templates,
+            total_count=len(templates),
             sources=sources_count
         )
 
@@ -211,7 +199,10 @@ async def list_templates(
 
 
 @router.post("/confirm", response_model=SuccessResponse)
-async def confirm_template(request: TemplateConfirmRequest):
+async def confirm_template(
+    request: TemplateConfirmRequest,
+    session_manager: SessionManager = Depends(get_session_manager)
+):
     """
     Confirma el template y tipo de documento seleccionado
 
@@ -224,7 +215,8 @@ async def confirm_template(request: TemplateConfirmRequest):
     )
 
     # Verificar que el template existe en sesión
-    if request.template_id not in _template_sessions:
+    session = session_manager.get_template_session(request.template_id)
+    if not session:
         raise HTTPException(
             status_code=404,
             detail="Template no encontrado en sesión"
@@ -237,7 +229,6 @@ async def confirm_template(request: TemplateConfirmRequest):
         )
 
     # Actualizar tipo de documento si cambió
-    session = _template_sessions[request.template_id]
     if session['document_type'] != request.document_type:
         logger.info(
             "Tipo de documento actualizado",
@@ -257,6 +248,12 @@ async def confirm_template(request: TemplateConfirmRequest):
         session['placeholder_mapping'] = placeholder_mapping
 
     session['confirmed'] = True
+
+    # Actualizar sesión en SessionManager
+    session_manager.store_template_session(
+        template_id=request.template_id,
+        data=session
+    )
 
     return SuccessResponse(
         message=f"Template confirmado: {session['filename']}",
@@ -297,17 +294,19 @@ async def list_document_types():
 
 
 @router.get("/{template_id}")
-async def get_template_info(template_id: str):
+async def get_template_info(
+    template_id: str,
+    session_manager: SessionManager = Depends(get_session_manager)
+):
     """
     Obtiene información de un template por ID de sesión
     """
-    if template_id not in _template_sessions:
+    session = session_manager.get_template_session(template_id)
+    if not session:
         raise HTTPException(
             status_code=404,
             detail="Template no encontrado"
         )
-
-    session = _template_sessions[template_id]
 
     return {
         "template_id": template_id,

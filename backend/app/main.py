@@ -12,6 +12,7 @@ Mejoras críticas:
 - Logging estructurado
 """
 from contextlib import asynccontextmanager
+from pathlib import Path
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -21,6 +22,7 @@ import time
 
 from app.core.config import settings
 from app.api.router import api_router
+from app.middleware.audit import audit_middleware
 
 # Configurar logger estructurado
 logger = structlog.get_logger()
@@ -40,13 +42,13 @@ async def lifespan(app: FastAPI):
     - Cerrar conexiones
     - Cleanup de recursos
     """
-    logger.info("🚀 Iniciando ControlNot v2...")
+    logger.info("[START] Iniciando ControlNot v2...")
 
     # Startup
     try:
         # Verificar que los directorios existan
-        settings.TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
-        settings.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        Path(settings.TEMPLATES_DIR).mkdir(parents=True, exist_ok=True)
+        Path(settings.OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
 
         logger.info(
             "Directorios verificados",
@@ -63,7 +65,7 @@ async def lifespan(app: FastAPI):
             use_openrouter=settings.use_openrouter if hasattr(settings, 'use_openrouter') else False
         )
 
-        logger.info("✅ ControlNot v2 iniciado exitosamente")
+        logger.info("[OK] ControlNot v2 iniciado exitosamente")
 
     except Exception as e:
         logger.error(
@@ -174,6 +176,22 @@ async def log_requests(request: Request, call_next):
     return response
 
 
+# Middleware para auditoría de operaciones
+@app.middleware("http")
+async def audit_operations(request: Request, call_next):
+    """
+    Middleware para registrar operaciones importantes en audit_logs
+
+    Registra:
+    - Todas las operaciones de modificación (POST, PUT, DELETE)
+    - Usuario, tenant, IP, user-agent
+    - Duración y resultado de la operación
+
+    NO registra operaciones de solo lectura (GET)
+    """
+    return await audit_middleware(request, call_next)
+
+
 # Exception handlers
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
@@ -280,6 +298,20 @@ async def ping():
     Útil para health checks de Docker, Kubernetes, etc.
     """
     return {"ping": "pong", "status": "ok"}
+
+
+@app.get("/health", tags=["Health"])
+async def health_check():
+    """
+    Endpoint de health check para Docker/Kubernetes
+
+    Retorna estado de salud de la aplicación y sus dependencias
+    """
+    return {
+        "status": "healthy",
+        "version": "2.0.0",
+        "service": "controlnot-backend"
+    }
 
 
 # Punto de entrada para uvicorn

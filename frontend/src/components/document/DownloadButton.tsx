@@ -34,7 +34,8 @@ export function DownloadButton({ onSuccess }: DownloadButtonProps) {
       setDownloadStatus('idle');
       setErrorMessage(null);
 
-      const result = await generateDocument(selectedTemplate?.name);
+      const templateId = selectedTemplate?.id || selectedTemplate?.name || 'default';
+      const result = await generateDocument(templateId);
 
       if (result) {
         // Generate filename

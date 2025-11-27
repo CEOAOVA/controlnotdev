@@ -5,3 +5,7 @@
 export { useProcessDocument } from './useProcessDocument';
 export { useTemplates } from './useTemplates';
 export { useCategories } from './useCategories';
+export { useAuth } from './useAuth';
+export { useCases } from './useCases';
+export { useDocuments } from './useDocuments';
+export { useToast } from './useToast';

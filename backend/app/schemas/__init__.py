@@ -42,7 +42,12 @@ from app.schemas.document_schemas import (
     DocumentGenerationStats,
     DocumentGenerationResponse,
     UploadedFileInfo,
-    CategorizedDocumentsUploadResponse
+    CategorizedDocumentsUploadResponse,
+    # Historial de documentos
+    DocumentListItem,
+    DocumentListResponse,
+    DocumentStatsResponse,
+    GetDocumentResponse
 )
 
 # ===== EXTRACTION SCHEMAS =====
@@ -93,6 +98,11 @@ __all__ = [
     "DocumentGenerationResponse",
     "UploadedFileInfo",
     "CategorizedDocumentsUploadResponse",
+    # Historial de documentos
+    "DocumentListItem",
+    "DocumentListResponse",
+    "DocumentStatsResponse",
+    "GetDocumentResponse",
 
     # Extraction Schemas
     "OCRFileResult",

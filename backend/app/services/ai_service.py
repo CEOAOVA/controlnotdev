@@ -1,14 +1,16 @@
 """
 ControlNot v2 - AI Service
 Extracción de datos estructurados con LLMs (OpenRouter + OpenAI)
-MEJORA CRÍTICA: Soporte multi-provider con OpenRouter
+MEJORA CRÍTICA: Soporte multi-provider con OpenRouter + Cache de extracciones
 
 Migrado de por_partes.py líneas 1745-1789, 1418-1422
 Original: Solo OpenAI GPT-4o
-Mejorado: OpenRouter (GPT-4o, Claude, Gemini, Llama) + OpenAI fallback
+Mejorado: OpenRouter (GPT-4o, Claude, Gemini, Llama) + OpenAI fallback + Cache
 """
 import json
+import hashlib
 from typing import Dict, List, Optional
+from datetime import datetime
 import structlog
 
 from openai import OpenAI
@@ -21,8 +23,10 @@ from app.models.donacion import DonacionKeys
 from app.models.testamento import TestamentoKeys
 from app.models.poder import PoderKeys
 from app.models.sociedad import SociedadKeys
+from app.database import get_supabase_client
 
 logger = structlog.get_logger()
+supabase = get_supabase_client()
 
 
 class AIExtractionService:
@@ -138,6 +142,112 @@ RESPONDE EN FORMATO JSON con las claves exactas de los campos solicitados.
 
         return prompt
 
+    def process_text_structured(
+        self,
+        text: str,
+        document_type: str,
+        placeholders: Optional[List[str]] = None,
+        temperature: float = 0.3,
+        max_tokens: int = 3000
+    ) -> Dict[str, str]:
+        """
+        Procesa texto con Structured Outputs (OpenAI beta - 0 errores JSON)
+
+        SEMANA 1 - QUICK WINS:
+        Usa openai.beta.chat.completions.parse() para garantizar:
+        - 0 errores JSON (schema enforcement)
+        - Respuesta siempre válida según Pydantic model
+        - Sin necesidad de json.loads() manual
+        - Manejo automático de refusals
+
+        Args:
+            text: Texto del cual extraer información
+            document_type: Tipo de documento
+            placeholders: Lista opcional de placeholders
+            temperature: Temperatura del modelo
+            max_tokens: Máximo de tokens
+
+        Returns:
+            Dict[str, str]: Diccionario con campos extraídos
+
+        Example:
+            >>> result = ai_service.process_text_structured(text, "compraventa")
+            >>> # Garantizado: result tiene estructura exacta de CompraventaKeys
+        """
+        logger.info(
+            "Procesando con Structured Outputs",
+            doc_type=document_type,
+            text_length=len(text),
+            model=self.model
+        )
+
+        try:
+            # Obtener modelo Pydantic para el documento
+            model_class = self._get_model_for_type(document_type)
+
+            # Construir prompt
+            prompt = self._build_extraction_prompt(text, document_type, placeholders)
+
+            # Llamar con Structured Outputs (beta API)
+            completion = self.ai_client.beta.chat.completions.parse(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "Eres un experto en extracción de datos de documentos notariales mexicanos."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                response_format=model_class,  # Pydantic model directo!
+                temperature=temperature,
+                max_tokens=max_tokens
+            )
+
+            # Extraer datos parseados (ya es objeto Pydantic)
+            message = completion.choices[0].message
+
+            # Manejar refusals (si el modelo rehúsa responder)
+            if message.refusal:
+                logger.error(
+                    "Modelo rehusó responder",
+                    refusal=message.refusal
+                )
+                raise Exception(f"AI refusal: {message.refusal}")
+
+            # Obtener datos parseados
+            parsed_data = message.parsed
+
+            # Convertir Pydantic model a dict
+            extracted_data = parsed_data.model_dump()
+
+            # Guardar tokens
+            if hasattr(completion, 'usage') and completion.usage:
+                self.last_tokens_used = completion.usage.total_tokens
+            else:
+                self.last_tokens_used = 0
+
+            logger.info(
+                "Structured Outputs completado",
+                fields_extracted=len(extracted_data),
+                tokens_used=self.last_tokens_used,
+                model=self.model
+            )
+
+            return extracted_data
+
+        except Exception as e:
+            logger.error(
+                "Error en Structured Outputs",
+                error=str(e),
+                error_type=type(e).__name__
+            )
+            # Fallback a método tradicional
+            logger.warning("Fallback a process_text_dynamic")
+            return self.process_text_dynamic(text, document_type, placeholders, temperature, max_tokens)
+
     def process_text_dynamic(
         self,
         text: str,
@@ -183,6 +293,59 @@ RESPONDE EN FORMATO JSON con las claves exactas de los campos solicitados.
             placeholders_count=len(placeholders) if placeholders else 0
         )
 
+        # ========================================================================
+        # CACHE DE EXTRACCIONES: Verificar si ya procesamos este texto
+        # ========================================================================
+        file_hash = hashlib.sha256(text.encode('utf-8')).hexdigest()
+
+        try:
+            # Buscar en cache (requiere tenant_id - por ahora sin RLS activo)
+            cached_result = supabase.table('extraction_cache')\
+                .select('*')\
+                .eq('file_hash', file_hash)\
+                .eq('document_type', document_type)\
+                .execute()
+
+            if cached_result.data and len(cached_result.data) > 0:
+                # CACHE HIT - Retornar datos cacheados
+                cache_entry = cached_result.data[0]
+
+                logger.info(
+                    "CACHE HIT - Extracción recuperada de cache",
+                    file_hash=file_hash[:12],
+                    document_type=document_type,
+                    hit_count=cache_entry.get('hit_count', 0),
+                    age_days=(datetime.now() - datetime.fromisoformat(
+                        cache_entry['created_at'].replace('Z', '+00:00')
+                    )).days
+                )
+
+                # Incrementar contador de hits
+                supabase.table('extraction_cache')\
+                    .update({
+                        'hit_count': cache_entry.get('hit_count', 0) + 1,
+                        'last_used_at': datetime.now().isoformat()
+                    })\
+                    .eq('id', cache_entry['id'])\
+                    .execute()
+
+                return cache_entry['extracted_data']
+
+        except Exception as cache_error:
+            # No fallar si hay error en cache, continuar con extracción normal
+            logger.warning(
+                "Error al consultar cache, continuando con extracción",
+                error=str(cache_error),
+                file_hash=file_hash[:12]
+            )
+
+        # CACHE MISS - Procesar con LLM
+        logger.info(
+            "CACHE MISS - Procesando con LLM",
+            file_hash=file_hash[:12],
+            document_type=document_type
+        )
+
         try:
             # Construir prompt
             prompt = self._build_extraction_prompt(text, document_type, placeholders)
@@ -224,6 +387,39 @@ RESPONDE EN FORMATO JSON con las claves exactas de los campos solicitados.
                 model=self.model,
                 tokens_used=self.last_tokens_used
             )
+
+            # ====================================================================
+            # GUARDAR EN CACHE para futuras extracciones
+            # ====================================================================
+            try:
+                # Nota: tenant_id será NULL hasta que se active autenticación
+                # Por ahora el cache funciona sin tenant_id (RLS deshabilitado temporalmente)
+                cache_data = {
+                    'file_hash': file_hash,
+                    'document_type': document_type,
+                    'ocr_text': text[:10000],  # Primeros 10k chars para referencia
+                    'extracted_data': extracted_data,
+                    'extraction_model': self.model,
+                    'extraction_provider': self.provider,
+                    'hit_count': 0
+                }
+
+                supabase.table('extraction_cache').insert(cache_data).execute()
+
+                logger.info(
+                    "Extracción guardada en cache",
+                    file_hash=file_hash[:12],
+                    document_type=document_type,
+                    fields_count=len(extracted_data)
+                )
+
+            except Exception as cache_error:
+                # No fallar la extracción si falla el guardado en cache
+                logger.warning(
+                    "Error al guardar en cache (no crítico)",
+                    error=str(cache_error),
+                    file_hash=file_hash[:12]
+                )
 
             return extracted_data
 

@@ -12,6 +12,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { CategorySection } from './CategorySection';
 import { FieldGroup } from './FieldGroup';
 import { useDocumentStore } from '@/store';
+import { MetricsDashboard } from '@/components/generation/MetricsDashboard';
 
 // Field metadata type
 interface FieldMetadata {
@@ -228,17 +229,19 @@ export function DataEditor() {
 
   // Calculate statistics
   const stats = useMemo(() => {
-    if (!editedData) return { total: 0, filled: 0, percentage: 0 };
+    if (!editedData) return { total: 0, filled: 0, empty: 0, percentage: 0 };
 
     const total = fieldMetadata.length;
     const filled = fieldMetadata.filter((field) => {
       const value = editedData[field.name];
       return value !== null && value !== undefined && value !== '';
     }).length;
+    const empty = total - filled;
 
     return {
       total,
       filled,
+      empty,
       percentage: total > 0 ? Math.round((filled / total) * 100) : 0,
     };
   }, [editedData, fieldMetadata]);
@@ -279,48 +282,32 @@ export function DataEditor() {
         </p>
       </div>
 
-      {/* Statistics */}
-      <div className="bg-muted/50 rounded-lg p-4">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div>
-              <p className="text-sm text-muted-foreground">Completitud</p>
-              <p className="text-2xl font-bold">
-                {stats.percentage}%
-              </p>
-            </div>
+      {/* Statistics Dashboard */}
+      <MetricsDashboard
+        totalFields={stats.total}
+        foundFields={stats.filled}
+        emptyFields={stats.empty}
+        completionRate={stats.percentage}
+      />
 
-            <div className="h-12 w-px bg-border" />
-
-            <div>
-              <p className="text-sm text-muted-foreground">Campos</p>
-              <p className="text-2xl font-bold">
-                {stats.filled}/{stats.total}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {hasChanges && (
-              <>
-                <Badge variant="secondary" className="gap-1">
-                  <Save className="w-3 h-3" />
-                  Cambios sin guardar
-                </Badge>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleReset}
-                  className="gap-2"
-                >
-                  <RotateCcw className="w-4 h-4" />
-                  Resetear
-                </Button>
-              </>
-            )}
-          </div>
+      {/* Save Changes Indicator */}
+      {hasChanges && (
+        <div className="flex items-center justify-end gap-4">
+          <Badge variant="secondary" className="gap-1">
+            <Save className="w-3 h-3" />
+            Cambios sin guardar
+          </Badge>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleReset}
+            className="gap-2"
+          >
+            <RotateCcw className="w-4 h-4" />
+            Resetear
+          </Button>
         </div>
-      </div>
+      )}
 
       {/* Search */}
       <div className="relative">
@@ -348,18 +335,24 @@ export function DataEditor() {
               fieldCount={fields.length}
               filledCount={categoryFilledCount}
             >
-              {fields.map((field) => (
-                <FieldGroup
-                  key={field.name}
-                  fieldName={field.name}
-                  label={field.label}
-                  value={editedData[field.name]}
-                  onChange={(value) => updateField(field.name, value)}
-                  description={field.description}
-                  type={field.type}
-                  required={field.required}
-                />
-              ))}
+              {fields.map((field) => {
+                const value = editedData[field.name];
+                // Convert boolean values to string for FieldGroup
+                const fieldValue = typeof value === 'boolean' ? String(value) : value;
+
+                return (
+                  <FieldGroup
+                    key={field.name}
+                    fieldName={field.name}
+                    label={field.label}
+                    value={fieldValue}
+                    onChange={(value) => updateField(field.name, value)}
+                    description={field.description}
+                    type={field.type}
+                    required={field.required}
+                  />
+                );
+              })}
             </CategorySection>
           );
         })}

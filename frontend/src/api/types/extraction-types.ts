@@ -5,6 +5,19 @@
 
 import { Category, DocumentType } from '@/types';
 
+/**
+ * OCR Request - files categorized by role
+ */
+export interface CategorizedFiles {
+  category_name: Category;
+  files: File[];
+}
+
+export interface OCRRequest {
+  document_type: DocumentType;
+  categorized_files: CategorizedFiles[];
+}
+
 export interface OCRFileResult {
   filename: string;
   success: boolean;
@@ -21,14 +34,16 @@ export interface OCRResponse {
   files_failed: number;
   processing_time_seconds: number;
   results_by_category: Record<Category, OCRFileResult[]>;
+  ocr_results?: Record<Category, OCRFileResult[]>;
 }
 
 export interface AIExtractionRequest {
-  session_id: string;
-  text: string;
+  session_id?: string;
+  text?: string;
   document_type: DocumentType;
   template_placeholders?: string[];
   model?: string;
+  ocr_results?: any;
 }
 
 export interface AIExtractionResponse {
@@ -39,6 +54,7 @@ export interface AIExtractionResponse {
   keys_missing: number;
   missing_list: string[];
   completeness_percent: number;
+  confidence?: number;
   model_used: string;
   tokens_used: number;
   processing_time_seconds: number;
@@ -58,4 +74,10 @@ export interface ExtractionResultsResponse {
   confirmed: boolean;
   text_length: number;
   fields_count: number;
+}
+
+export interface DataEditResponse {
+  success: boolean;
+  session_id: string;
+  message: string;
 }

@@ -53,13 +53,29 @@
       "specific_fields": 15,
       "description": "Acta constitutiva de sociedad mercantil",
       "partes": ["socios"]
+    },
+    "cancelacion": {
+      "id": "cancelacion",
+      "nombre": "Cancelación de Hipoteca",
+      "model": "CancelacionKeys",
+      "total_fields": 31,
+      "common_fields": 5,
+      "specific_fields": 26,
+      "description": "Cancelación de gravamen hipotecario sobre inmueble",
+      "partes": ["deudor", "acreedor"],
+      "features": {
+        "gravamen": true,
+        "registro_publico": true,
+        "representacion_legal": true
+      }
     }
   },
   "metadata": {
-    "version": "2.0.0",
-    "total_types": 5,
-    "total_unique_fields": 119,
-    "migrated_from": "por_partes.py",
-    "source_lines": "1363-1384"
+    "version": "2.1.0",
+    "total_types": 6,
+    "total_unique_fields": 145,
+    "migrated_from": "por_partes.py + movil_cancelaciones.py",
+    "source_lines": "1363-1384 + movil_cancelaciones.py",
+    "last_update": "2025-01-22"
   }
 }

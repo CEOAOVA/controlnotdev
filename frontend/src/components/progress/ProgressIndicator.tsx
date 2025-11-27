@@ -70,7 +70,7 @@ export function ProgressIndicator({
         </div>
 
         {/* Steps */}
-        {steps.map((step, index) => {
+        {steps.map((step) => {
           const Icon = step.icon;
           const isCompleted = isStepCompleted(step.id);
           const isCurrent = isStepCurrent(step.id);

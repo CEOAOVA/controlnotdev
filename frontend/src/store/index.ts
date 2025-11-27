@@ -10,3 +10,5 @@ export type { CategoryName, UploadedFile } from './categoryStore';
 
 export { useTemplateStore } from './templateStore';
 export type { TemplateInfo } from './templateStore';
+
+export { useAuthStore } from './useAuthStore';

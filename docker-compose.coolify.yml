@@ -1,0 +1,139 @@
+version: '3.8'
+
+services:
+  # ===================
+  # FRONTEND (React + Nginx)
+  # ===================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: https://pruebas.aurinot.com/api
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
+    ports:
+      - "80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    labels:
+      - "coolify.managed=true"
+      - "traefik.enable=true"
+      # Router principal
+      - "traefik.http.routers.controlnot-frontend.rule=Host(`pruebas.aurinot.com`)"
+      - "traefik.http.routers.controlnot-frontend.tls=true"
+      - "traefik.http.routers.controlnot-frontend.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.controlnot-frontend.entrypoints=websecure"
+      # Redirect HTTP a HTTPS
+      - "traefik.http.routers.controlnot-frontend-http.rule=Host(`pruebas.aurinot.com`)"
+      - "traefik.http.routers.controlnot-frontend-http.entrypoints=web"
+      - "traefik.http.routers.controlnot-frontend-http.middlewares=controlnot-redirect-https"
+      - "traefik.http.middlewares.controlnot-redirect-https.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.controlnot-redirect-https.redirectscheme.permanent=true"
+      # Service
+      - "traefik.http.services.controlnot-frontend.loadbalancer.server.port=80"
+      # Security headers
+      - "traefik.http.middlewares.controlnot-headers.headers.forcestsheader=true"
+      - "traefik.http.middlewares.controlnot-headers.headers.stsincludesubdomains=true"
+      - "traefik.http.middlewares.controlnot-headers.headers.stsseconds=31536000"
+      - "traefik.http.routers.controlnot-frontend.middlewares=controlnot-headers"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.25'
+    networks:
+      - controlnot-internal
+      - coolify
+
+  # ===================
+  # BACKEND (FastAPI)
+  # ===================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000"
+    depends_on:
+      - redis
+    restart: unless-stopped
+    environment:
+      # Supabase
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+      # AI Providers
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - OPENROUTER_MODEL=${OPENROUTER_MODEL:-openai/gpt-4o}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # Google Vision OCR
+      - GOOGLE_CREDENTIALS_JSON=${GOOGLE_CREDENTIALS_JSON}
+      # Redis
+      - REDIS_URL=redis://redis:6379
+      - REDIS_TTL=${REDIS_TTL:-300}
+      # SMTP Email
+      - SMTP_EMAIL=${SMTP_EMAIL}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      # App
+      - APP_URL=https://pruebas.aurinot.com
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1'
+        reservations:
+          memory: 512M
+    networks:
+      - controlnot-internal
+
+  # ===================
+  # REDIS (Cache)
+  # ===================
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.25'
+    networks:
+      - controlnot-internal
+
+# ===================
+# VOLUMES
+# ===================
+volumes:
+  redis_data:
+
+# ===================
+# NETWORKS
+# ===================
+networks:
+  controlnot-internal:
+    driver: bridge
+  coolify:
+    external: true
+    name: coolify

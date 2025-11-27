@@ -21,25 +21,27 @@ from app.schemas import (
 )
 from app.services import (
     OCRService,
-    AIExtractionService
+    AIExtractionService,
+    SessionManager,
+    get_session_manager
 )
 from app.core.dependencies import (
     get_ocr_service,
     get_ai_service
 )
+from app.repositories.uploaded_file_repository import uploaded_file_repository
+from app.repositories.session_repository import session_repository
+from uuid import UUID
 
 logger = structlog.get_logger()
 router = APIRouter(prefix="/extraction", tags=["Extraction"])
 
 
-# Storage para resultados de extracción
-_extraction_results = {}
-
-
 @router.post("/ocr", response_model=OCRResponse)
 async def process_ocr(
     session_id: str,
-    ocr_service: OCRService = Depends(get_ocr_service)
+    ocr_service: OCRService = Depends(get_ocr_service),
+    session_manager: SessionManager = Depends(get_session_manager)
 ):
     """
     Procesa OCR de documentos categorizados en paralelo
@@ -56,16 +58,14 @@ async def process_ocr(
     """
     logger.info("Iniciando procesamiento OCR", session_id=session_id)
 
-    # Obtener documentos de la sesión
-    from app.api.endpoints.documents import _document_sessions
-
-    if session_id not in _document_sessions:
+    # Obtener documentos desde SessionManager (NO circular import)
+    session = session_manager.get_document_session(session_id)
+    if not session:
         raise HTTPException(
             status_code=404,
             detail="Sesión no encontrada"
         )
 
-    session = _document_sessions[session_id]
     categorized_files = session['categorized_files']
     document_type = session['document_type']
 
@@ -104,11 +104,14 @@ async def process_ocr(
                 else:
                     failed_count += 1
 
-        # Guardar resultado en sesión
-        _extraction_results[session_id] = {
-            'extracted_text': extracted_text,
-            'ocr_results': results
-        }
+        # Guardar resultado en SessionManager (almacenamiento temporal - cache)
+        session_manager.store_extraction_result(
+            session_id=session_id,
+            data={
+                'extracted_text': extracted_text,
+                'ocr_results': results
+            }
+        )
 
         logger.info(
             "OCR completado",
@@ -118,6 +121,54 @@ async def process_ocr(
             failed=failed_count,
             processing_time_seconds=processing_time
         )
+
+        # ====================================================================
+        # PERSISTENCIA EN BD: Actualizar archivos con resultados OCR
+        # ====================================================================
+        try:
+            # Buscar sesión en BD por session_id almacenado en session_data
+            db_sessions = await session_repository.list({})  # TODO: Filtrar por session_id en metadata
+
+            if db_sessions and len(db_sessions) > 0:
+                # Actualizar cada archivo con su texto OCR
+                for category, category_results in results.items():
+                    for result in category_results:
+                        if result['success']:
+                            # Buscar archivo en BD por nombre
+                            files = await uploaded_file_repository.list_by_session(
+                                session_id=UUID(db_sessions[0]['id']),
+                                category=category
+                            )
+
+                            matching_file = next(
+                                (f for f in files if f['filename'] == result['filename']),
+                                None
+                            )
+
+                            if matching_file:
+                                # Actualizar con texto OCR
+                                await uploaded_file_repository.update(
+                                    UUID(matching_file['id']),
+                                    {
+                                        'ocr_completed': True,
+                                        'ocr_text': result['text'],
+                                        'ocr_confidence': result.get('confidence', 0.0)
+                                    }
+                                )
+
+                logger.info(
+                    "Resultados OCR persistidos en BD",
+                    session_id=session_id,
+                    files_updated=success_count
+                )
+
+        except Exception as db_error:
+            # No fallar el OCR si falla la persistencia
+            logger.warning(
+                "Error al persistir OCR en BD (no crítico)",
+                error=str(db_error),
+                session_id=session_id
+            )
 
         return OCRResponse(
             session_id=session_id,
@@ -146,7 +197,8 @@ async def process_ocr(
 @router.post("/ai", response_model=AIExtractionResponse)
 async def extract_with_ai(
     request: AIExtractionRequest,
-    ai_service: AIExtractionService = Depends(get_ai_service)
+    ai_service: AIExtractionService = Depends(get_ai_service),
+    session_manager: SessionManager = Depends(get_session_manager)
 ):
     """
     Extrae datos estructurados con IA (OpenRouter/OpenAI)
@@ -194,8 +246,20 @@ async def extract_with_ai(
             request.document_type
         )
 
-        # Guardar en sesión
-        _extraction_results[request.session_id]['ai_extracted_data'] = complete_data
+        # Guardar en SessionManager - obtener resultado existente y actualizar
+        existing_result = session_manager.get_extraction_result(request.session_id)
+        if existing_result:
+            existing_result['ai_extracted_data'] = complete_data
+            session_manager.store_extraction_result(
+                session_id=request.session_id,
+                data=existing_result
+            )
+        else:
+            # Si no existe, crear uno nuevo (caso edge)
+            session_manager.store_extraction_result(
+                session_id=request.session_id,
+                data={'ai_extracted_data': complete_data}
+            )
 
         logger.info(
             "Extracción con IA completada",
@@ -204,6 +268,48 @@ async def extract_with_ai(
             completeness=f"{validation_stats['completeness'] * 100:.1f}%",
             processing_time=processing_time
         )
+
+        # ====================================================================
+        # PERSISTENCIA EN BD: Guardar datos extraídos (MEJORA v2)
+        # ====================================================================
+        # Nota: Los datos extraídos ya están en cache (extraction_cache table)
+        # gracias a la lógica implementada en ai_service.py
+        # Aquí solo registraríamos en tabla documentos si existe sesión en BD
+        try:
+            db_sessions = await session_repository.list({})
+
+            if db_sessions and len(db_sessions) > 0:
+                # Actualizar progreso de sesión
+                await session_repository.update_progress(
+                    session_id=UUID(db_sessions[0]['id']),
+                    archivos_procesados=1,  # Al menos 1 archivo procesado
+                    total_archivos=1
+                )
+
+                # Agregar datos de extracción a session_data
+                await session_repository.add_session_data(
+                    session_id=UUID(db_sessions[0]['id']),
+                    data={
+                        'ai_extraction_completed': True,
+                        'completeness_percent': validation_stats['completeness'] * 100,
+                        'keys_found': validation_stats['found_fields'],
+                        'model_used': ai_service.model,
+                        'tokens_used': ai_service.last_tokens_used
+                    }
+                )
+
+                logger.info(
+                    "Datos de extracción IA persistidos en BD",
+                    session_id=request.session_id,
+                    db_session_id=db_sessions[0]['id']
+                )
+
+        except Exception as db_error:
+            logger.warning(
+                "Error al persistir extracción IA en BD (no crítico)",
+                error=str(db_error),
+                session_id=request.session_id
+            )
 
         return AIExtractionResponse(
             session_id=request.session_id,
@@ -232,7 +338,10 @@ async def extract_with_ai(
 
 
 @router.post("/edit", response_model=SuccessResponse)
-async def edit_extracted_data(request: DataEditRequest):
+async def edit_extracted_data(
+    request: DataEditRequest,
+    session_manager: SessionManager = Depends(get_session_manager)
+):
     """
     Usuario edita/confirma los datos extraídos
 
@@ -245,7 +354,9 @@ async def edit_extracted_data(request: DataEditRequest):
         fields_count=len(request.edited_data)
     )
 
-    if request.session_id not in _extraction_results:
+    # Obtener resultado existente desde SessionManager
+    extraction_result = session_manager.get_extraction_result(request.session_id)
+    if not extraction_result:
         raise HTTPException(
             status_code=404,
             detail="Sesión de extracción no encontrada"
@@ -258,8 +369,13 @@ async def edit_extracted_data(request: DataEditRequest):
         )
 
     # Guardar datos editados
-    _extraction_results[request.session_id]['edited_data'] = request.edited_data
-    _extraction_results[request.session_id]['confirmed'] = True
+    extraction_result['edited_data'] = request.edited_data
+    extraction_result['confirmed'] = True
+
+    session_manager.store_extraction_result(
+        session_id=request.session_id,
+        data=extraction_result
+    )
 
     logger.info(
         "Datos editados confirmados",
@@ -276,19 +392,21 @@ async def edit_extracted_data(request: DataEditRequest):
 
 
 @router.get("/{session_id}/results")
-async def get_extraction_results(session_id: str):
+async def get_extraction_results(
+    session_id: str,
+    session_manager: SessionManager = Depends(get_session_manager)
+):
     """
     Obtiene todos los resultados de extracción de una sesión
 
     Útil para debugging o revisión
     """
-    if session_id not in _extraction_results:
+    results = session_manager.get_extraction_result(session_id)
+    if not results:
         raise HTTPException(
             status_code=404,
             detail="Resultados de extracción no encontrados"
         )
-
-    results = _extraction_results[session_id]
 
     return {
         "session_id": session_id,

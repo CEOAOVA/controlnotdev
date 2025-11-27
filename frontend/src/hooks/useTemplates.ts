@@ -4,6 +4,7 @@
  */
 
 import { useQuery, useMutation } from '@tanstack/react-query';
+import { useCallback } from 'react';
 import { templatesApi } from '@/api/endpoints';
 import { useTemplateStore, useDocumentStore } from '@/store';
 import type { TemplateInfo } from '@/store';
@@ -132,6 +133,34 @@ export function useTemplates() {
     return customTemplate;
   };
 
+  // Wrapper functions for Templates.tsx compatibility
+  // Memoized to prevent infinite re-renders in useEffect dependencies
+  const fetchTemplates = useCallback(() => {
+    templatesQuery.refetch();
+  }, []);
+
+  const uploadTemplate = async (file: File, _name?: string, _type?: string) => {
+    const result = await uploadMutation.mutateAsync(file);
+    // After upload, refetch templates list
+    await templatesQuery.refetch();
+    return result;
+  };
+
+  const deleteTemplate = async (_templateId: string) => {
+    // TODO: Implement delete API call when backend supports it
+    console.warn('Delete template not implemented in backend yet');
+    throw new Error('Funcionalidad de eliminar no disponible aún');
+  };
+
+  const updateTemplateName = async (_templateId: string, _newName: string) => {
+    // TODO: Implement update API call when backend supports it
+    console.warn('Update template not implemented in backend yet');
+    throw new Error('Funcionalidad de actualizar nombre no disponible aún');
+  };
+
+  // Get error from store or query
+  const { error } = useTemplateStore.getState();
+
   return {
     // Queries
     templatesQuery,
@@ -144,10 +173,20 @@ export function useTemplates() {
     selectTemplate,
     uploadCustomTemplate,
 
+    // For Templates.tsx page compatibility
+    fetchTemplates,
+    uploadTemplate,
+    deleteTemplate,
+    updateTemplateName,
+
     // Loading states
     isLoadingTemplates: templatesQuery.isLoading,
     isUploading: uploadMutation.isPending,
     isConfirming: confirmMutation.isPending,
+    isLoading: templatesQuery.isLoading || uploadMutation.isPending,
+
+    // Error
+    error: templatesQuery.error?.message || error || null,
 
     // Data
     templates: templatesQuery.data || [],

@@ -32,3 +32,6 @@ export interface DocumentTypesResponse {
   document_types: DocumentTypeDetail[];
   total_types: number;
 }
+
+// Alias for compatibility
+export type AIModelsResponse = ModelsListResponse;

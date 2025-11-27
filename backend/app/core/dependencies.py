@@ -3,21 +3,25 @@ ControlNot v2 - Dependencies
 Dependency injection para FastAPI endpoints
 """
 from typing import Generator, Optional
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status, Header, Depends
 import structlog
 from functools import lru_cache
 
-# Google Cloud
+# Google Cloud (Vision API only)
 from google.cloud import vision
 from google.oauth2 import service_account
-from googleapiclient.discovery import build
-import httplib2
 
 # OpenAI
 from openai import OpenAI, AsyncOpenAI
 
 from app.core.config import settings
 from app.services.email_service import EmailService
+from app.services.ocr_service import OCRService
+from app.services.ai_service import AIExtractionService
+from app.services.storage_service import LocalStorageService
+from app.services.supabase_storage_service import SupabaseStorageService
+from app.services.session_service import get_session_manager, SessionManager
+from app.database import get_current_user, get_current_tenant_id, get_tenant_context, TenantContext
 
 logger = structlog.get_logger()
 
@@ -26,7 +30,6 @@ logger = structlog.get_logger()
 # GLOBAL CLIENTS (Singleton pattern)
 # ==========================================
 _vision_client = None
-_drive_service = None
 _openai_client = None
 _async_openai_client = None
 
@@ -66,43 +69,6 @@ def initialize_vision_client():
             )
 
     return _vision_client
-
-
-def initialize_drive_service():
-    """
-    Initialize Google Drive service
-
-    Returns:
-        Resource: Drive service instance or None if GOOGLE_DRIVE_FOLDER_ID not set
-    """
-    global _drive_service
-
-    # Skip if no Drive folder configured
-    if not settings.GOOGLE_DRIVE_FOLDER_ID:
-        logger.info("⏭️  Google Drive not configured (GOOGLE_DRIVE_FOLDER_ID empty)")
-        return None
-
-    if _drive_service is None:
-        try:
-            credentials = service_account.Credentials.from_service_account_info(
-                settings.google_credentials_dict
-            )
-
-            try:
-                _drive_service = build('drive', 'v3', credentials=credentials, cache_discovery=False)
-            except:
-                # Fallback method
-                http = httplib2.Http(disable_ssl_certificate_validation=False)
-                http = credentials.authorize(http)
-                _drive_service = build('drive', 'v3', http=http, cache_discovery=False)
-
-            logger.info("✅ Google Drive service initialized")
-        except Exception as e:
-            logger.error("❌ Error initializing Drive service", error=str(e))
-            # Don't raise, Drive is optional
-            _drive_service = None
-
-    return _drive_service
 
 
 def initialize_openai_client():
@@ -175,11 +141,6 @@ def get_vision_client():
     return initialize_vision_client()
 
 
-def get_drive_service():
-    """Dependency injector for Google Drive service"""
-    return initialize_drive_service()
-
-
 def get_openai_client():
     """Dependency injector for OpenAI/OpenRouter client"""
     return initialize_openai_client()
@@ -204,6 +165,58 @@ def get_email_service() -> EmailService:
         smtp_password=settings.SMTP_PASSWORD,
         from_email=settings.FROM_EMAIL
     )
+
+
+def get_ocr_service() -> OCRService:
+    """
+    Dependency injector for OCRService
+
+    Returns:
+        OCRService instance with Vision client
+    """
+    vision_client = get_vision_client()
+    return OCRService(vision_client=vision_client)
+
+
+def get_ai_service() -> AIExtractionService:
+    """
+    Dependency injector for AIExtractionService
+
+    Returns:
+        AIExtractionService instance with OpenAI/OpenRouter client
+    """
+    ai_client = get_openai_client()
+    return AIExtractionService(client=ai_client)
+
+
+def get_local_storage() -> LocalStorageService:
+    """
+    Dependency injector for LocalStorageService
+
+    Returns:
+        LocalStorageService instance configured with settings
+    """
+    return LocalStorageService(templates_dir=settings.TEMPLATES_DIR)
+
+
+def get_supabase_storage() -> SupabaseStorageService:
+    """
+    Dependency injector for SupabaseStorageService
+
+    Returns:
+        SupabaseStorageService instance for Supabase Storage operations
+    """
+    return SupabaseStorageService()
+
+
+def get_session_manager_dependency() -> SessionManager:
+    """
+    Dependency injector for SessionManager
+
+    Returns:
+        SessionManager: Global session manager singleton
+    """
+    return get_session_manager()
 
 
 # ==========================================
@@ -262,3 +275,177 @@ def validate_role_category(role: str) -> str:
         )
 
     return role.lower()
+
+
+# ==========================================
+# AUTHENTICATION DEPENDENCIES
+# ==========================================
+async def get_authenticated_user(
+    authorization: str = Header(..., alias="Authorization")
+) -> dict:
+    """
+    FastAPI dependency for extracting authenticated user from JWT token
+
+    Usage:
+        @router.post("/protected")
+        async def protected_endpoint(
+            user: dict = Depends(get_authenticated_user)
+        ):
+            return {"user_id": user["id"], "email": user["email"]}
+
+    Args:
+        authorization: JWT token from Authorization header
+
+    Returns:
+        dict: User data with id, email, metadata
+
+    Raises:
+        HTTPException: If authentication fails (401)
+    """
+    return await get_current_user(authorization)
+
+
+async def get_user_tenant_id(
+    authorization: str = Header(..., alias="Authorization")
+) -> str:
+    """
+    FastAPI dependency for extracting tenant_id from authenticated user
+
+    Usage:
+        @router.get("/my-documents")
+        async def list_my_documents(
+            tenant_id: str = Depends(get_user_tenant_id)
+        ):
+            # Query documents filtered by tenant_id
+            return documents
+
+    Args:
+        authorization: JWT token from Authorization header
+
+    Returns:
+        str: UUID of the user's tenant (notaría)
+
+    Raises:
+        HTTPException: If authentication or tenant lookup fails
+    """
+    return await get_current_tenant_id(authorization)
+
+
+async def get_authenticated_tenant_context(
+    authorization: str = Header(..., alias="Authorization")
+) -> TenantContext:
+    """
+    FastAPI dependency for injecting authenticated tenant context
+
+    This is the RECOMMENDED way to work with multi-tenant data.
+    It automatically filters all queries by tenant_id.
+
+    Usage:
+        @router.get("/documents")
+        async def list_documents(
+            tenant: TenantContext = Depends(get_authenticated_tenant_context)
+        ):
+            # All queries automatically filtered by tenant_id
+            documents = await tenant.get_documents(tipo_documento="compraventa")
+            return documents
+
+    Args:
+        authorization: JWT token from Authorization header
+
+    Returns:
+        TenantContext: Tenant-scoped database context
+
+    Raises:
+        HTTPException: If authentication fails
+    """
+    return await get_tenant_context(authorization)
+
+
+# ==========================================
+# OPTIONAL AUTHENTICATION (Backward Compatibility)
+# ==========================================
+async def get_optional_user(
+    authorization: Optional[str] = Header(None, alias="Authorization")
+) -> Optional[dict]:
+    """
+    Optional authentication dependency (for gradual migration)
+
+    Returns user data if valid token is provided, None otherwise.
+    Does NOT raise exceptions if authentication fails.
+
+    Usage during migration period:
+        @router.get("/public-or-protected")
+        async def hybrid_endpoint(
+            user: Optional[dict] = Depends(get_optional_user)
+        ):
+            if user:
+                # User is authenticated
+                return {"message": f"Hello {user['email']}"}
+            else:
+                # Anonymous access
+                return {"message": "Hello guest"}
+
+    Args:
+        authorization: Optional JWT token from Authorization header
+
+    Returns:
+        Optional[dict]: User data or None if not authenticated
+    """
+    if not authorization:
+        return None
+
+    try:
+        return await get_current_user(authorization)
+    except HTTPException:
+        # Invalid token, but don't raise - return None for optional auth
+        return None
+    except Exception as e:
+        logger.warning(
+            "Optional authentication failed",
+            error=str(e),
+            error_type=type(e).__name__
+        )
+        return None
+
+
+async def get_optional_tenant_id(
+    authorization: Optional[str] = Header(None, alias="Authorization")
+) -> Optional[str]:
+    """
+    Optional tenant_id dependency (for gradual migration)
+
+    Returns tenant_id if valid token is provided, None otherwise.
+    Does NOT raise exceptions if authentication fails.
+
+    Usage during migration period:
+        @router.post("/upload")
+        async def upload_documents(
+            tenant_id: Optional[str] = Depends(get_optional_tenant_id)
+        ):
+            if tenant_id:
+                # Save to BD with tenant isolation
+                await save_with_tenant(tenant_id, data)
+            else:
+                # Fallback to SessionManager (in-memory)
+                session_manager.store(data)
+
+    Args:
+        authorization: Optional JWT token from Authorization header
+
+    Returns:
+        Optional[str]: tenant_id UUID or None
+    """
+    if not authorization:
+        return None
+
+    try:
+        return await get_current_tenant_id(authorization)
+    except HTTPException:
+        return None
+    except Exception as e:
+        logger.warning(
+            "Optional tenant lookup failed",
+            error=str(e),
+            error_type=type(e).__name__
+        )
+        return None

@@ -39,6 +39,9 @@ interface DocumentState {
   // Confidence scores
   confidence: number | null;
 
+  // Preview approval (mandatory before generating)
+  previewApproved: boolean;
+
   // Actions
   setDocumentType: (type: DocumentType) => void;
   setExtractedData: (data: DocumentData) => void;
@@ -48,6 +51,7 @@ interface DocumentState {
   setError: (error: string | null) => void;
   setOCRResults: (results: DocumentState['ocrResults']) => void;
   setConfidence: (confidence: number) => void;
+  setPreviewApproved: (approved: boolean) => void;
   reset: () => void;
 }
 
@@ -60,6 +64,7 @@ const initialState = {
   error: null,
   ocrResults: null,
   confidence: null,
+  previewApproved: false,
 };
 
 export const useDocumentStore = create<DocumentState>()(
@@ -106,6 +111,9 @@ export const useDocumentStore = create<DocumentState>()(
 
       setConfidence: (confidence) =>
         set({ confidence }, false, 'setConfidence'),
+
+      setPreviewApproved: (approved) =>
+        set({ previewApproved: approved }, false, 'setPreviewApproved'),
 
       reset: () => set(initialState, false, 'reset'),
     }),

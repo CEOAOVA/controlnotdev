@@ -20,10 +20,19 @@ import { useDocumentStore } from '@/store';
 
 interface PreviewModalProps {
   onEdit?: () => void;
+  onApprove?: () => void;
+  showApproveButton?: boolean;
 }
 
-export function PreviewModal({ onEdit }: PreviewModalProps) {
-  const { editedData, documentType } = useDocumentStore();
+export function PreviewModal({ onEdit, onApprove, showApproveButton = false }: PreviewModalProps) {
+  const { editedData, documentType, setPreviewApproved } = useDocumentStore();
+
+  const handleApprove = () => {
+    setPreviewApproved(true);
+    if (onApprove) {
+      onApprove();
+    }
+  };
 
   if (!editedData || !documentType) {
     return null;
@@ -109,13 +118,30 @@ export function PreviewModal({ onEdit }: PreviewModalProps) {
           </div>
         </ScrollArea>
 
-        {onEdit && (
-          <div className="pt-4 border-t">
+        <div className="pt-4 border-t space-y-3">
+          {showApproveButton && (
+            <div className="bg-primary-50 border border-primary-200 rounded-lg p-4">
+              <p className="text-sm text-primary-900 font-medium mb-3">
+                ⚠️ <strong>Revisar antes de generar</strong>
+              </p>
+              <p className="text-xs text-primary-700 mb-4">
+                Verifica que todos los datos sean correctos. Una vez aprobado, se generará el documento final.
+              </p>
+              <Button
+                onClick={handleApprove}
+                className="w-full bg-primary-500 hover:bg-primary-600 text-white"
+              >
+                ✓ Aprobar y Continuar
+              </Button>
+            </div>
+          )}
+
+          {onEdit && (
             <Button onClick={onEdit} variant="outline" className="w-full">
-              Editar Datos
+              ← Editar Datos
             </Button>
-          </div>
-        )}
+          )}
+        </div>
       </DialogContent>
     </Dialog>
   );

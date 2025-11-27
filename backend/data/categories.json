@@ -189,6 +189,46 @@
       ]
     }
   },
+  "cancelacion": {
+    "parte_a": {
+      "nombre": "Documentos del Deudor",
+      "icono": "🏠",
+      "descripcion": "Documentos de identificación y propiedad del deudor",
+      "documentos": [
+        "INE/IFE del Deudor",
+        "Acta de Nacimiento del Deudor",
+        "CURP del Deudor",
+        "RFC/Constancia SAT del Deudor",
+        "Comprobante de Domicilio del Deudor",
+        "Escritura Original de Hipoteca"
+      ]
+    },
+    "parte_b": {
+      "nombre": "Documentos del Banco/Acreedor",
+      "icono": "🏦",
+      "descripcion": "Documentos del banco o institución financiera",
+      "documentos": [
+        "Constancia de No Adeudo",
+        "Finiquito o Carta de Liberación",
+        "Estado de Cuenta Final",
+        "Poder Notarial del Representante del Banco",
+        "Cédula de Representación Legal"
+      ]
+    },
+    "otros": {
+      "nombre": "Documentos del Inmueble y Registro",
+      "icono": "📋",
+      "descripcion": "Documentación legal del inmueble y registro público",
+      "documentos": [
+        "Certificado de Libertad de Gravamen",
+        "Certificado de Inscripción del RPP",
+        "Boleta Catastral",
+        "Constancia de No Adeudo Predial",
+        "Avalúo del Inmueble (si aplica)",
+        "Planos y Medidas del Inmueble"
+      ]
+    }
+  },
   "default": {
     "parte_a": {
       "nombre": "Documentos Parte A",
@@ -216,10 +256,11 @@
     }
   },
   "metadata": {
-    "version": "2.0.0",
-    "total_document_types": 5,
-    "migrated_from": "por_partes.py",
-    "source_lines": "1959-2182",
-    "category_types": ["parte_a", "parte_b", "otros"]
+    "version": "2.1.0",
+    "total_document_types": 6,
+    "migrated_from": "por_partes.py + movil_cancelaciones.py",
+    "source_lines": "1959-2182 + movil_cancelaciones.py",
+    "category_types": ["parte_a", "parte_b", "otros"],
+    "last_update": "2025-01-22"
   }
 }

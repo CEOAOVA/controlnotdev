@@ -8,8 +8,7 @@ import { AlertCircle } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { CategoryTab } from './CategoryTab';
-import { useCategories } from '@/hooks';
-import type { CategoryName } from '@/store';
+import { useCategories, useToast } from '@/hooks';
 
 interface CategorizedUploaderProps {
   onFilesChange?: (totalFiles: number) => void;
@@ -25,6 +24,7 @@ export function CategorizedUploader({ onFilesChange }: CategorizedUploaderProps)
     getTotalFilesCount,
     isLoadingCategories,
   } = useCategories();
+  const toast = useToast();
 
   // Notify parent when files change
   useEffect(() => {
@@ -93,10 +93,17 @@ export function CategorizedUploader({ onFilesChange }: CategorizedUploaderProps)
               onFilesAdded={(newFiles) => {
                 const result = addFilesWithValidation(category.name, newFiles);
 
-                // Show errors if any
+                // Show success or errors
                 if (result.errors.length > 0) {
-                  // TODO: Show toast notification with errors
-                  console.error('File validation errors:', result.errors);
+                  result.errors.forEach((error) => {
+                    toast.error(error);
+                  });
+                } else if (result.validFiles.length > 0) {
+                  toast.success(
+                    `${result.validFiles.length} ${
+                      result.validFiles.length === 1 ? 'archivo agregado' : 'archivos agregados'
+                    } a ${category.name}`
+                  );
                 }
               }}
               onFileRemove={(fileId) => removeFile(category.name, fileId)}

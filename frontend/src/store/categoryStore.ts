@@ -25,7 +25,7 @@ interface CategoryState {
   availableCategories: {
     name: CategoryName;
     description: string;
-    icon: string;
+    icon?: string;
   }[];
 
   // Actions

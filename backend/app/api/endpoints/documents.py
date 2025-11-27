@@ -8,9 +8,15 @@ Rutas:
 - POST   /api/documents/generate         - Generar documento final
 - GET    /api/documents/download/{id}    - Descargar documento generado
 - POST   /api/documents/send-email       - Enviar documento por email
+
+Migración v2:
+- Usa SessionManager para almacenamiento en memoria (no dependencias circulares)
+- Integra con repositorios para persistencia en PostgreSQL
+- Multi-tenant aware con tenant_id
 """
-from typing import List
-from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Depends
+from typing import List, Optional
+from uuid import UUID
+from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Depends, Query
 from fastapi.responses import StreamingResponse
 import structlog
 import uuid
@@ -26,23 +32,237 @@ from app.schemas import (
     SuccessResponse,
     ErrorResponse,
     EmailRequest,
-    EmailResponse
+    EmailResponse,
+    # Historial de documentos
+    DocumentListItem,
+    DocumentListResponse,
+    DocumentStatsResponse,
+    GetDocumentResponse
 )
 from app.services import (
     get_categories_for_type,
-    DocumentGenerator
+    DocumentGenerator,
+    SessionManager,
+    get_session_manager
 )
 from app.services.email_service import EmailService
-from app.core.dependencies import get_email_service
+from app.services.supabase_storage_service import SupabaseStorageService
+from app.core.dependencies import get_email_service, get_optional_tenant_id, get_supabase_storage, get_user_tenant_id
+from app.database import get_current_tenant_id, get_supabase_client
+from app.core.config import get_settings
+from app.repositories.session_repository import session_repository
+from app.repositories.uploaded_file_repository import uploaded_file_repository
+from app.repositories.document_repository import document_repository
+import hashlib
 
 logger = structlog.get_logger()
 router = APIRouter(prefix="/documents", tags=["Documents"])
+settings = get_settings()
+supabase = get_supabase_client()
+
+# Configuración de validación de archivos
+ALLOWED_MIME_TYPES = [
+    'image/jpeg',
+    'image/jpg',
+    'image/png',
+    'image/gif',
+    'image/bmp',
+    'application/pdf',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'  # .docx
+]
+
+MAX_FILE_SIZE_BYTES = settings.MAX_FILE_SIZE_MB * 1024 * 1024  # Convert MB to bytes
 
 
-# Storage para documentos subidos y generados
-_document_sessions = {}
-_generated_documents = {}
+# ============================================================================
+# HELPER FUNCTIONS PARA PERSISTENCIA EN BD
+# ============================================================================
 
+def get_tenant_id_safe() -> Optional[str]:
+    """
+    Obtiene tenant_id de forma segura (sin fallar si no hay autenticación activa)
+
+    Returns:
+        tenant_id o None si no hay autenticación
+    """
+    try:
+        # TODO: Activar cuando se implemente autenticación
+        # return get_current_tenant_id(authorization_header)
+        return None  # Por ahora sin auth
+    except Exception:
+        return None
+
+
+# ============================================================================
+# ENDPOINTS DE HISTORIAL DE DOCUMENTOS
+# ============================================================================
+
+@router.get("/", response_model=DocumentListResponse)
+async def list_documents(
+    page: int = Query(1, ge=1, description="Número de página"),
+    per_page: int = Query(25, ge=1, le=100, description="Documentos por página"),
+    sort_by: str = Query("created_at", description="Campo para ordenar"),
+    sort_order: str = Query("desc", description="Orden (asc o desc)"),
+    tipo_documento: Optional[str] = Query(None, description="Filtrar por tipo de documento"),
+    estado: Optional[str] = Query(None, description="Filtrar por estado"),
+    tenant_id: Optional[str] = Depends(get_optional_tenant_id)
+):
+    """
+    Lista documentos generados con paginación
+
+    Soporta filtros por tipo de documento y estado.
+    Si no hay tenant_id (usuario no autenticado), retorna lista vacía.
+    """
+    logger.info(
+        "Listando documentos",
+        page=page,
+        per_page=per_page,
+        tenant_id=tenant_id,
+        tipo_documento=tipo_documento
+    )
+
+    try:
+        # Si no hay tenant_id, retornar lista vacía
+        if not tenant_id:
+            return DocumentListResponse(
+                documents=[],
+                total=0,
+                page=page,
+                per_page=per_page,
+                total_pages=0
+            )
+
+        # Construir filtros
+        filters = {}
+        if tipo_documento:
+            filters['tipo_documento'] = tipo_documento
+        if estado:
+            filters['estado'] = estado
+
+        # Calcular offset
+        offset = (page - 1) * per_page
+
+        # Obtener documentos del repositorio
+        documents = await document_repository.list_by_tenant(
+            tenant_id=UUID(tenant_id),
+            filters=filters if filters else None,
+            limit=per_page,
+            offset=offset,
+            order_by=sort_by,
+            descending=(sort_order.lower() == 'desc')
+        )
+
+        # Obtener total para paginación
+        total = await document_repository.count_by_tenant(
+            tenant_id=UUID(tenant_id),
+            filters=filters if filters else None
+        )
+
+        # Calcular total de páginas
+        total_pages = (total + per_page - 1) // per_page if total > 0 else 0
+
+        # Convertir a DocumentListItem
+        items = [
+            DocumentListItem(
+                id=str(doc['id']),
+                nombre_documento=doc.get('nombre_documento', ''),
+                tipo_documento=doc.get('tipo_documento', ''),
+                estado=doc.get('estado', 'borrador'),
+                created_at=doc['created_at'],
+                storage_path=doc.get('storage_path'),
+                confidence_score=doc.get('confidence_score'),
+                metadata=doc.get('metadata')
+            )
+            for doc in documents
+        ]
+
+        logger.info(
+            "Documentos listados",
+            total=total,
+            page=page,
+            returned=len(items)
+        )
+
+        return DocumentListResponse(
+            documents=items,
+            total=total,
+            page=page,
+            per_page=per_page,
+            total_pages=total_pages
+        )
+
+    except Exception as e:
+        logger.error(
+            "Error al listar documentos",
+            error=str(e),
+            error_type=type(e).__name__
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al listar documentos: {str(e)}"
+        )
+
+
+@router.get("/stats", response_model=DocumentStatsResponse)
+async def get_document_stats(
+    tenant_id: Optional[str] = Depends(get_optional_tenant_id)
+):
+    """
+    Obtiene estadísticas de documentos del tenant
+
+    Retorna conteos por tipo de documento y por estado.
+    """
+    logger.info("Obteniendo estadísticas de documentos", tenant_id=tenant_id)
+
+    try:
+        # Si no hay tenant_id, retornar estadísticas vacías
+        if not tenant_id:
+            return DocumentStatsResponse(
+                total_documents=0,
+                by_type={},
+                by_status={}
+            )
+
+        # Obtener todos los documentos para calcular estadísticas
+        documents = await document_repository.list_by_tenant(
+            tenant_id=UUID(tenant_id),
+            limit=10000  # Suficiente para estadísticas
+        )
+
+        # Calcular estadísticas
+        by_type = {}
+        by_status = {}
+
+        for doc in documents:
+            # Contar por tipo
+            tipo = doc.get('tipo_documento', 'otros')
+            by_type[tipo] = by_type.get(tipo, 0) + 1
+
+            # Contar por estado
+            estado = doc.get('estado', 'borrador')
+            by_status[estado] = by_status.get(estado, 0) + 1
+
+        return DocumentStatsResponse(
+            total_documents=len(documents),
+            by_type=by_type,
+            by_status=by_status
+        )
+
+    except Exception as e:
+        logger.error(
+            "Error al obtener estadísticas",
+            error=str(e),
+            error_type=type(e).__name__
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al obtener estadísticas: {str(e)}"
+        )
+
+
+# ============================================================================
+# ENDPOINTS EXISTENTES
+# ============================================================================
 
 @router.get("/categories", response_model=CategoriesResponse)
 async def get_categories(document_type: str):
@@ -86,12 +306,16 @@ async def upload_categorized_documents(
     template_id: str = Form(...),
     parte_a: List[UploadFile] = File(default=[]),
     parte_b: List[UploadFile] = File(default=[]),
-    otros: List[UploadFile] = File(default=[])
+    otros: List[UploadFile] = File(default=[]),
+    session_manager: SessionManager = Depends(get_session_manager),
+    tenant_id: Optional[str] = Depends(get_optional_tenant_id)
 ):
     """
     Sube documentos categorizados por rol
 
-    Basado en por_partes.py líneas 2184-2291
+    Migración v2:
+    - Usa SessionManager para almacenamiento temporal
+    - TODO: Guardar en session_repository y uploaded_file_repository
 
     Args:
         document_type: Tipo de documento ('compraventa', 'donacion', etc.)
@@ -99,6 +323,7 @@ async def upload_categorized_documents(
         parte_a: Archivos de la primera categoría
         parte_b: Archivos de la segunda categoría
         otros: Archivos de la tercera categoría
+        session_manager: SessionManager dependency
 
     Returns:
         Confirmación con session_id para continuar el proceso
@@ -134,7 +359,49 @@ async def upload_categorized_documents(
 
         async def process_category_files(files: List[UploadFile], category: str):
             for file in files:
+                # VALIDACIÓN 1: Content-Type
+                if file.content_type not in ALLOWED_MIME_TYPES:
+                    logger.error(
+                        "Tipo de archivo no permitido",
+                        filename=file.filename,
+                        content_type=file.content_type,
+                        category=category
+                    )
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Tipo de archivo no permitido: {file.content_type}. "
+                               f"Tipos permitidos: {', '.join(ALLOWED_MIME_TYPES)}"
+                    )
+
+                # Leer contenido del archivo
                 content = await file.read()
+
+                # VALIDACIÓN 2: Tamaño máximo
+                if len(content) > MAX_FILE_SIZE_BYTES:
+                    logger.error(
+                        "Archivo muy grande",
+                        filename=file.filename,
+                        size_mb=len(content) / 1024 / 1024,
+                        max_size_mb=settings.MAX_FILE_SIZE_MB,
+                        category=category
+                    )
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"Archivo muy grande: {len(content) / 1024 / 1024:.1f}MB. "
+                               f"Tamaño máximo permitido: {settings.MAX_FILE_SIZE_MB}MB"
+                    )
+
+                # VALIDACIÓN 3: Archivo vacío
+                if len(content) == 0:
+                    logger.error(
+                        "Archivo vacío",
+                        filename=file.filename,
+                        category=category
+                    )
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"El archivo '{file.filename}' está vacío"
+                    )
 
                 # Guardar info del archivo
                 file_info = UploadedFileInfo(
@@ -164,19 +431,81 @@ async def upload_categorized_documents(
         await process_category_files(parte_b, 'parte_b')
         await process_category_files(otros, 'otros')
 
-        # Guardar en sesión
-        _document_sessions[session_id] = {
-            'document_type': document_type,
-            'template_id': template_id,
-            'categorized_files': categorized_files,
-            'files_info': files_info
-        }
+        # Guardar en SessionManager (almacenamiento temporal - cache rápido)
+        session_manager.store_document_session(
+            session_id=session_id,
+            data={
+                'document_type': document_type,
+                'template_id': template_id,
+                'categorized_files': categorized_files,
+                'files_info': files_info
+            }
+        )
 
         logger.info(
-            "Documentos categorizados guardados",
+            "Documentos categorizados guardados en SessionManager",
             session_id=session_id,
             total_files=total_files
         )
+
+        # ====================================================================
+        # PERSISTENCIA EN BD: Guardar sesión y archivos (MEJORA v2)
+        # ====================================================================
+        try:
+            # tenant_id viene del dependency injection (opcional)
+            if tenant_id:
+                # Crear sesión en BD
+                db_session = await session_repository.create_session(
+                    tenant_id=UUID(tenant_id),
+                    case_id=UUID('00000000-0000-0000-0000-000000000000'),  # TODO: case_id real
+                    tipo_documento=document_type,
+                    total_archivos=total_files,
+                    session_data={
+                        'template_id': template_id,
+                        'session_id': session_id
+                    }
+                )
+
+                # Guardar metadata de archivos en BD
+                for file_info in files_info:
+                    # Calcular hash del archivo
+                    file_content = next(
+                        (f['content'] for f in categorized_files[file_info.category]
+                         if f['name'] == file_info.filename),
+                        None
+                    )
+
+                    if file_content:
+                        file_hash = hashlib.sha256(file_content).hexdigest()
+
+                        # TODO: Subir a Supabase Storage
+                        storage_path = f"uploads/temp/{session_id}/{file_info.filename}"
+
+                        await uploaded_file_repository.create_uploaded_file(
+                            session_id=UUID(db_session['id']),
+                            filename=file_info.filename,
+                            storage_path=storage_path,
+                            category=file_info.category,
+                            original_filename=file_info.filename,
+                            file_hash=file_hash,
+                            content_type=file_info.content_type,
+                            size_bytes=file_info.size_bytes
+                        )
+
+                logger.info(
+                    "Sesión y archivos persistidos en BD",
+                    session_id=session_id,
+                    db_session_id=db_session['id'],
+                    files_count=len(files_info)
+                )
+
+        except Exception as db_error:
+            # No fallar el upload si falla la persistencia en BD
+            logger.warning(
+                "Error al persistir en BD (no crítico, datos en SessionManager)",
+                error=str(db_error),
+                session_id=session_id
+            )
 
         return CategorizedDocumentsUploadResponse(
             session_id=session_id,
@@ -205,17 +534,24 @@ async def upload_categorized_documents(
 
 
 @router.post("/generate", response_model=DocumentGenerationResponse)
-async def generate_document(request: DocumentGenerationRequest):
+async def generate_document(
+    request: DocumentGenerationRequest,
+    session_manager: SessionManager = Depends(get_session_manager),
+    tenant_id: Optional[str] = Depends(get_optional_tenant_id)
+):
     """
     Genera el documento final con los datos extraídos
 
-    Basado en por_partes.py líneas 1688-1743
+    Migración v2:
+    - Elimina import circular de templates._template_sessions
+    - Usa SessionManager para acceder a template sessions
+    - TODO: Guardar en document_repository
 
     Proceso:
-    1. Obtiene el template de la sesión
+    1. Obtiene el template desde SessionManager
     2. Reemplaza placeholders con los datos
     3. Aplica formato negrita (**texto**)
-    4. Guarda el documento generado
+    4. Guarda el documento generado en SessionManager
     5. Retorna URL de descarga
     """
     logger.info(
@@ -226,16 +562,15 @@ async def generate_document(request: DocumentGenerationRequest):
     )
 
     try:
-        # Verificar que el template existe (importar desde templates.py session)
-        from app.api.endpoints.templates import _template_sessions
+        # Obtener template desde SessionManager (NO import circular)
+        template_session = session_manager.get_template_session(request.template_id)
 
-        if request.template_id not in _template_sessions:
+        if not template_session:
             raise HTTPException(
                 status_code=404,
                 detail="Template no encontrado en sesión"
             )
 
-        template_session = _template_sessions[request.template_id]
         template_content = template_session['content']
 
         # Generar documento
@@ -251,21 +586,63 @@ async def generate_document(request: DocumentGenerationRequest):
         # Generar ID para el documento
         doc_id = f"doc_{uuid.uuid4().hex[:12]}"
 
-        # Guardar documento generado
-        _generated_documents[doc_id] = {
-            'content': document_content,
-            'filename': f"{request.output_filename}.docx",
-            'size': len(document_content),
-            'stats': stats
-        }
+        # Guardar documento en SessionManager (almacenamiento temporal)
+        session_manager.store_generated_document(
+            doc_id=doc_id,
+            data={
+                'content': document_content,
+                'filename': f"{request.output_filename}.docx",
+                'size': len(document_content),
+                'stats': stats
+            }
+        )
 
         logger.info(
-            "Documento generado exitosamente",
+            "Documento generado y guardado en SessionManager",
             doc_id=doc_id,
             filename=request.output_filename,
             size=len(document_content),
             placeholders_replaced=stats['total_replaced']
         )
+
+        # ====================================================================
+        # PERSISTENCIA EN BD: Guardar documento generado (MEJORA v2)
+        # ====================================================================
+        try:
+            # tenant_id viene del dependency injection (opcional)
+            if tenant_id:
+                # TODO: Subir documento a Supabase Storage
+                storage_path = f"documentos/{tenant_id}/{doc_id}.docx"
+
+                # Guardar metadata del documento en BD
+                await document_repository.create({
+                    'tenant_id': tenant_id,
+                    'template_id': UUID(request.template_id),
+                    'tipo_documento': template_session.get('tipo_documento', 'desconocido'),
+                    'nombre_documento': f"{request.output_filename}.docx",
+                    'estado': 'completado',
+                    'storage_path': storage_path,
+                    'extracted_data': request.responses,
+                    'metadata': {
+                        'doc_id': doc_id,
+                        'stats': stats,
+                        'placeholders_count': len(request.placeholders)
+                    }
+                })
+
+                logger.info(
+                    "Documento persistido en BD",
+                    doc_id=doc_id,
+                    tenant_id=tenant_id
+                )
+
+        except Exception as db_error:
+            # No fallar la generación si falla la persistencia
+            logger.warning(
+                "Error al persistir documento en BD (no crítico)",
+                error=str(db_error),
+                doc_id=doc_id
+            )
 
         # Calcular lista de placeholders faltantes
         missing_list = []
@@ -315,22 +692,30 @@ async def generate_document(request: DocumentGenerationRequest):
 
 
 @router.get("/download/{doc_id}")
-async def download_document(doc_id: str):
+async def download_document(
+    doc_id: str,
+    session_manager: SessionManager = Depends(get_session_manager)
+):
     """
     Descarga un documento generado
+
+    Migración v2:
+    - Recupera documento desde SessionManager
+    - TODO: Si no está en cache, recuperar de document_repository + Supabase Storage
 
     Returns:
         StreamingResponse con el archivo .docx
     """
     logger.info("Descargando documento", doc_id=doc_id)
 
-    if doc_id not in _generated_documents:
+    # Intentar recuperar desde SessionManager (cache temporal)
+    doc = session_manager.get_generated_document(doc_id)
+
+    if not doc:
         raise HTTPException(
             status_code=404,
-            detail="Documento no encontrado"
+            detail="Documento no encontrado en sesión"
         )
-
-    doc = _generated_documents[doc_id]
 
     # Crear stream del documento
     document_stream = BytesIO(doc['content'])
@@ -353,16 +738,20 @@ async def download_document(doc_id: str):
 @router.post("/send-email", response_model=EmailResponse)
 async def send_document_email(
     request: EmailRequest,
-    email_service: EmailService = Depends(get_email_service)
+    email_service: EmailService = Depends(get_email_service),
+    session_manager: SessionManager = Depends(get_session_manager)
 ):
     """
     Envía un documento generado por email
 
-    Basado en por_partes.py líneas 1885-1909
+    Migración v2:
+    - Recupera documento desde SessionManager
+    - TODO: Si no está en cache, recuperar de document_repository
 
     Args:
         request: EmailRequest con to_email, subject, body, document_id
         email_service: EmailService dependency
+        session_manager: SessionManager dependency
 
     Returns:
         EmailResponse con confirmación del envío
@@ -378,14 +767,14 @@ async def send_document_email(
     )
 
     try:
-        # Verificar que el documento existe
-        if request.document_id not in _generated_documents:
+        # Obtener documento desde SessionManager
+        doc = session_manager.get_generated_document(request.document_id)
+
+        if not doc:
             raise HTTPException(
                 status_code=404,
-                detail=f"Documento no encontrado: {request.document_id}"
+                detail=f"Documento no encontrado en sesión: {request.document_id}"
             )
-
-        doc = _generated_documents[request.document_id]
 
         # Preparar adjunto
         attachment_data = {
@@ -429,4 +818,199 @@ async def send_document_email(
         raise HTTPException(
             status_code=500,
             detail=f"Error al enviar email: {str(e)}"
+        )
+
+
+@router.post("/confirm/{doc_id}", response_model=SuccessResponse)
+async def confirm_document(
+    doc_id: str,
+    tenant_id: str = Depends(get_user_tenant_id),
+    session_manager: SessionManager = Depends(get_session_manager),
+    supabase_storage: SupabaseStorageService = Depends(get_supabase_storage)
+):
+    """
+    Confirma y guarda un documento generado en Supabase Storage
+
+    Este endpoint debe llamarse cuando el usuario confirma que el documento
+    generado es correcto y quiere guardarlo permanentemente.
+
+    Proceso:
+    1. Recupera el documento desde SessionManager
+    2. Sube el documento a Supabase Storage (bucket 'documentos')
+    3. Actualiza metadata en la base de datos
+    4. Retorna confirmación con URL de descarga permanente
+
+    Args:
+        doc_id: ID del documento generado
+        tenant_id: ID del tenant (obtenido del JWT)
+        session_manager: SessionManager dependency
+        supabase_storage: SupabaseStorageService dependency
+
+    Returns:
+        SuccessResponse con información del documento guardado
+
+    Raises:
+        HTTPException 401: Si no está autenticado
+        HTTPException 404: Si el documento no existe en sesión
+        HTTPException 500: Si falla el guardado en Supabase
+    """
+    logger.info(
+        "Confirmando documento para guardar en Supabase",
+        doc_id=doc_id,
+        tenant_id=tenant_id
+    )
+
+    try:
+        # Obtener documento desde SessionManager
+        doc = session_manager.get_generated_document(doc_id)
+
+        if not doc:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Documento no encontrado en sesión: {doc_id}"
+            )
+
+        # Subir a Supabase Storage
+        result = await supabase_storage.store_document(
+            tenant_id=tenant_id,
+            filename=doc['filename'],
+            content=doc['content'],
+            metadata={
+                'doc_id': doc_id,
+                'stats': doc.get('stats', {}),
+                'confirmed': True
+            }
+        )
+
+        logger.info(
+            "Documento confirmado y guardado en Supabase",
+            doc_id=doc_id,
+            tenant_id=tenant_id,
+            storage_path=result['path']
+        )
+
+        # Actualizar en BD si existe document_repository
+        try:
+            await document_repository.update_by_doc_id(
+                doc_id=doc_id,
+                data={
+                    'storage_path': result['path'],
+                    'estado': 'confirmado',
+                    'confirmed_at': 'now()'
+                }
+            )
+        except Exception as db_error:
+            logger.warning(
+                "No se pudo actualizar en BD (no crítico)",
+                error=str(db_error)
+            )
+
+        return SuccessResponse(
+            message=f"Documento confirmado y guardado exitosamente",
+            data={
+                'doc_id': doc_id,
+                'filename': doc['filename'],
+                'storage_path': result['path'],
+                'url': result.get('url'),
+                'bucket': result['bucket']
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            "Error al confirmar documento",
+            doc_id=doc_id,
+            tenant_id=tenant_id,
+            error=str(e),
+            error_type=type(e).__name__
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al confirmar documento: {str(e)}"
+        )
+
+
+# ============================================================================
+# ENDPOINT GET POR ID (debe ir al final para no capturar otras rutas)
+# ============================================================================
+
+@router.get("/{document_id}", response_model=GetDocumentResponse)
+async def get_document(
+    document_id: str,
+    tenant_id: Optional[str] = Depends(get_optional_tenant_id)
+):
+    """
+    Obtiene un documento específico por ID
+
+    Retorna toda la información del documento incluyendo datos extraídos,
+    URL de descarga y metadata.
+
+    NOTA: Este endpoint debe estar al final del router para que las rutas
+    específicas como /categories, /stats, /upload tengan prioridad.
+    """
+    logger.info(
+        "Obteniendo documento",
+        document_id=document_id,
+        tenant_id=tenant_id
+    )
+
+    try:
+        # Si no hay tenant_id, retornar error de autenticación
+        if not tenant_id:
+            raise HTTPException(
+                status_code=401,
+                detail="Se requiere autenticación para acceder a documentos"
+            )
+
+        # Obtener documento del repositorio
+        document = await document_repository.get_by_id(UUID(document_id))
+
+        if not document:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Documento no encontrado: {document_id}"
+            )
+
+        # Verificar que el documento pertenece al tenant
+        if str(document.get('tenant_id')) != tenant_id:
+            raise HTTPException(
+                status_code=403,
+                detail="No tiene permisos para acceder a este documento"
+            )
+
+        # Generar URL de descarga si hay storage_path
+        download_url = None
+        if document.get('storage_path'):
+            download_url = f"/api/documents/download/{document_id}"
+
+        return GetDocumentResponse(
+            id=str(document['id']),
+            tenant_id=str(document['tenant_id']),
+            nombre_documento=document.get('nombre_documento', ''),
+            tipo_documento=document.get('tipo_documento', ''),
+            estado=document.get('estado', 'borrador'),
+            storage_path=document.get('storage_path'),
+            download_url=download_url,
+            extracted_data=document.get('extracted_data'),
+            edited_data=document.get('edited_data'),
+            confidence_score=document.get('confidence_score'),
+            metadata=document.get('metadata'),
+            created_at=document['created_at'],
+            updated_at=document.get('updated_at')
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            "Error al obtener documento",
+            document_id=document_id,
+            error=str(e),
+            error_type=type(e).__name__
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al obtener documento: {str(e)}"
         )

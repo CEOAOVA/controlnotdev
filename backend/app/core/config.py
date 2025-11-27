@@ -48,6 +48,30 @@ class Settings(BaseSettings):
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
 
     # ==========================================
+    # ANTHROPIC (Semana 1 - Quick Wins)
+    # ==========================================
+    ANTHROPIC_API_KEY: Optional[str] = None
+    ANTHROPIC_MODEL: str = "claude-3-5-sonnet-20241022"
+    ANTHROPIC_MAX_TOKENS: int = 4096
+    ANTHROPIC_TEMPERATURE: float = 0.3
+
+    # ==========================================
+    # REDIS (Caching - Semana 1)
+    # ==========================================
+    REDIS_URL: str = "redis://localhost:6379"
+    REDIS_PASSWORD: Optional[str] = None
+    REDIS_TTL: int = 300  # 5 minutos
+    REDIS_MAX_CONNECTIONS: int = 10
+
+    # ==========================================
+    # SUPABASE (Database + Storage + Auth)
+    # ==========================================
+    SUPABASE_URL: str
+    SUPABASE_KEY: str  # anon/public key
+    SUPABASE_JWT_SECRET: Optional[str] = None  # for JWT verification
+    SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None  # for admin operations
+
+    # ==========================================
     # GOOGLE CLOUD VISION (OCR)
     # ==========================================
     GOOGLE_CREDENTIALS_JSON: str
@@ -80,6 +104,7 @@ class Settings(BaseSettings):
     OUTPUT_DIR: str = "outputs"
     DATA_DIR: str = "data"
     TEMPLATES_DIR: str = "templates"
+    LOCAL_STORAGE_PATH: str = "storage"
 
     # ==========================================
     # PROCESSING
@@ -107,4 +132,14 @@ class Settings(BaseSettings):
 
 
 # Singleton settings instance
-settings = Settings()
+_settings: Optional[Settings] = None
+
+def get_settings() -> Settings:
+    """Get or create settings singleton"""
+    global _settings
+    if _settings is None:
+        _settings = Settings()
+    return _settings
+
+# For backwards compatibility
+settings = get_settings()

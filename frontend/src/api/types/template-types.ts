@@ -9,30 +9,36 @@ export interface PlaceholderExtractionResponse {
   template_id: string;
   template_name: string;
   document_type: DocumentType;
+  detected_type?: DocumentType;
   placeholders: string[];
   placeholder_mapping: Record<string, string>;
   total_placeholders: number;
 }
 
 export interface TemplateConfirmRequest {
-  template_id: string;
+  template_id?: string;
+  template_name?: string;
   document_type: DocumentType;
-  confirmed: boolean;
+  confirmed?: boolean;
 }
 
 export interface TemplateConfirmResponse {
   message: string;
   template_id: string;
+  document_type?: DocumentType;
   ready_for_documents: boolean;
 }
 
 export interface TemplateInfo {
   id: string;
   name: string;
-  size: number;
-  modified: string;
-  source: 'drive' | 'local';
+  display_name?: string;
+  size?: number;
+  modified?: string;
+  source: 'drive' | 'local' | 'uploaded';
   document_type?: DocumentType;
+  placeholders?: string[];
+  createdAt?: string;
 }
 
 export interface TemplateListResponse {

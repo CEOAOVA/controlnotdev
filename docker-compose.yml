@@ -1,33 +1,39 @@
-version: '3.8'
+# ControlNot v2 - Docker Compose
+# Backend + Frontend + Redis
+
+version: "3.9"
 
 services:
-  # Backend API
+  # ===========================================
+  # Backend - FastAPI
+  # ===========================================
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: controlnot-backend
     restart: unless-stopped
-    ports:
-      - "8000:8000"
-    environment:
-      - ENV=production
     env_file:
       - ./backend/.env
-    volumes:
-      - ./backend/data:/app/data
-      - ./backend/templates:/app/templates
-      - ./backend/output:/app/output
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
     networks:
       - controlnot-network
     healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/api/health')"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 10s
 
-  # Frontend
+  # ===========================================
+  # Frontend - React + Nginx
+  # ===========================================
   frontend:
     build:
       context: ./frontend
@@ -35,23 +41,49 @@ services:
     container_name: controlnot-frontend
     restart: unless-stopped
     ports:
-      - "3000:80"
+      - "80:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks:
       - controlnot-network
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/"]
       interval: 30s
-      timeout: 3s
+      timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 5s
 
+  # ===========================================
+  # Redis - Cache & Sessions
+  # ===========================================
+  redis:
+    image: redis:7-alpine
+    container_name: controlnot-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - controlnot-network
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+# ===========================================
+# Volumes
+# ===========================================
+volumes:
+  redis_data:
+    driver: local
+
+# ===========================================
+# Networks
+# ===========================================
 networks:
   controlnot-network:
     driver: bridge
-
-volumes:
-  data:
-  templates:
-  output:

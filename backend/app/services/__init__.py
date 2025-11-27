@@ -3,15 +3,15 @@ ControlNot v2 - Services Package
 Exports de todos los servicios del backend
 
 Servicios disponibles:
-1. classification_service - Auto-detección de tipo de documento
-2. categorization_service - Gestión de categorías por rol
-3. template_service - Extracción de placeholders de templates Word
-4. mapping_service - Mapeo de placeholders a claves estándar
+1. classification_service - Auto-detecciï¿½n de tipo de documento
+2. categorization_service - Gestiï¿½n de categorï¿½as por rol
+3. template_service - Extracciï¿½n de placeholders de templates Word
+4. mapping_service - Mapeo de placeholders a claves estï¿½ndar
 5. storage_service - Almacenamiento dual (Drive + Local)
 6. ocr_service - OCR async paralelo con Google Vision
-7. ai_service - Extracción con LLMs (OpenRouter + OpenAI)
-8. document_service - Generación de documentos Word
-9. email_service - Envío de emails SMTP (sync + async)
+7. ai_service - Extracciï¿½n con LLMs (OpenRouter + OpenAI)
+8. document_service - Generaciï¿½n de documentos Word
+9. email_service - Envï¿½o de emails SMTP (sync + async)
 """
 
 # Classification Service
@@ -48,8 +48,10 @@ from app.services.mapping_service import (
 
 # Storage Service
 from app.services.storage_service import (
-    DriveStorageService,
     LocalStorageService
+)
+from app.services.supabase_storage_service import (
+    SupabaseStorageService
 )
 
 # OCR Service
@@ -74,6 +76,12 @@ from app.services.document_service import (
 from app.services.email_service import (
     EmailService,
     send_email_smtp
+)
+
+# Session Service
+from app.services.session_service import (
+    SessionManager,
+    get_session_manager
 )
 
 __all__ = [
@@ -102,8 +110,8 @@ __all__ = [
     "validate_mapping_quality",
 
     # Storage
-    "DriveStorageService",
     "LocalStorageService",
+    "SupabaseStorageService",
 
     # OCR
     "OCRService",
@@ -120,4 +128,8 @@ __all__ = [
     # Email
     "EmailService",
     "send_email_smtp",
+
+    # Session
+    "SessionManager",
+    "get_session_manager",
 ]

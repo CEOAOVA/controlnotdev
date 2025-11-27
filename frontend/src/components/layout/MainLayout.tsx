@@ -1,27 +1,42 @@
 /**
  * MainLayout Component
- * Main application layout with header, content, and footer
+ * Main application layout with sidebar, topbar, content, and footer
  */
 
-import { Header } from './Header';
+import { Sidebar } from './Sidebar';
+import { Topbar } from './Topbar';
 import { Footer } from './Footer';
 
 interface MainLayoutProps {
   children: React.ReactNode;
+  /**
+   * If true, hides sidebar and uses full width
+   * @default false
+   */
+  fullWidth?: boolean;
 }
 
-export function MainLayout({ children }: MainLayoutProps) {
+export function MainLayout({ children, fullWidth = false }: MainLayoutProps) {
   return (
-    <div className="flex min-h-screen flex-col">
-      <Header />
+    <div className="flex min-h-screen bg-neutral-50">
+      {/* Sidebar */}
+      {!fullWidth && <Sidebar />}
 
-      <main className="flex-1">
-        <div className="container py-8">
-          {children}
-        </div>
-      </main>
+      {/* Main Content Area */}
+      <div className={`flex-1 flex flex-col ${!fullWidth ? 'ml-64' : ''}`}>
+        {/* Topbar */}
+        <Topbar />
 
-      <Footer />
+        {/* Main Content */}
+        <main className="flex-1 overflow-auto">
+          <div className="container py-8 max-w-7xl">
+            {children}
+          </div>
+        </main>
+
+        {/* Footer */}
+        <Footer />
+      </div>
     </div>
   );
 }

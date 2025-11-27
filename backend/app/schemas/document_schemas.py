@@ -4,8 +4,9 @@ Schemas para categorización y generación de documentos
 
 Basado en por_partes.py líneas 1688-1743, 1959-2182, 2184-2291
 """
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from enum import Enum
+from datetime import datetime
 from pydantic import BaseModel, Field
 
 from app.schemas.template_schemas import DocumentTypeEnum
@@ -359,6 +360,148 @@ class CategorizedDocumentsUploadResponse(BaseModel):
                         }
                     ],
                     "message": "9 archivos recibidos, iniciando procesamiento..."
+                }
+            ]
+        }
+    }
+
+
+# ===== SCHEMAS PARA HISTORIAL DE DOCUMENTOS =====
+
+class DocumentListItem(BaseModel):
+    """
+    Item individual en la lista de documentos
+
+    Representa un documento generado almacenado en la base de datos
+    """
+    id: str = Field(..., description="UUID del documento")
+    nombre_documento: str = Field(..., description="Nombre del documento")
+    tipo_documento: str = Field(..., description="Tipo de documento (compraventa, donacion, etc.)")
+    estado: str = Field(..., description="Estado del documento (borrador, procesando, completado, etc.)")
+    created_at: datetime = Field(..., description="Fecha de creación")
+    storage_path: Optional[str] = Field(None, description="Ruta en Supabase Storage")
+    confidence_score: Optional[float] = Field(None, description="Score de confianza de la extracción")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Metadata adicional")
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "id": "550e8400-e29b-41d4-a716-446655440000",
+                    "nombre_documento": "Compraventa_Lote_145.docx",
+                    "tipo_documento": "compraventa",
+                    "estado": "completado",
+                    "created_at": "2024-01-15T10:30:00Z",
+                    "storage_path": "documentos/tenant_123/doc_abc.docx",
+                    "confidence_score": 0.95
+                }
+            ]
+        }
+    }
+
+
+class DocumentListResponse(BaseModel):
+    """
+    Respuesta paginada de lista de documentos
+
+    Usada por GET /api/documents
+    """
+    documents: List[DocumentListItem] = Field(..., description="Lista de documentos")
+    total: int = Field(..., description="Total de documentos en la base de datos")
+    page: int = Field(..., description="Página actual")
+    per_page: int = Field(..., description="Documentos por página")
+    total_pages: int = Field(..., description="Total de páginas")
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "documents": [
+                        {
+                            "id": "550e8400-e29b-41d4-a716-446655440000",
+                            "nombre_documento": "Compraventa_Lote_145.docx",
+                            "tipo_documento": "compraventa",
+                            "estado": "completado",
+                            "created_at": "2024-01-15T10:30:00Z",
+                            "storage_path": "documentos/tenant_123/doc_abc.docx"
+                        }
+                    ],
+                    "total": 42,
+                    "page": 1,
+                    "per_page": 25,
+                    "total_pages": 2
+                }
+            ]
+        }
+    }
+
+
+class DocumentStatsResponse(BaseModel):
+    """
+    Estadísticas de documentos del tenant
+
+    Usada por GET /api/documents/stats
+    """
+    total_documents: int = Field(..., description="Total de documentos")
+    by_type: Dict[str, int] = Field(..., description="Conteo por tipo de documento")
+    by_status: Dict[str, int] = Field(..., description="Conteo por estado")
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "total_documents": 42,
+                    "by_type": {
+                        "compraventa": 25,
+                        "donacion": 8,
+                        "testamento": 5,
+                        "poder": 4
+                    },
+                    "by_status": {
+                        "completado": 30,
+                        "borrador": 10,
+                        "error": 2
+                    }
+                }
+            ]
+        }
+    }
+
+
+class GetDocumentResponse(BaseModel):
+    """
+    Detalle completo de un documento
+
+    Usada por GET /api/documents/{document_id}
+    """
+    id: str = Field(..., description="UUID del documento")
+    tenant_id: str = Field(..., description="UUID del tenant")
+    nombre_documento: str = Field(..., description="Nombre del documento")
+    tipo_documento: str = Field(..., description="Tipo de documento")
+    estado: str = Field(..., description="Estado del documento")
+    storage_path: Optional[str] = Field(None, description="Ruta en Storage")
+    download_url: Optional[str] = Field(None, description="URL firmada para descarga")
+    extracted_data: Optional[Dict[str, Any]] = Field(None, description="Datos extraídos por IA")
+    edited_data: Optional[Dict[str, Any]] = Field(None, description="Datos editados por usuario")
+    confidence_score: Optional[float] = Field(None, description="Score de confianza")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Metadata adicional")
+    created_at: datetime = Field(..., description="Fecha de creación")
+    updated_at: Optional[datetime] = Field(None, description="Fecha de actualización")
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "id": "550e8400-e29b-41d4-a716-446655440000",
+                    "tenant_id": "tenant_123",
+                    "nombre_documento": "Compraventa_Lote_145.docx",
+                    "tipo_documento": "compraventa",
+                    "estado": "completado",
+                    "storage_path": "documentos/tenant_123/doc_abc.docx",
+                    "download_url": "https://...",
+                    "extracted_data": {"Parte_Vendedora": "RAUL CERVANTES"},
+                    "confidence_score": 0.95,
+                    "created_at": "2024-01-15T10:30:00Z"
                 }
             ]
         }

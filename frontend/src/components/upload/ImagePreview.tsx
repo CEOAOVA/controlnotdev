@@ -8,7 +8,6 @@ import { X, FileText, ZoomIn } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { formatBytes } from '@/lib/utils';
-import { cn } from '@/lib/utils';
 import type { UploadedFile } from '@/store';
 
 interface ImagePreviewProps {

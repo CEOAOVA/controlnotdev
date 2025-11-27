@@ -38,6 +38,7 @@ export function ProcessPage() {
   const [filesCount, setFilesCount] = useState(0);
   const [hasTemplate, setHasTemplate] = useState(false);
   const [generatedFilename, setGeneratedFilename] = useState<string | null>(null);
+  const [generatedDocumentId, setGeneratedDocumentId] = useState<string | null>(null);
 
   // Hooks
   const { processFullWorkflow, isProcessing } = useProcessDocument();
@@ -66,7 +67,15 @@ export function ProcessPage() {
 
   // Check if can proceed to next step
   const canProceedFromUpload = hasTemplate && filesCount > 0 && areAllCategoriesPopulated();
-  const canProceedFromEdit = !!editedData;
+
+  // STRICT VALIDATION: All fields must be filled before proceeding
+  const canProceedFromEdit = editedData && Object.values(editedData).every(value => {
+    // Check that value exists and is not empty string
+    if (value === null || value === undefined) return false;
+    if (typeof value === 'string' && value.trim() === '') return false;
+    if (typeof value === 'string' && value === 'No encontrado') return false;
+    return true;
+  });
 
   // Handle step changes
   const goToStep = (step: ProcessStep) => {
@@ -105,7 +114,16 @@ export function ProcessPage() {
       clearAll();
       setCurrentStep('upload');
       setGeneratedFilename(null);
+      setGeneratedDocumentId(null);
     }
+  };
+
+  // Handle download success
+  const handleDownloadSuccess = (filename: string) => {
+    setGeneratedFilename(filename);
+    // Generate a document ID from the filename (timestamp-based)
+    const docId = `doc_${Date.now()}`;
+    setGeneratedDocumentId(docId);
   };
 
   return (
@@ -117,8 +135,8 @@ export function ProcessPage() {
           onStepClick={goToStep}
           completedSteps={
             extractedData
-              ? ['upload', ...(currentStep === 'complete' ? ['edit'] : [])]
-              : []
+              ? (['upload', ...(currentStep === 'complete' ? ['edit'] : [])] as ProcessStep[])
+              : ([] as ProcessStep[])
           }
         />
 
@@ -241,14 +259,14 @@ export function ProcessPage() {
                     </p>
                   </div>
 
-                  <DownloadButton onSuccess={setGeneratedFilename} />
+                  <DownloadButton onSuccess={handleDownloadSuccess} />
                 </div>
               </Card>
 
               {/* Email section */}
-              {generatedFilename && (
+              {generatedFilename && generatedDocumentId && (
                 <Card className="p-6">
-                  <EmailForm documentName={generatedFilename} />
+                  <EmailForm documentId={generatedDocumentId} documentName={generatedFilename} />
                 </Card>
               )}
 

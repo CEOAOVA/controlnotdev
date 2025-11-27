@@ -1,6 +1,7 @@
 /**
  * Templates API endpoints
  * Connects to: /api/templates/*
+ * NOTE: apiClient already has baseURL with /api prefix, so paths here don't need /api
  */
 
 import { apiClient } from '../client';
@@ -14,7 +15,7 @@ import type {
 
 export const templatesApi = {
   /**
-   * POST /api/templates/upload
+   * POST /templates/upload
    * Upload a Word template (.docx)
    */
   upload: async (file: File): Promise<PlaceholderExtractionResponse> => {
@@ -22,7 +23,7 @@ export const templatesApi = {
     formData.append('file', file);
 
     const { data } = await apiClient.post<PlaceholderExtractionResponse>(
-      '/api/templates/upload',
+      '/templates/upload',
       formData,
       {
         headers: {
@@ -35,12 +36,12 @@ export const templatesApi = {
   },
 
   /**
-   * GET /api/templates/list
+   * GET /templates/list
    * List all available templates
    */
   list: async (source?: 'drive' | 'local'): Promise<TemplateListResponse> => {
     const { data } = await apiClient.get<TemplateListResponse>(
-      '/api/templates/list',
+      '/templates/list',
       {
         params: { source },
       }
@@ -50,14 +51,14 @@ export const templatesApi = {
   },
 
   /**
-   * POST /api/templates/confirm
+   * POST /templates/confirm
    * Confirm template and document type
    */
   confirm: async (
     payload: TemplateConfirmRequest
   ): Promise<TemplateConfirmResponse> => {
     const { data } = await apiClient.post<TemplateConfirmResponse>(
-      '/api/templates/confirm',
+      '/templates/confirm',
       payload
     );
 
@@ -65,12 +66,12 @@ export const templatesApi = {
   },
 
   /**
-   * GET /api/templates/types
+   * GET /templates/types
    * Get available document types
    */
   getTypes: async (): Promise<DocumentTypesListResponse> => {
     const { data } = await apiClient.get<DocumentTypesListResponse>(
-      '/api/templates/types'
+      '/templates/types'
     );
 
     return data;

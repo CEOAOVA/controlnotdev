@@ -6,7 +6,13 @@
 import { useMutation } from '@tanstack/react-query';
 import { extractionApi, documentsApi } from '@/api/endpoints';
 import { useDocumentStore, useCategoryStore } from '@/store';
-import type { OCRRequest, AIExtractionRequest, GenerateDocumentRequest } from '@/api/types';
+import type {
+  OCRRequest,
+  AIExtractionRequest,
+  DocumentGenerationRequest,
+  SendEmailRequest,
+} from '@/api/types';
+import type { Category } from '@/types';
 
 export function useProcessDocument() {
   const {
@@ -29,7 +35,17 @@ export function useProcessDocument() {
       return extractionApi.processOCR(request);
     },
     onSuccess: (data) => {
-      setOCRResults(data.ocr_results);
+      // Transform OCR results to store format: concatenate text from each category
+      if (data.ocr_results) {
+        const transformedResults: { [category: string]: string } = {};
+        Object.entries(data.ocr_results).forEach(([category, results]) => {
+          transformedResults[category] = results
+            .filter((r) => r.success && r.text)
+            .map((r) => r.text)
+            .join('\n\n');
+        });
+        setOCRResults(transformedResults);
+      }
       setProcessing(false, 'idle');
     },
     onError: (error: any) => {
@@ -47,7 +63,9 @@ export function useProcessDocument() {
     },
     onSuccess: (data) => {
       setExtractedData(data.extracted_data);
-      setConfidence(data.confidence || null);
+      if (data.confidence !== undefined && data.confidence !== null) {
+        setConfidence(data.confidence);
+      }
       setProcessing(false, 'complete');
     },
     onError: (error: any) => {
@@ -58,7 +76,7 @@ export function useProcessDocument() {
 
   // Document Generation
   const generateMutation = useMutation({
-    mutationFn: async (request: GenerateDocumentRequest) => {
+    mutationFn: async (request: DocumentGenerationRequest) => {
       return documentsApi.generate(request);
     },
     onError: (error: any) => {
@@ -68,7 +86,9 @@ export function useProcessDocument() {
 
   // Send Email
   const emailMutation = useMutation({
-    mutationFn: documentsApi.sendEmail,
+    mutationFn: async (request: SendEmailRequest) => {
+      return documentsApi.sendEmail(request);
+    },
     onError: (error: any) => {
       setError(error?.message || 'Error al enviar email');
     },
@@ -83,7 +103,7 @@ export function useProcessDocument() {
 
     // Step 1: OCR
     const categorizedFiles = Object.entries(files).map(([category, uploadedFiles]) => ({
-      category_name: category,
+      category_name: category as Category,
       files: uploadedFiles.map((f) => f.file),
     }));
 
@@ -104,16 +124,23 @@ export function useProcessDocument() {
   };
 
   // Helper to generate document with current edited data
-  const generateDocument = async (templateName?: string) => {
+  const generateDocument = async (templateId: string, placeholders?: string[], outputFilename?: string) => {
     if (!editedData || !documentType) {
       setError('Datos o tipo de documento faltantes');
       return null;
     }
 
-    const request: GenerateDocumentRequest = {
-      document_type: documentType,
-      data: editedData,
-      template_name: templateName,
+    // Convert editedData values to strings for DocumentGenerationRequest
+    const responses: Record<string, string> = {};
+    Object.entries(editedData).forEach(([key, value]) => {
+      responses[key] = value != null ? String(value) : '';
+    });
+
+    const request: DocumentGenerationRequest = {
+      template_id: templateId,
+      responses,
+      placeholders: placeholders || Object.keys(editedData),
+      output_filename: outputFilename || `documento_${documentType}_${Date.now()}.docx`,
     };
 
     const result = await generateMutation.mutateAsync(request);

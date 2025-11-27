@@ -1,18 +1,19 @@
 import axios, { AxiosError } from 'axios';
 import { env } from '@/config/env';
 import { API_TIMEOUT } from '@/config/constants';
+import { supabase } from '@/lib/supabase';
 
 /**
  * Axios client configurado para el backend FastAPI
- * 
+ *
  * Features:
- * - Base URL desde env
+ * - Base URL desde env + /api prefix
  * - Timeout configurable
  * - Interceptores para requests/responses
  * - Error handling global
  */
 export const apiClient = axios.create({
-  baseURL: env.apiUrl,
+  baseURL: env.apiUrl + '/api',
   timeout: API_TIMEOUT,
   headers: {
     'Content-Type': 'application/json',
@@ -21,16 +22,17 @@ export const apiClient = axios.create({
 
 /**
  * Request interceptor
- * Agrega headers adicionales si son necesarios
+ * Agrega Authorization header con token de Supabase
  */
 apiClient.interceptors.request.use(
-  (config) => {
-    // Agregar auth token si existe en el futuro
-    const token = localStorage.getItem('auth_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+  async (config) => {
+    // Obtener token de sesión de Supabase
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (session?.access_token) {
+      config.headers.Authorization = `Bearer ${session.access_token}`;
     }
-    
+
     return config;
   },
   (error) => {
