@@ -13,9 +13,11 @@ RUN npm ci
 COPY . .
 
 # Args para variables de entorno en build time
-ARG VITE_API_URL=https://pruebas.aurinot.com/api
-ARG VITE_SUPABASE_URL
-ARG VITE_SUPABASE_ANON_KEY
+# Los valores por defecto permiten que el build funcione sin variables reales
+# Coolify sobrescribirá estos valores con los reales durante el despliegue
+ARG VITE_API_URL=https://api.pruebas.aurinot.com
+ARG VITE_SUPABASE_URL=https://placeholder.supabase.co
+ARG VITE_SUPABASE_ANON_KEY=placeholder_key_for_build
 
 # Setear como ENV para que Vite las use
 ENV VITE_API_URL=$VITE_API_URL
