@@ -4,25 +4,27 @@
       "id": "compraventa",
       "nombre": "Compraventa",
       "model": "CompraventaKeys",
-      "total_fields": 47,
+      "total_fields": 56,
       "common_fields": 5,
-      "specific_fields": 42,
+      "specific_fields": 51,
       "description": "Contrato de compraventa de bienes inmuebles",
-      "partes": ["vendedor", "comprador"]
+      "partes": ["vendedor", "comprador"],
+      "new_fields": ["Parte_Vendedora_Ocupacion", "Parte_Compradora_Ocupacion", "Constancia_No_Adeudo_Numero", "Precio_Operacion_Numero", "Precio_Operacion_Letras", "Forma_Pago", "Predio_Superficie_Metros_Letras", "Predio_Superficie_Centimetros_Letras", "Clausulas_Especiales"]
     },
     "donacion": {
       "id": "donacion",
       "nombre": "Donación",
       "model": "DonacionKeys",
-      "total_fields": 49,
+      "total_fields": 55,
       "common_fields": 5,
-      "specific_fields": 44,
+      "specific_fields": 50,
       "description": "Contrato de donación de bienes inmuebles",
       "partes": ["donador", "donatario"],
       "features": {
         "temporal_logic": true,
         "parentesco": true
-      }
+      },
+      "new_fields": ["Parte_Donadora_Ocupacion", "Parte_Donataria_Ocupacion", "Acreditacion_Parentesco", "Motivo_Donacion", "Clausula_Reserva_Usufructo", "Aceptacion_Donacion_Explicita"]
     },
     "testamento": {
       "id": "testamento",
@@ -71,11 +73,12 @@
     }
   },
   "metadata": {
-    "version": "2.1.0",
+    "version": "2.2.0",
     "total_types": 6,
-    "total_unique_fields": 145,
-    "migrated_from": "por_partes.py + movil_cancelaciones.py",
+    "total_unique_fields": 160,
+    "migrated_from": "por_partes.py + movil_cancelaciones.py + escrituras.py",
     "source_lines": "1363-1384 + movil_cancelaciones.py",
-    "last_update": "2025-01-22"
+    "last_update": "2025-11-27",
+    "changes": "Agregados 15 campos faltantes (9 compraventa, 6 donación)"
   }
 }

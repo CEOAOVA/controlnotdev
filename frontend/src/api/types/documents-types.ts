@@ -117,3 +117,24 @@ export interface DeleteDocumentResponse {
   success: boolean;
   message: string;
 }
+
+/**
+ * Document preview request
+ */
+export interface DocumentPreviewRequest {
+  template_id: string;
+  data: Record<string, string>;
+  session_id?: string;
+}
+
+/**
+ * Document preview response
+ */
+export interface DocumentPreviewResponse {
+  html_content: string;
+  total_placeholders: number;
+  filled_placeholders: number;
+  fill_percentage: number;
+  missing_placeholders: string[];
+  warnings: string[];
+}

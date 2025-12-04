@@ -3,10 +3,10 @@
  * Stepper showing current step in document processing workflow
  */
 
-import { Upload, Edit, CheckCircle } from 'lucide-react';
+import { Upload, Edit, Eye, CheckCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-export type ProcessStep = 'upload' | 'edit' | 'complete';
+export type ProcessStep = 'upload' | 'edit' | 'preview' | 'complete';
 
 interface ProgressIndicatorProps {
   currentStep: ProcessStep;
@@ -33,6 +33,12 @@ const steps: {
     description: 'Revisa y corrige la información',
   },
   {
+    id: 'preview',
+    label: 'Vista Previa',
+    icon: Eye,
+    description: 'Revisa el documento antes de generar',
+  },
+  {
     id: 'complete',
     label: 'Completar',
     icon: CheckCircle,
@@ -40,7 +46,7 @@ const steps: {
   },
 ];
 
-const stepOrder: ProcessStep[] = ['upload', 'edit', 'complete'];
+const stepOrder: ProcessStep[] = ['upload', 'edit', 'preview', 'complete'];
 
 export function ProgressIndicator({
   currentStep,

@@ -14,6 +14,8 @@ import type {
   EmailDocumentResponse,
   DeleteDocumentRequest,
   DeleteDocumentResponse,
+  DocumentPreviewRequest,
+  DocumentPreviewResponse,
 } from '../types/documents-types';
 import type {
   DocumentGenerationRequest,
@@ -137,6 +139,15 @@ export const documentsApi = {
    */
   sendEmail: async (request: SendEmailRequest): Promise<SendEmailResponse> => {
     const response = await apiClient.post<SendEmailResponse>('/documents/send-email', request);
+    return response.data;
+  },
+
+  /**
+   * Generate a preview of the document (HTML)
+   * Shows how the document will look with the current data
+   */
+  preview: async (request: DocumentPreviewRequest): Promise<DocumentPreviewResponse> => {
+    const response = await apiClient.post<DocumentPreviewResponse>('/documents/preview', request);
     return response.data;
   },
 };

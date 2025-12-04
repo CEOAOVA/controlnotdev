@@ -47,7 +47,10 @@ from app.schemas.document_schemas import (
     DocumentListItem,
     DocumentListResponse,
     DocumentStatsResponse,
-    GetDocumentResponse
+    GetDocumentResponse,
+    # Preview de documentos
+    DocumentPreviewRequest,
+    DocumentPreviewResponse
 )
 
 # ===== EXTRACTION SCHEMAS =====
@@ -103,6 +106,9 @@ __all__ = [
     "DocumentListResponse",
     "DocumentStatsResponse",
     "GetDocumentResponse",
+    # Preview de documentos
+    "DocumentPreviewRequest",
+    "DocumentPreviewResponse",
 
     # Extraction Schemas
     "OCRFileResult",

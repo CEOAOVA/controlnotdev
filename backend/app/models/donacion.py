@@ -1,9 +1,10 @@
 """
 ControlNot v2 - Modelo Donación
-42 campos específicos para documentos de donación
+48 campos específicos para documentos de donación
 
 Migrado de por_partes.py líneas 785-1283
 IMPORTANTE: Incluye lógica temporal (donador actual vs antecedente)
+Actualizado: Agregados campos faltantes de archivos madre
 """
 from pydantic import BaseModel, Field
 from typing import Optional
@@ -16,7 +17,7 @@ class DonacionKeys(BaseKeys):
     Campos específicos para documentos de DONACIÓN
 
     Hereda 5 campos comunes de BaseKeys
-    Agrega 42+ campos específicos de donación
+    Agrega 48 campos específicos de donación (actualizado)
 
     IMPORTANTE: La donación tiene lógica temporal crítica:
     - ANTECEDENTE = Transacción del PASADO (quién ERA dueño)
@@ -232,6 +233,15 @@ Si después de excluir al donador no queda nadie con documentos de identidad: 'N
         description="RFC completo. Ejemplo: CEAR640813JJ8"
     )
 
+    Parte_Donadora_Ocupacion: Optional[str] = Field(
+        None,
+        description="""FORMATO DE SALIDA: Ocupación en minúsculas
+Ejemplo: comerciante
+
+Extrae la ocupación o profesión del DONADOR.
+Fuente: Acta de nacimiento, manifestación en generales o INE."""
+    )
+
     # Datos personales Donatario
     Edad_Parte_Donataria: Optional[str] = Field(
         None,
@@ -281,6 +291,15 @@ Si después de excluir al donador no queda nadie con documentos de identidad: 'N
     RFC_Parte_Donataria: Optional[str] = Field(
         None,
         description="RFC completo. Ejemplo: GABM780325EG6"
+    )
+
+    Parte_Donataria_Ocupacion: Optional[str] = Field(
+        None,
+        description="""FORMATO DE SALIDA: Ocupación en minúsculas
+Ejemplo: empleado
+
+Extrae la ocupación o profesión del DONATARIO.
+Fuente: Acta de nacimiento, manifestación en generales o INE."""
     )
 
     # Documentos oficiales
@@ -344,6 +363,46 @@ Ejemplo: tal y como lo acredita con la copia certificada de su acta de matrimoni
         None,
         description="""Estado civil del donador y documento que lo acredita.
 Ejemplo: tal y como lo acredita con la copia certificada de su acta de matrimonio la cual quedará agregada al apéndice de la presente escritura"""
+    )
+
+    Acreditacion_Parentesco: Optional[str] = Field(
+        None,
+        description="""FORMATO DE SALIDA: Documento que acredita el parentesco
+Ejemplo: acta de nacimiento del donatario
+
+Indica el documento que acredita la relación familiar entre donador y donatario.
+Fuente: Acta de nacimiento, acta de matrimonio, constancia de adopción.
+Si no hay parentesco o no se acredita: 'no aplica'"""
+    )
+
+    Motivo_Donacion: Optional[str] = Field(
+        None,
+        description="""FORMATO DE SALIDA: Descripción del motivo en minúsculas
+Ejemplo: por el amor y cariño que le profesa
+
+Extrae el motivo o causa de la donación manifestado por el donador.
+Fuente: Cláusulas del contrato, manifestación de voluntad.
+Si no se especifica: 'por la voluntad del donador'"""
+    )
+
+    Clausula_Reserva_Usufructo: Optional[str] = Field(
+        None,
+        description="""FORMATO DE SALIDA: Texto descriptivo de la reserva
+Ejemplo: El donador se reserva el usufructo vitalicio del inmueble donado
+
+Indica si el donador se reserva el derecho de uso y goce del inmueble.
+Fuente: Cláusulas del contrato.
+Si no hay reserva: 'sin reserva de usufructo'"""
+    )
+
+    Aceptacion_Donacion_Explicita: Optional[str] = Field(
+        None,
+        description="""FORMATO DE SALIDA: Texto de aceptación
+Ejemplo: El donatario acepta expresamente la donación que se le hace
+
+Extrae la declaración explícita de aceptación de la donación por parte del donatario.
+Fuente: Cláusulas del contrato, declaración del donatario.
+La aceptación es requisito legal para la validez de la donación."""
     )
 
     class Config:

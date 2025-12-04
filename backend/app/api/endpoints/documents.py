@@ -37,7 +37,10 @@ from app.schemas import (
     DocumentListItem,
     DocumentListResponse,
     DocumentStatsResponse,
-    GetDocumentResponse
+    GetDocumentResponse,
+    # Preview de documentos
+    DocumentPreviewRequest,
+    DocumentPreviewResponse
 )
 from app.services import (
     get_categories_for_type,
@@ -688,6 +691,201 @@ async def generate_document(
         raise HTTPException(
             status_code=500,
             detail=f"Error al generar documento: {str(e)}"
+        )
+
+
+@router.post("/preview", response_model=DocumentPreviewResponse)
+async def preview_document(
+    request: DocumentPreviewRequest,
+    session_manager: SessionManager = Depends(get_session_manager)
+):
+    """
+    Genera preview del documento sin guardarlo permanentemente
+
+    Permite al usuario ver cómo quedará el documento con los datos
+    extraídos antes de confirmar la generación final.
+
+    Proceso:
+    1. Obtiene el template desde SessionManager
+    2. Extrae todos los placeholders del template
+    3. Reemplaza placeholders con datos proporcionados
+    4. Convierte a HTML para visualización
+    5. Calcula estadísticas de completitud
+    6. Retorna HTML + estadísticas
+
+    Args:
+        request: DocumentPreviewRequest con template_id y data
+        session_manager: SessionManager dependency
+
+    Returns:
+        DocumentPreviewResponse con HTML y estadísticas de completitud
+    """
+    import re
+    from docx import Document
+    from html import escape
+
+    logger.info(
+        "Generando preview de documento",
+        template_id=request.template_id,
+        data_fields=len(request.data)
+    )
+
+    try:
+        # 1. Obtener template desde SessionManager
+        template_session = session_manager.get_template_session(request.template_id)
+
+        if not template_session:
+            raise HTTPException(
+                status_code=404,
+                detail="Template no encontrado en sesión"
+            )
+
+        template_content = template_session['content']
+
+        # 2. Leer documento Word para extraer texto y placeholders
+        doc_stream = BytesIO(template_content)
+        document = Document(doc_stream)
+
+        # Patrón para detectar placeholders: {{nombre}} o {{nombre_campo}}
+        placeholder_pattern = re.compile(r'\{\{([^}]+)\}\}')
+
+        # Extraer todos los placeholders únicos
+        all_placeholders = set()
+        full_text_parts = []
+
+        # Procesar párrafos del body
+        for para in document.paragraphs:
+            text = para.text
+            matches = placeholder_pattern.findall(text)
+            all_placeholders.update(matches)
+            full_text_parts.append(text)
+
+        # Procesar tablas
+        for table in document.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    for para in cell.paragraphs:
+                        text = para.text
+                        matches = placeholder_pattern.findall(text)
+                        all_placeholders.update(matches)
+                        full_text_parts.append(text)
+
+        # Procesar headers
+        for section in document.sections:
+            if section.header:
+                for para in section.header.paragraphs:
+                    text = para.text
+                    matches = placeholder_pattern.findall(text)
+                    all_placeholders.update(matches)
+                    full_text_parts.append(text)
+
+        # Procesar footers
+        for section in document.sections:
+            if section.footer:
+                for para in section.footer.paragraphs:
+                    text = para.text
+                    matches = placeholder_pattern.findall(text)
+                    all_placeholders.update(matches)
+                    full_text_parts.append(text)
+
+        # 3. Calcular estadísticas
+        total_placeholders = len(all_placeholders)
+        filled_placeholders = 0
+        missing_placeholders = []
+        warnings = []
+
+        for placeholder in all_placeholders:
+            value = request.data.get(placeholder, "")
+            if value and value != "No encontrado" and "NO LOCALIZADO" not in value.upper():
+                filled_placeholders += 1
+                # Validaciones de formato
+                if placeholder.endswith('_RFC') and len(value) not in [12, 13]:
+                    warnings.append(f"Campo '{placeholder}' tiene formato RFC sospechoso: {value}")
+                if placeholder.endswith('_CURP') and len(value) != 18:
+                    warnings.append(f"Campo '{placeholder}' tiene formato CURP sospechoso: {value}")
+            else:
+                missing_placeholders.append(placeholder)
+
+        fill_percentage = (filled_placeholders / total_placeholders * 100) if total_placeholders > 0 else 0
+
+        # 4. Generar HTML con datos reemplazados
+        full_text = "\n".join(full_text_parts)
+
+        # Reemplazar placeholders con valores
+        def replace_placeholder(match):
+            key = match.group(1)
+            value = request.data.get(key, "")
+            if value and value != "No encontrado" and "NO LOCALIZADO" not in value.upper():
+                return f'<span class="filled-value">{escape(value)}</span>'
+            else:
+                return f'<span class="missing-placeholder">{{{{{{key}}}}}}</span>'
+
+        html_text = placeholder_pattern.sub(replace_placeholder, escape(full_text))
+
+        # Convertir saltos de línea a <br>
+        html_text = html_text.replace('\n', '<br>\n')
+
+        # Envolver en contenedor HTML con estilos
+        html_content = f'''
+        <div class="document-preview">
+            <style>
+                .document-preview {{
+                    font-family: 'Times New Roman', serif;
+                    font-size: 12pt;
+                    line-height: 1.5;
+                    padding: 20px;
+                    background: white;
+                    color: #333;
+                }}
+                .filled-value {{
+                    background-color: #e8f5e9;
+                    padding: 2px 4px;
+                    border-radius: 2px;
+                }}
+                .missing-placeholder {{
+                    background-color: #ffebee;
+                    color: #c62828;
+                    padding: 2px 4px;
+                    border-radius: 2px;
+                    font-family: monospace;
+                    font-size: 10pt;
+                }}
+            </style>
+            <div class="content">
+                {html_text}
+            </div>
+        </div>
+        '''
+
+        logger.info(
+            "Preview generado exitosamente",
+            template_id=request.template_id,
+            total_placeholders=total_placeholders,
+            filled_placeholders=filled_placeholders,
+            fill_percentage=round(fill_percentage, 1)
+        )
+
+        return DocumentPreviewResponse(
+            html_content=html_content,
+            total_placeholders=total_placeholders,
+            filled_placeholders=filled_placeholders,
+            fill_percentage=round(fill_percentage, 1),
+            missing_placeholders=sorted(missing_placeholders),
+            warnings=warnings
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            "Error al generar preview",
+            template_id=request.template_id,
+            error=str(e),
+            error_type=type(e).__name__
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al generar preview: {str(e)}"
         )
 
 

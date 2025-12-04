@@ -1,8 +1,9 @@
 """
 ControlNot v2 - Modelo Compraventa
-42 campos específicos para documentos de compraventa
+51 campos específicos para documentos de compraventa
 
 Migrado de por_partes.py líneas 377-782
+Actualizado: Agregados campos faltantes de archivos madre
 """
 from pydantic import BaseModel, Field
 from typing import Optional
@@ -18,7 +19,7 @@ class CompraventaKeys(BaseKeys):
     - fecha_instrumento, lugar_instrumento, numero_instrumento
     - notario_actuante, numero_notaria
 
-    Agrega 42 campos específicos de compraventa
+    Agrega 51 campos específicos de compraventa (actualizado con campos de archivos madre)
     """
 
     # Parte Vendedora
@@ -314,6 +315,15 @@ Extrae la CURP del VENDEDOR.
 Fuente: INE, constancia CURP o Acta."""
     )
 
+    Parte_Vendedora_Ocupacion: Optional[str] = Field(
+        None,
+        description="""FORMATO DE SALIDA: Ocupación en minúsculas
+Ejemplo: comerciante
+
+Extrae la ocupación o profesión del VENDEDOR.
+Fuente: Acta de nacimiento, manifestación en generales o INE."""
+    )
+
     RFC_Parte_Vendedora: Optional[str] = Field(
         None,
         description="""FORMATO DE SALIDA: RFC completo
@@ -396,6 +406,15 @@ Ejemplo: GABM780325HMNRRR02
 Extrae la CURP del COMPRADOR."""
     )
 
+    Parte_Compradora_Ocupacion: Optional[str] = Field(
+        None,
+        description="""FORMATO DE SALIDA: Ocupación en minúsculas
+Ejemplo: empleado
+
+Extrae la ocupación o profesión del COMPRADOR.
+Fuente: Acta de nacimiento, manifestación en generales o INE."""
+    )
+
     RFC_Parte_Compradora: Optional[str] = Field(
         None,
         description="""FORMATO DE SALIDA: RFC completo
@@ -452,6 +471,72 @@ Fuente: Avalúo o Certificado Catastral."""
 Ejemplo: ING. JAVIER LIEVANOS HUERTA
 
 Extrae nombre completo del valuador con título profesional."""
+    )
+
+    Constancia_No_Adeudo_Numero: Optional[str] = Field(
+        None,
+        description="""FORMATO DE SALIDA: Número de folio o referencia
+Ejemplo: CNA-2025-00456
+
+Extrae el número de folio de la Constancia de No Adeudo.
+Fuente: Constancia de No Adeudo emitida por el municipio."""
+    )
+
+    # Precio y Operación
+    Precio_Operacion_Numero: Optional[str] = Field(
+        None,
+        description="""FORMATO DE SALIDA: Cantidad con formato de moneda
+Ejemplo: $350,000.00
+
+Extrae el precio de la operación de compraventa.
+Fuente: Contrato, acuerdo entre partes o manifestación."""
+    )
+
+    Precio_Operacion_Letras: Optional[str] = Field(
+        None,
+        description="""FORMATO DE SALIDA: Cantidad en palabras MAYÚSCULAS
+Ejemplo: TRESCIENTOS CINCUENTA MIL PESOS 00/100 MONEDA NACIONAL
+
+Extrae el precio de la operación en palabras.
+Fuente: Contrato o manifestación de las partes."""
+    )
+
+    Forma_Pago: Optional[str] = Field(
+        None,
+        description="""FORMATO DE SALIDA: Descripción de la forma de pago en minúsculas
+Ejemplo: transferencia bancaria
+
+Extrae la forma de pago acordada.
+Opciones comunes: efectivo, transferencia bancaria, cheque certificado, crédito hipotecario."""
+    )
+
+    # Superficie adicional
+    Predio_Superficie_Metros_Letras: Optional[str] = Field(
+        None,
+        description="""FORMATO DE SALIDA: Número de metros en palabras minúsculas
+Ejemplo: ciento cuarenta y cinco
+
+Extrae los metros cuadrados de superficie en palabras.
+Fuente: Certificado Catastral o Avalúo."""
+    )
+
+    Predio_Superficie_Centimetros_Letras: Optional[str] = Field(
+        None,
+        description="""FORMATO DE SALIDA: Número de centímetros en palabras minúsculas
+Ejemplo: cincuenta
+
+Extrae los centímetros cuadrados de superficie en palabras (si aplica).
+Fuente: Certificado Catastral o Avalúo. Si no hay centímetros, devolver 'cero'."""
+    )
+
+    # Cláusulas Especiales
+    Clausulas_Especiales: Optional[str] = Field(
+        None,
+        description="""FORMATO DE SALIDA: Texto descriptivo de cláusulas
+Ejemplo: El comprador se obliga a respetar servidumbre de paso existente...
+
+Extrae cláusulas especiales acordadas entre las partes.
+Fuente: Contrato o manifestación. Si no hay cláusulas especiales, devolver 'ninguna'."""
     )
 
     # Tratamientos

@@ -26,6 +26,7 @@ import { DataEditor } from '@/components/editor/DataEditor';
 
 // Document components
 import { PreviewModal } from '@/components/document/PreviewModal';
+import { DocumentPreview } from '@/components/document/DocumentPreview';
 import { DownloadButton } from '@/components/document/DownloadButton';
 import { EmailForm } from '@/components/document/EmailForm';
 
@@ -86,12 +87,16 @@ export function ProcessPage() {
     if (currentStep === 'upload') {
       setCurrentStep('edit');
     } else if (currentStep === 'edit') {
+      setCurrentStep('preview');
+    } else if (currentStep === 'preview') {
       setCurrentStep('complete');
     }
   };
 
   const goToPreviousStep = () => {
     if (currentStep === 'complete') {
+      setCurrentStep('preview');
+    } else if (currentStep === 'preview') {
       setCurrentStep('edit');
     } else if (currentStep === 'edit') {
       setCurrentStep('upload');
@@ -135,7 +140,11 @@ export function ProcessPage() {
           onStepClick={goToStep}
           completedSteps={
             extractedData
-              ? (['upload', ...(currentStep === 'complete' ? ['edit'] : [])] as ProcessStep[])
+              ? ([
+                  'upload',
+                  ...(currentStep === 'preview' || currentStep === 'complete' ? ['edit'] : []),
+                  ...(currentStep === 'complete' ? ['preview'] : []),
+                ] as ProcessStep[])
               : ([] as ProcessStep[])
           }
         />
@@ -240,7 +249,17 @@ export function ProcessPage() {
             </>
           )}
 
-          {/* STEP 3: COMPLETE */}
+          {/* STEP 3: PREVIEW */}
+          {currentStep === 'preview' && selectedTemplate && editedData && (
+            <DocumentPreview
+              templateId={selectedTemplate.id}
+              data={editedData as Record<string, string>}
+              onApprove={goToNextStep}
+              onEdit={goToPreviousStep}
+            />
+          )}
+
+          {/* STEP 4: COMPLETE */}
           {currentStep === 'complete' && (
             <>
               {/* Preview */}

@@ -506,3 +506,100 @@ class GetDocumentResponse(BaseModel):
             ]
         }
     }
+
+
+# ===== SCHEMAS PARA PREVIEW DE DOCUMENTO =====
+
+class DocumentPreviewRequest(BaseModel):
+    """
+    Solicitud para generar preview del documento antes de la generación final
+
+    El preview permite al usuario ver cómo quedará el documento
+    con los datos extraídos antes de confirmar la generación.
+    """
+    template_id: str = Field(..., description="ID del template a usar")
+    data: Dict[str, str] = Field(
+        ...,
+        description="Diccionario con valores para cada placeholder"
+    )
+    session_id: Optional[str] = Field(
+        None,
+        description="ID de sesión opcional para tracking"
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "template_id": "tpl_abc123",
+                    "data": {
+                        "Parte_Vendedora_Nombre_Completo": "RAUL CERVANTES AREVALO",
+                        "RFC_Parte_Vendedora": "CEAR640813JJ8",
+                        "Edad_Parte_Vendedora": "sesenta años"
+                    },
+                    "session_id": "session_xyz789"
+                }
+            ]
+        }
+    }
+
+
+class DocumentPreviewResponse(BaseModel):
+    """
+    Respuesta del preview del documento
+
+    Incluye el contenido HTML renderizado del documento
+    y estadísticas sobre los placeholders.
+
+    El HTML permite mostrar una vista previa en el frontend
+    sin necesidad de generar el documento final.
+    """
+    html_content: str = Field(
+        ...,
+        description="Contenido HTML renderizado del documento"
+    )
+    total_placeholders: int = Field(
+        ...,
+        description="Total de placeholders en el template",
+        ge=0
+    )
+    filled_placeholders: int = Field(
+        ...,
+        description="Placeholders con valor asignado",
+        ge=0
+    )
+    fill_percentage: float = Field(
+        ...,
+        description="Porcentaje de completitud (0-100)",
+        ge=0,
+        le=100
+    )
+    missing_placeholders: List[str] = Field(
+        default_factory=list,
+        description="Lista de placeholders sin valor"
+    )
+    warnings: List[str] = Field(
+        default_factory=list,
+        description="Advertencias sobre campos incompletos o sospechosos"
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "html_content": "<div class='document'>...</div>",
+                    "total_placeholders": 50,
+                    "filled_placeholders": 47,
+                    "fill_percentage": 94.0,
+                    "missing_placeholders": [
+                        "Escritura_Antecedente_Fecha",
+                        "Valor_Catastral",
+                        "Certificado_Libertad_Gravamen"
+                    ],
+                    "warnings": [
+                        "Campo 'RFC_Parte_Vendedora' parece tener formato incorrecto"
+                    ]
+                }
+            ]
+        }
+    }
