@@ -8,7 +8,7 @@ from typing import List, Dict, Optional
 import structlog
 from datetime import datetime
 
-from app.database import supabase, upload_to_storage, download_from_storage, get_tenant_storage_path
+from app.database import supabase_admin, upload_to_storage, download_from_storage, get_tenant_storage_path
 
 logger = structlog.get_logger()
 
@@ -29,9 +29,9 @@ class SupabaseStorageService:
     def __init__(self, client=None):
         """
         Args:
-            client: Cliente de Supabase (opcional, usa global por defecto)
+            client: Cliente de Supabase (opcional, usa supabase_admin por defecto para bypassear RLS)
         """
-        self.client = client or supabase
+        self.client = client or supabase_admin
 
         logger.debug("SupabaseStorageService inicializado")
 

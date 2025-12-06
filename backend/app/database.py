@@ -17,7 +17,7 @@ settings = get_settings()
 
 def get_supabase_client() -> Client:
     """
-    Creates and returns Supabase client instance
+    Creates and returns Supabase client instance (anon key - sujeto a RLS)
 
     Returns:
         Client: Authenticated Supabase client
@@ -36,8 +36,39 @@ def get_supabase_client() -> Client:
         raise
 
 
-# Global Supabase client instance
+def get_supabase_admin_client() -> Client:
+    """
+    Creates and returns Supabase admin client (service_role key - bypasea RLS)
+
+    Usar este cliente para operaciones administrativas del backend que
+    necesitan escribir datos sin estar sujetas a las políticas RLS.
+
+    Returns:
+        Client: Admin Supabase client que bypasea RLS
+    """
+    try:
+        if not settings.SUPABASE_SERVICE_ROLE_KEY:
+            logger.warning("SUPABASE_SERVICE_ROLE_KEY no configurada, usando cliente normal (sujeto a RLS)")
+            return get_supabase_client()
+
+        admin_client: Client = create_client(
+            supabase_url=settings.SUPABASE_URL,
+            supabase_key=settings.SUPABASE_SERVICE_ROLE_KEY
+        )
+
+        logger.info("supabase_admin_client_initialized")
+        return admin_client
+
+    except Exception as e:
+        logger.error("supabase_admin_client_initialization_failed", error=str(e))
+        raise
+
+
+# Global Supabase client instance (anon key - para queries normales con RLS)
 supabase: Client = get_supabase_client()
+
+# Global Supabase admin client (service_role key - bypasea RLS)
+supabase_admin: Client = get_supabase_admin_client()
 
 
 # ========================================

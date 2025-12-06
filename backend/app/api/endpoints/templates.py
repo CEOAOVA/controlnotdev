@@ -37,7 +37,7 @@ from app.core.dependencies import (
     get_optional_tenant_id,
     get_user_tenant_id
 )
-from app.database import supabase
+from app.database import supabase_admin
 from app.core.config import settings
 
 logger = structlog.get_logger()
@@ -141,7 +141,7 @@ async def upload_template(
         # Insertar registro en tabla templates
         db_template_id = template_id  # Default al ID temporal
         try:
-            template_record = supabase.table('templates').insert({
+            template_record = supabase_admin.table('templates').insert({
                 'tenant_id': tenant_id,
                 'tipo_documento': document_type,
                 'nombre': file.filename,
