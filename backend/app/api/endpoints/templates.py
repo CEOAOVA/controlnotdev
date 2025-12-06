@@ -34,8 +34,10 @@ from app.services import (
 from app.services.supabase_storage_service import SupabaseStorageService
 from app.core.dependencies import (
     get_supabase_storage,
-    get_optional_tenant_id
+    get_optional_tenant_id,
+    get_user_tenant_id
 )
+from app.database import supabase
 from app.core.config import settings
 
 logger = structlog.get_logger()
@@ -45,7 +47,9 @@ router = APIRouter(prefix="/templates", tags=["Templates"])
 @router.post("/upload", response_model=PlaceholderExtractionResponse)
 async def upload_template(
     file: UploadFile = File(..., description="Archivo .docx del template"),
-    session_manager: SessionManager = Depends(get_session_manager)
+    session_manager: SessionManager = Depends(get_session_manager),
+    tenant_id: str = Depends(get_user_tenant_id),
+    supabase_storage: SupabaseStorageService = Depends(get_supabase_storage)
 ):
     """
     Sube un template Word y extrae sus placeholders
@@ -113,16 +117,62 @@ async def upload_template(
             }
         )
 
+        # Persistir en Supabase Storage
+        try:
+            storage_result = await supabase_storage.save_template(
+                file_name=file.filename,
+                content=content,
+                tenant_id=tenant_id
+            )
+            storage_path = storage_result.get('path', f"{tenant_id}/{file.filename}")
+
+            logger.info(
+                "Template subido a Supabase Storage",
+                tenant_id=tenant_id,
+                path=storage_path
+            )
+        except Exception as storage_error:
+            logger.error(
+                "Error al subir template a Storage (continuando con sesión)",
+                error=str(storage_error)
+            )
+            storage_path = None
+
+        # Insertar registro en tabla templates
+        db_template_id = template_id  # Default al ID temporal
+        try:
+            template_record = supabase.table('templates').insert({
+                'tenant_id': tenant_id,
+                'tipo_documento': document_type,
+                'nombre': file.filename,
+                'storage_path': storage_path,
+                'placeholders': placeholders,
+                'total_placeholders': len(placeholders)
+            }).execute()
+
+            if template_record.data:
+                db_template_id = str(template_record.data[0]['id'])
+                logger.info(
+                    "Template insertado en BD",
+                    db_template_id=db_template_id,
+                    tenant_id=tenant_id
+                )
+        except Exception as db_error:
+            logger.error(
+                "Error al insertar template en BD (continuando con sesión)",
+                error=str(db_error)
+            )
+
         logger.info(
             "Template procesado exitosamente",
-            template_id=template_id,
+            template_id=db_template_id,
             filename=file.filename,
             document_type=document_type,
             placeholders_count=len(placeholders)
         )
 
         return PlaceholderExtractionResponse(
-            template_id=template_id,
+            template_id=db_template_id,
             template_name=file.filename,
             document_type=document_type,
             placeholders=placeholders,
