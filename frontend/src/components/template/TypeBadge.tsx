@@ -46,13 +46,30 @@ const typeConfig: Record<
 
 export function TypeBadge({ type, size = 'default', showIcon = true }: TypeBadgeProps) {
   const config = typeConfig[type];
-  const Icon = config.icon;
 
   const sizeClasses = {
     sm: 'text-xs px-2 py-0.5',
     default: 'text-sm px-2.5 py-0.5',
     lg: 'text-base px-3 py-1',
   };
+
+  // Fallback para tipos no definidos o undefined
+  if (!config) {
+    return (
+      <span
+        className={cn(
+          'inline-flex items-center gap-1.5 rounded-full font-semibold border',
+          'bg-gray-100 text-gray-700 border-gray-200',
+          sizeClasses[size]
+        )}
+      >
+        {showIcon && <FileText className="w-3 h-3" />}
+        <span>{type || 'Desconocido'}</span>
+      </span>
+    );
+  }
+
+  const Icon = config.icon;
 
   return (
     <span
