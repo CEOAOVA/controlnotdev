@@ -35,3 +35,20 @@ export interface DocumentTypesResponse {
 
 // Alias for compatibility
 export type AIModelsResponse = ModelsListResponse;
+
+// Field metadata for DataEditor
+export interface FieldMetadata {
+  name: string;
+  label: string;
+  category: string;
+  type: 'text' | 'textarea' | 'date' | 'number';
+  required: boolean;
+  help?: string;
+}
+
+export interface DocumentFieldsResponse {
+  document_type: string;
+  fields: FieldMetadata[];
+  categories: string[];
+  total_fields: number;
+}

@@ -5,12 +5,14 @@ Endpoints para listar modelos AI y tipos de documento
 Rutas:
 - GET    /api/models                     - Listar modelos AI disponibles
 - GET    /api/models/types               - Listar tipos de documento
+- GET    /api/models/fields/{type}       - Obtener campos de un tipo de documento
 """
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 import structlog
 
 from app.schemas import ModelsListResponse, DocumentTypesResponse, ModelInfo
 from app.services import get_available_models, get_all_document_types
+from app.services.model_service import get_fields_for_document_type
 from app.core.config import settings
 
 logger = structlog.get_logger()
@@ -115,3 +117,80 @@ async def list_document_types():
             error=str(e)
         )
         raise
+
+
+@router.get("/fields/{document_type}")
+async def get_document_fields(document_type: str):
+    """
+    Obtiene los campos con metadata para un tipo de documento
+
+    Retorna información estructurada para el DataEditor del frontend:
+    - Nombre del campo
+    - Etiqueta legible
+    - Categoría (agrupación)
+    - Tipo de input
+    - Si es requerido
+    - Texto de ayuda
+
+    Args:
+        document_type: Tipo de documento (compraventa, donacion, testamento, poder, sociedad, cancelacion)
+
+    Returns:
+        {
+            "document_type": "compraventa",
+            "fields": [
+                {
+                    "name": "Parte_Vendedora_Nombre_Completo",
+                    "label": "Nombre Completo del Vendedor",
+                    "category": "Parte Vendedora",
+                    "type": "text",
+                    "required": false,
+                    "help": "Nombre y apellidos en mayúsculas"
+                },
+                ...
+            ],
+            "categories": ["Datos del Instrumento", "Parte Vendedora", ...],
+            "total_fields": 51
+        }
+    """
+    logger.info("Solicitando campos de documento", document_type=document_type)
+
+    try:
+        # Normalizar tipo
+        doc_type = document_type.lower().strip()
+
+        # Tipos válidos
+        valid_types = ["compraventa", "donacion", "testamento", "poder", "sociedad", "cancelacion"]
+
+        if doc_type not in valid_types:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Tipo de documento '{document_type}' no soportado. Tipos válidos: {', '.join(valid_types)}"
+            )
+
+        # Obtener campos del servicio
+        result = get_fields_for_document_type(doc_type)
+
+        if "error" in result:
+            raise HTTPException(status_code=404, detail=result["error"])
+
+        logger.info(
+            "Campos de documento obtenidos",
+            document_type=doc_type,
+            total_fields=result["total_fields"]
+        )
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            "Error al obtener campos de documento",
+            document_type=document_type,
+            error=str(e)
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error interno al obtener campos: {str(e)}"
+        )

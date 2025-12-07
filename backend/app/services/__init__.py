@@ -84,6 +84,12 @@ from app.services.session_service import (
     get_session_manager
 )
 
+# Model Service
+from app.services.model_service import (
+    get_fields_for_document_type,
+    get_all_document_types_with_fields
+)
+
 __all__ = [
     # Classification
     "detect_document_type",
@@ -132,4 +138,8 @@ __all__ = [
     # Session
     "SessionManager",
     "get_session_manager",
+
+    # Model
+    "get_fields_for_document_type",
+    "get_all_document_types_with_fields",
 ]
