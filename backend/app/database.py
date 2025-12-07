@@ -401,7 +401,7 @@ async def upload_to_storage(
         result = supabase_admin.storage.from_(bucket).upload(
             path=path,
             file=file_data,
-            file_options={"content-type": content_type}
+            file_options={"content-type": content_type, "upsert": "true"}
         )
 
         # Get public URL (if bucket is public) or generate signed URL
