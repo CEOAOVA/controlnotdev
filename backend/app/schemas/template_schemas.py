@@ -187,7 +187,7 @@ class TemplateInfo(BaseModel):
     source: str = Field(
         ...,
         description="Fuente del template",
-        pattern="^(drive|local)$"
+        pattern="^(drive|local|supabase)$"
     )
 
     model_config = {
