@@ -92,8 +92,18 @@ async def upload_template(
                 detail="No se detectaron placeholders en el template"
             )
 
-        # Auto-detectar tipo de documento
-        document_type = detect_document_type(placeholders, file.filename)
+        # Auto-detectar tipo de documento con confidence score
+        detection_result = detect_document_type(placeholders, file.filename)
+        document_type = detection_result['detected_type']
+        confidence_score = detection_result['confidence_score']
+        requires_confirmation = detection_result['requires_confirmation']
+
+        logger.info(
+            "Tipo de documento detectado",
+            document_type=document_type,
+            confidence=f"{confidence_score * 100:.1f}%",
+            requires_confirmation=requires_confirmation
+        )
 
         # Mapear placeholders a claves estándar
         placeholder_mapping = map_placeholders_to_keys_by_type(
@@ -113,6 +123,8 @@ async def upload_template(
                 'filename': file.filename,
                 'placeholders': placeholders,
                 'document_type': document_type,
+                'confidence_score': confidence_score,
+                'requires_confirmation': requires_confirmation,
                 'placeholder_mapping': placeholder_mapping
             }
         )
@@ -175,6 +187,8 @@ async def upload_template(
             template_id=db_template_id,
             template_name=file.filename,
             document_type=document_type,
+            confidence_score=confidence_score,
+            requires_confirmation=requires_confirmation,
             placeholders=placeholders,
             placeholder_mapping=placeholder_mapping,
             total_placeholders=len(placeholders)

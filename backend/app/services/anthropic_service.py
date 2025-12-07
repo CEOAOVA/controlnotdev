@@ -27,6 +27,7 @@ from app.models.donacion import DonacionKeys
 from app.models.testamento import TestamentoKeys
 from app.models.poder import PoderKeys
 from app.models.sociedad import SociedadKeys
+from app.models.cancelacion import CancelacionKeys
 
 logger = structlog.get_logger()
 
@@ -58,7 +59,8 @@ class AnthropicExtractionService:
         "donacion": DonacionKeys,
         "testamento": TestamentoKeys,
         "poder": PoderKeys,
-        "sociedad": SociedadKeys
+        "sociedad": SociedadKeys,
+        "cancelacion": CancelacionKeys
     }
 
     # Modelo recomendado (Sonnet 3.5 = mejor calidad/precio)

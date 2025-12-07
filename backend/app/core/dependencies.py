@@ -18,6 +18,7 @@ from app.core.config import settings
 from app.services.email_service import EmailService
 from app.services.ocr_service import OCRService
 from app.services.ai_service import AIExtractionService
+from app.services.anthropic_service import AnthropicExtractionService
 from app.services.storage_service import LocalStorageService
 from app.services.supabase_storage_service import SupabaseStorageService
 from app.services.session_service import get_session_manager, SessionManager
@@ -180,13 +181,28 @@ def get_ocr_service() -> OCRService:
 
 def get_ai_service() -> AIExtractionService:
     """
-    Dependency injector for AIExtractionService
+    Dependency injector for AIExtractionService (OpenAI/OpenRouter)
 
     Returns:
         AIExtractionService instance with OpenAI/OpenRouter client
     """
     ai_client = get_openai_client()
     return AIExtractionService(client=ai_client)
+
+
+def get_anthropic_service() -> AnthropicExtractionService:
+    """
+    Dependency injector for AnthropicExtractionService
+
+    BENEFICIOS:
+    - Prompt Caching: ~80% ahorro en costos
+    - Claude 3.5 Sonnet: Mejor razonamiento en español legal
+    - Context: 200K tokens (vs 128K OpenAI)
+
+    Returns:
+        AnthropicExtractionService con Prompt Caching habilitado
+    """
+    return AnthropicExtractionService()
 
 
 def get_local_storage() -> LocalStorageService:
@@ -241,6 +257,7 @@ def validate_document_type(doc_type: str) -> str:
         "testamento",
         "poder",
         "sociedad",
+        "cancelacion",
         "otros"
     ]
 

@@ -4,7 +4,7 @@
  */
 
 import { useState, useRef } from 'react';
-import { Upload, FileText, Loader2, AlertCircle } from 'lucide-react';
+import { Upload, FileText, Loader2, AlertCircle, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
@@ -34,6 +34,8 @@ export function TemplateSelector({ onTemplateSelected }: TemplateSelectorProps) 
     uploadCustomTemplate,
     isLoadingTemplates,
     isUploading,
+    confidenceScore,
+    requiresConfirmation,
   } = useTemplates();
 
   // Filter templates by type
@@ -97,6 +99,28 @@ export function TemplateSelector({ onTemplateSelected }: TemplateSelectorProps) 
           <AlertDescription className="flex items-center gap-2 mt-2">
             <span className="font-medium">{selectedTemplate.name}</span>
             {selectedTemplate.type && <TypeBadge type={selectedTemplate.type} size="sm" />}
+            {confidenceScore !== null && (
+              <span className={`text-xs px-2 py-0.5 rounded ${
+                confidenceScore >= 0.7
+                  ? 'bg-green-100 text-green-700'
+                  : 'bg-yellow-100 text-yellow-700'
+              }`}>
+                {Math.round(confidenceScore * 100)}% confianza
+              </span>
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Low confidence warning */}
+      {requiresConfirmation && selectedTemplate && (
+        <Alert variant="destructive" className="border-yellow-500 bg-yellow-50 text-yellow-800">
+          <AlertTriangle className="h-4 w-4 text-yellow-600" />
+          <AlertTitle className="text-yellow-800">Verificar tipo de documento</AlertTitle>
+          <AlertDescription className="text-yellow-700">
+            La detección automática tiene baja confianza ({Math.round((confidenceScore || 0) * 100)}%).
+            Por favor verifica que el tipo "{selectedTemplate.type}" sea correcto o selecciona otro
+            template del tipo adecuado.
           </AlertDescription>
         </Alert>
       )}
@@ -164,6 +188,7 @@ export function TemplateSelector({ onTemplateSelected }: TemplateSelectorProps) 
               <SelectItem value="testamento">Testamento</SelectItem>
               <SelectItem value="poder">Poder</SelectItem>
               <SelectItem value="sociedad">Sociedad</SelectItem>
+              <SelectItem value="cancelacion">Cancelación</SelectItem>
             </SelectContent>
           </Select>
         </div>

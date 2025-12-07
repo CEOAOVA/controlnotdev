@@ -14,6 +14,8 @@ export interface TemplateInfo {
   placeholders?: string[];
   uploadedFile?: File;
   createdAt?: string;
+  confidenceScore?: number;
+  requiresConfirmation?: boolean;
 }
 
 interface TemplateState {
@@ -29,6 +31,12 @@ interface TemplateState {
   // Detected document type from template
   detectedType: DocumentType | null;
 
+  // Confidence score from detection (0.0 - 1.0)
+  confidenceScore: number | null;
+
+  // True if user should confirm the detected type
+  requiresConfirmation: boolean;
+
   // Loading state
   isLoading: boolean;
 
@@ -40,6 +48,7 @@ interface TemplateState {
   setAvailableTemplates: (templates: TemplateInfo[]) => void;
   setPlaceholders: (placeholders: string[]) => void;
   setDetectedType: (type: DocumentType | null) => void;
+  setConfidence: (score: number, requiresConfirmation: boolean) => void;
   setLoading: (isLoading: boolean) => void;
   setError: (error: string | null) => void;
   uploadCustomTemplate: (file: File) => void;
@@ -52,6 +61,8 @@ const initialState = {
   availableTemplates: [],
   placeholders: [],
   detectedType: null,
+  confidenceScore: null,
+  requiresConfirmation: false,
   isLoading: false,
   error: null,
 };
@@ -81,6 +92,9 @@ export const useTemplateStore = create<TemplateState>()(
       setDetectedType: (type) =>
         set({ detectedType: type }, false, 'setDetectedType'),
 
+      setConfidence: (score, requiresConfirmation) =>
+        set({ confidenceScore: score, requiresConfirmation }, false, 'setConfidence'),
+
       setLoading: (isLoading) =>
         set({ isLoading }, false, 'setLoading'),
 
@@ -107,6 +121,8 @@ export const useTemplateStore = create<TemplateState>()(
             selectedTemplate: null,
             placeholders: [],
             detectedType: null,
+            confidenceScore: null,
+            requiresConfirmation: false,
           },
           false,
           'clearTemplate'

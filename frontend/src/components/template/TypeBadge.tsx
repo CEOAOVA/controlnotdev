@@ -3,7 +3,7 @@
  * Badge with color and icon for document type
  */
 
-import { FileText, Heart, Scale, ScrollText, Building2 } from 'lucide-react';
+import { FileText, Heart, Scale, ScrollText, Building2, XCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { DocumentType } from '@/store';
 
@@ -41,6 +41,11 @@ const typeConfig: Record<
     label: 'Sociedad',
     color: 'bg-orange-100 text-orange-700 border-orange-200',
     icon: Building2,
+  },
+  cancelacion: {
+    label: 'Cancelación',
+    color: 'bg-red-100 text-red-700 border-red-200',
+    icon: XCircle,
   },
 };
 

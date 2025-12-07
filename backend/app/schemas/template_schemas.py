@@ -14,12 +14,14 @@ class DocumentTypeEnum(str, Enum):
     Tipos de documento soportados
 
     Basado en por_partes.py líneas 1363-1384
+    Actualizado v2: Agregado cancelacion
     """
     COMPRAVENTA = "compraventa"
     DONACION = "donacion"
     TESTAMENTO = "testamento"
     PODER = "poder"
     SOCIEDAD = "sociedad"
+    CANCELACION = "cancelacion"
 
 
 class TemplateUploadResponse(BaseModel):
@@ -60,10 +62,11 @@ class PlaceholderExtractionResponse(BaseModel):
     Resultado de extraer placeholders de un template
 
     Basado en por_partes.py líneas 1660-1665
+    Actualizado v2: Agregado confidence_score y requires_confirmation
 
     Retorna:
     - Lista de placeholders encontrados
-    - Tipo de documento auto-detectado
+    - Tipo de documento auto-detectado con confidence
     - Mapeo de placeholders a claves estándar
 
     Example:
@@ -71,15 +74,10 @@ class PlaceholderExtractionResponse(BaseModel):
             "template_id": "tpl_abc123",
             "template_name": "Compraventa_Lote_2025.docx",
             "document_type": "compraventa",
-            "placeholders": [
-                "Certificado_Registro_Catastral",
-                "Comprobante_Domicilio_Parte_Vendedora",
-                "CURP_Parte_Compradora"
-            ],
-            "placeholder_mapping": {
-                "Vendedor": "Parte_Vendedora_Nombre_Completo",
-                "Comprador": "Parte_Compradora_Nombre_Completo"
-            },
+            "confidence_score": 0.85,
+            "requires_confirmation": false,
+            "placeholders": [...],
+            "placeholder_mapping": {...},
             "total_placeholders": 52
         }
     """
@@ -88,6 +86,16 @@ class PlaceholderExtractionResponse(BaseModel):
     document_type: DocumentTypeEnum = Field(
         ...,
         description="Tipo de documento auto-detectado"
+    )
+    confidence_score: float = Field(
+        default=1.0,
+        description="Confianza de la detección (0.0 - 1.0)",
+        ge=0.0,
+        le=1.0
+    )
+    requires_confirmation: bool = Field(
+        default=False,
+        description="True si el usuario debe confirmar el tipo detectado (confidence < 70%)"
     )
     placeholders: List[str] = Field(
         ...,
@@ -111,6 +119,8 @@ class PlaceholderExtractionResponse(BaseModel):
                     "template_id": "tpl_abc123",
                     "template_name": "Compraventa_Lote.docx",
                     "document_type": "compraventa",
+                    "confidence_score": 0.85,
+                    "requires_confirmation": False,
                     "placeholders": [
                         "Parte_Vendedora_Nombre_Completo",
                         "RFC_Parte_Compradora",

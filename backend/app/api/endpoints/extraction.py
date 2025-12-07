@@ -25,9 +25,11 @@ from app.services import (
     SessionManager,
     get_session_manager
 )
+from app.services.anthropic_service import AnthropicExtractionService
 from app.core.dependencies import (
     get_ocr_service,
-    get_ai_service
+    get_ai_service,
+    get_anthropic_service
 )
 from app.repositories.uploaded_file_repository import uploaded_file_repository
 from app.repositories.session_repository import session_repository
@@ -197,13 +199,15 @@ async def process_ocr(
 @router.post("/ai", response_model=AIExtractionResponse)
 async def extract_with_ai(
     request: AIExtractionRequest,
-    ai_service: AIExtractionService = Depends(get_ai_service),
+    anthropic_service: AnthropicExtractionService = Depends(get_anthropic_service),
     session_manager: SessionManager = Depends(get_session_manager)
 ):
     """
-    Extrae datos estructurados con IA (OpenRouter/OpenAI)
+    Extrae datos estructurados con IA (Anthropic Claude + Prompt Caching)
 
-    MEJORA CRÍTICA: Soporte multi-provider (GPT-4o, Claude, Gemini, Llama)
+    MEJORA CRÍTICA: Prompt Caching para ~80% ahorro en costos
+    - 1er documento: Costo completo
+    - Documentos siguientes (5 min): Solo texto nuevo (10x más barato)
 
     Basado en por_partes.py líneas 1745-1789
 
@@ -214,19 +218,19 @@ async def extract_with_ai(
         Datos extraídos en formato Dict[str, str]
     """
     logger.info(
-        "Iniciando extracción con IA",
+        "Iniciando extracción con Anthropic + Prompt Caching",
         session_id=request.session_id,
         document_type=request.document_type,
         text_length=len(request.text),
-        model=request.model
+        model=anthropic_service.model
     )
 
     try:
         import time
         start_time = time.time()
 
-        # Procesar con IA
-        extracted_data = ai_service.process_text_dynamic(
+        # Procesar con Anthropic Claude (con Prompt Caching)
+        extracted_data = anthropic_service.extract_with_caching(
             text=request.text,
             document_type=request.document_type,
             placeholders=request.template_placeholders
@@ -235,13 +239,13 @@ async def extract_with_ai(
         processing_time = time.time() - start_time
 
         # Validar datos extraídos
-        validation_stats = ai_service.validate_extracted_data(
+        validation_stats = anthropic_service.validate_extracted_data(
             extracted_data,
             request.document_type
         )
 
         # Enriquecer con defaults para campos faltantes
-        complete_data = ai_service.enrich_with_defaults(
+        complete_data = anthropic_service.enrich_with_defaults(
             extracted_data,
             request.document_type
         )
@@ -261,20 +265,22 @@ async def extract_with_ai(
                 data={'ai_extracted_data': complete_data}
             )
 
+        # Obtener stats de cache
+        cache_stats = anthropic_service.get_cache_stats()
+
         logger.info(
-            "Extracción con IA completada",
+            "Extracción con Anthropic completada",
             session_id=request.session_id,
             keys_found=validation_stats['found_fields'],
             completeness=f"{validation_stats['completeness'] * 100:.1f}%",
-            processing_time=processing_time
+            processing_time=processing_time,
+            cache_hit=cache_stats['cache_hit'],
+            cached_tokens=cache_stats['cached_tokens']
         )
 
         # ====================================================================
         # PERSISTENCIA EN BD: Guardar datos extraídos (MEJORA v2)
         # ====================================================================
-        # Nota: Los datos extraídos ya están en cache (extraction_cache table)
-        # gracias a la lógica implementada en ai_service.py
-        # Aquí solo registraríamos en tabla documentos si existe sesión en BD
         try:
             db_sessions = await session_repository.list({})
 
@@ -282,24 +288,26 @@ async def extract_with_ai(
                 # Actualizar progreso de sesión
                 await session_repository.update_progress(
                     session_id=UUID(db_sessions[0]['id']),
-                    archivos_procesados=1,  # Al menos 1 archivo procesado
+                    archivos_procesados=1,
                     total_archivos=1
                 )
 
-                # Agregar datos de extracción a session_data
+                # Agregar datos de extracción a session_data (con stats de cache)
                 await session_repository.add_session_data(
                     session_id=UUID(db_sessions[0]['id']),
                     data={
                         'ai_extraction_completed': True,
                         'completeness_percent': validation_stats['completeness'] * 100,
                         'keys_found': validation_stats['found_fields'],
-                        'model_used': ai_service.model,
-                        'tokens_used': ai_service.last_tokens_used
+                        'model_used': anthropic_service.model,
+                        'tokens_used': anthropic_service.last_tokens_used,
+                        'cache_hit': cache_stats['cache_hit'],
+                        'cached_tokens': cache_stats['cached_tokens']
                     }
                 )
 
                 logger.info(
-                    "Datos de extracción IA persistidos en BD",
+                    "Datos de extracción Anthropic persistidos en BD",
                     session_id=request.session_id,
                     db_session_id=db_sessions[0]['id']
                 )
@@ -319,14 +327,14 @@ async def extract_with_ai(
             keys_missing=len(validation_stats['missing_fields']),
             missing_list=validation_stats['not_found_values'],
             completeness_percent=validation_stats['completeness'] * 100,
-            model_used=ai_service.model,
-            tokens_used=ai_service.last_tokens_used,
+            model_used=anthropic_service.model,
+            tokens_used=anthropic_service.last_tokens_used,
             processing_time_seconds=processing_time
         )
 
     except Exception as e:
         logger.error(
-            "Error en extracción con IA",
+            "Error en extracción con Anthropic",
             session_id=request.session_id,
             error=str(e),
             error_type=type(e).__name__

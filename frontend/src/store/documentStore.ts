@@ -10,7 +10,8 @@ export type DocumentType =
   | 'donacion'
   | 'testamento'
   | 'poder'
-  | 'sociedad';
+  | 'sociedad'
+  | 'cancelacion';
 
 interface DocumentData {
   [key: string]: string | number | boolean | null | undefined;

@@ -3,12 +3,13 @@
  */
 
 // Document types
-export type DocumentType = 
+export type DocumentType =
   | 'compraventa'
   | 'donacion'
   | 'testamento'
   | 'poder'
-  | 'sociedad';
+  | 'sociedad'
+  | 'cancelacion';
 
 // Categories
 export type Category = 'parte_a' | 'parte_b' | 'otros';

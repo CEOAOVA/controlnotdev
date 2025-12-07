@@ -15,9 +15,12 @@ export function useTemplates() {
     setSelectedTemplate,
     setPlaceholders,
     setDetectedType,
+    setConfidence,
     setLoading,
     setError,
     selectedTemplate,
+    confidenceScore,
+    requiresConfirmation,
   } = useTemplateStore();
 
   const { setDocumentType } = useDocumentStore();
@@ -62,9 +65,16 @@ export function useTemplates() {
       // Set placeholders and detected type
       setPlaceholders(data.placeholders);
 
-      if (data.detected_type) {
-        setDetectedType(data.detected_type);
-        setDocumentType(data.detected_type);
+      // Set detected type
+      const detectedType = data.detected_type || data.document_type;
+      if (detectedType) {
+        setDetectedType(detectedType);
+        setDocumentType(detectedType);
+      }
+
+      // Set confidence score from API response
+      if (data.confidence_score !== undefined) {
+        setConfidence(data.confidence_score, data.requires_confirmation || false);
       }
 
       setLoading(false);
@@ -191,5 +201,9 @@ export function useTemplates() {
     // Data
     templates: templatesQuery.data || [],
     selectedTemplate,
+
+    // Confidence (for auto-detection)
+    confidenceScore,
+    requiresConfirmation,
   };
 }

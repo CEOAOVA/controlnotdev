@@ -187,6 +187,38 @@ const REQUIRED_DOCS: Record<
       ],
     },
   },
+  cancelacion: {
+    parte_a: {
+      name: 'Acreedor',
+      icon: '🏦',
+      docs: [
+        'Escritura de la hipoteca original',
+        'Carta de liberación del banco',
+        'RFC de la institución',
+        'Poder del representante legal',
+      ],
+    },
+    parte_b: {
+      name: 'Deudor/Propietario',
+      icon: '👤',
+      docs: [
+        'INE o Pasaporte vigente',
+        'RFC',
+        'CURP',
+        'Comprobante de domicilio',
+      ],
+    },
+    otros: {
+      name: 'Inmueble y Gravamen',
+      icon: '🏠',
+      docs: [
+        'Escritura del inmueble',
+        'Certificado de libertad de gravamen actualizado',
+        'Boleta predial actualizada',
+        'Constancia de no adeudo (si aplica)',
+      ],
+    },
+  },
 };
 
 export const RequiredDocsList: React.FC<RequiredDocsListProps> = ({

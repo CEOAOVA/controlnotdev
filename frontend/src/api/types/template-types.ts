@@ -10,6 +10,8 @@ export interface PlaceholderExtractionResponse {
   template_name: string;
   document_type: DocumentType;
   detected_type?: DocumentType;
+  confidence_score: number;
+  requires_confirmation: boolean;
   placeholders: string[];
   placeholder_mapping: Record<string, string>;
   total_placeholders: number;
