@@ -37,58 +37,79 @@ class SupabaseStorageService:
 
     def get_templates(self, tenant_id: Optional[str] = None, include_public: bool = True) -> List[Dict]:
         """
-        Lista templates Word (.docx) desde Supabase Storage
+        Lista templates Word (.docx) desde tabla Supabase (incluye tipo_documento)
 
         Args:
             tenant_id: ID del tenant para filtrar templates propios
-            include_public: Si incluir templates públicos (carpeta 'public')
+            include_public: Si incluir templates públicos (tenant_id = null)
 
         Returns:
             List[Dict]: Lista de templates con:
-                - id: Path único del archivo
+                - id: UUID del template
                 - name: Nombre del archivo
-                - size: Tamaño en bytes
-                - modified: Fecha de última modificación
+                - document_type: Tipo de documento (compraventa, donacion, etc.)
                 - source: "supabase"
-                - path: Path completo en storage
+                - storage_path: Path en storage
+                - placeholders: Lista de placeholders
+                - created_at: Fecha de creación
 
         Example:
             >>> templates = supabase_storage.get_templates(tenant_id="uuid-123")
             >>> templates[0]
             {
-                'id': 'uuid-123/Compraventa_Template.docx',
+                'id': 'uuid-abc',
                 'name': 'Compraventa_Template.docx',
-                'size': 45678,
-                'modified': '2024-01-15T10:30:00Z',
+                'document_type': 'compraventa',
                 'source': 'supabase',
-                'path': 'uuid-123/Compraventa_Template.docx'
+                'storage_path': 'uuid-123/Compraventa_Template.docx',
+                'placeholders': ['vendedor', 'comprador', ...]
             }
         """
         try:
             templates = []
 
-            # Listar templates públicos
-            if include_public:
-                try:
-                    public_files = self.client.storage.from_(self.TEMPLATES_BUCKET).list("public")
-                    for file in public_files:
-                        if file.get('name', '').endswith('.docx'):
-                            templates.append(self._format_template(file, "public"))
-                except Exception as e:
-                    logger.warning("No se pudieron listar templates públicos", error=str(e))
+            # Leer desde la tabla 'templates' (tiene tipo_documento)
+            try:
+                if tenant_id and include_public:
+                    # Templates del tenant + públicos (tenant_id es null)
+                    result = self.client.table('templates').select("*").or_(
+                        f"tenant_id.eq.{tenant_id},tenant_id.is.null"
+                    ).execute()
+                elif tenant_id:
+                    # Solo templates del tenant
+                    result = self.client.table('templates').select("*").eq(
+                        'tenant_id', tenant_id
+                    ).execute()
+                else:
+                    # Solo templates públicos
+                    result = self.client.table('templates').select("*").is_(
+                        'tenant_id', 'null'
+                    ).execute()
 
-            # Listar templates del tenant
-            if tenant_id:
-                try:
-                    tenant_files = self.client.storage.from_(self.TEMPLATES_BUCKET).list(tenant_id)
-                    for file in tenant_files:
-                        if file.get('name', '').endswith('.docx'):
-                            templates.append(self._format_template(file, tenant_id))
-                except Exception as e:
-                    logger.warning("No se pudieron listar templates del tenant", tenant_id=tenant_id, error=str(e))
+                for record in result.data:
+                    templates.append({
+                        'id': str(record.get('id', '')),
+                        'name': record.get('nombre', ''),
+                        'document_type': record.get('tipo_documento'),  # CLAVE: Incluir tipo
+                        'source': 'supabase',
+                        'storage_path': record.get('storage_path', ''),
+                        'placeholders': record.get('placeholders', []),
+                        'created_at': record.get('created_at'),
+                        'modified': record.get('updated_at') or record.get('created_at'),
+                        'size': 0,  # No disponible desde tabla
+                        'path': record.get('storage_path', '')
+                    })
+
+            except Exception as e:
+                logger.warning(
+                    "No se pudieron listar templates desde tabla, intentando Storage",
+                    error=str(e)
+                )
+                # Fallback: intentar leer desde Storage (sin document_type)
+                return self._get_templates_from_storage(tenant_id, include_public)
 
             logger.info(
-                "Templates listados desde Supabase",
+                "Templates listados desde tabla Supabase",
                 tenant_id=tenant_id,
                 include_public=include_public,
                 total_templates=len(templates)
@@ -104,6 +125,32 @@ class SupabaseStorageService:
                 error_type=type(e).__name__
             )
             raise
+
+    def _get_templates_from_storage(self, tenant_id: Optional[str] = None, include_public: bool = True) -> List[Dict]:
+        """
+        Fallback: Lista templates desde Storage (sin document_type)
+        """
+        templates = []
+
+        if include_public:
+            try:
+                public_files = self.client.storage.from_(self.TEMPLATES_BUCKET).list("public")
+                for file in public_files:
+                    if file.get('name', '').endswith('.docx'):
+                        templates.append(self._format_template(file, "public"))
+            except Exception as e:
+                logger.warning("No se pudieron listar templates públicos", error=str(e))
+
+        if tenant_id:
+            try:
+                tenant_files = self.client.storage.from_(self.TEMPLATES_BUCKET).list(tenant_id)
+                for file in tenant_files:
+                    if file.get('name', '').endswith('.docx'):
+                        templates.append(self._format_template(file, tenant_id))
+            except Exception as e:
+                logger.warning("No se pudieron listar templates del tenant", tenant_id=tenant_id, error=str(e))
+
+        return templates
 
     def _format_template(self, file: Dict, folder: str) -> Dict:
         """

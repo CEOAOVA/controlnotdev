@@ -103,6 +103,13 @@ export function useTemplates() {
   const selectTemplate = async (template: TemplateInfo) => {
     setSelectedTemplate(template);
 
+    // IMPORTANTE: Setear documentType inmediatamente si el template lo tiene
+    // Esto activa useCategories que depende de documentType
+    if (template.type) {
+      setDocumentType(template.type);
+      setDetectedType(template.type);
+    }
+
     // If template has a file (uploaded), upload it first
     if (template.uploadedFile) {
       const result = await uploadMutation.mutateAsync(template.uploadedFile);
@@ -114,14 +121,12 @@ export function useTemplates() {
           document_type: result.detected_type,
         });
       }
-    } else {
-      // Confirm existing template
-      if (template.type) {
-        await confirmMutation.mutateAsync({
-          template_name: template.name,
-          document_type: template.type,
-        });
-      }
+    } else if (template.type) {
+      // Confirm existing template with its type
+      await confirmMutation.mutateAsync({
+        template_name: template.name,
+        document_type: template.type,
+      });
     }
   };
 

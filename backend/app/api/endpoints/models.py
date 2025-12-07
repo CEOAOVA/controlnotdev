@@ -13,6 +13,7 @@ import structlog
 from app.schemas import ModelsListResponse, DocumentTypesResponse, ModelInfo
 from app.services import get_available_models, get_all_document_types
 from app.services.model_service import get_fields_for_document_type
+from app.services.categorization_service import get_categories_for_type
 from app.core.config import settings
 
 logger = structlog.get_logger()
@@ -117,6 +118,82 @@ async def list_document_types():
             error=str(e)
         )
         raise
+
+
+@router.get("/categories/{document_type}")
+async def get_categories_for_document(document_type: str):
+    """
+    Obtiene las categorías de documentos para un tipo específico
+
+    Args:
+        document_type: compraventa, donacion, testamento, poder, sociedad, cancelacion
+
+    Returns:
+        {
+            "categories": [
+                {"name": "parte_a", "description": "Documentos del Vendedor", "icon": "📤"},
+                {"name": "parte_b", "description": "Documentos del Comprador", "icon": "📥"},
+                {"name": "otros", "description": "Otros documentos", "icon": "📄"}
+            ],
+            "document_type": "compraventa"
+        }
+    """
+    logger.info("Solicitando categorías", document_type=document_type)
+
+    try:
+        doc_type = document_type.lower().strip()
+
+        valid_types = ["compraventa", "donacion", "testamento", "poder", "sociedad", "cancelacion"]
+        if doc_type not in valid_types:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Tipo de documento '{document_type}' no soportado. Tipos válidos: {', '.join(valid_types)}"
+            )
+
+        categories_data = get_categories_for_type(doc_type)
+
+        # Formatear respuesta para frontend
+        categories = [
+            {
+                "name": "parte_a",
+                "description": categories_data.get('parte_a', {}).get('nombre', 'Parte A'),
+                "icon": categories_data.get('parte_a', {}).get('icono', '📄')
+            },
+            {
+                "name": "parte_b",
+                "description": categories_data.get('parte_b', {}).get('nombre', 'Parte B'),
+                "icon": categories_data.get('parte_b', {}).get('icono', '📄')
+            },
+            {
+                "name": "otros",
+                "description": categories_data.get('otros', {}).get('nombre', 'Otros'),
+                "icon": categories_data.get('otros', {}).get('icono', '📋')
+            }
+        ]
+
+        logger.info(
+            "Categorías obtenidas",
+            document_type=doc_type,
+            total_categories=len(categories)
+        )
+
+        return {
+            "categories": categories,
+            "document_type": doc_type
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            "Error al obtener categorías",
+            document_type=document_type,
+            error=str(e)
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error interno al obtener categorías: {str(e)}"
+        )
 
 
 @router.get("/fields/{document_type}")
