@@ -302,9 +302,9 @@ class DocumentRepository(BaseRepository):
             URL firmada
         """
         try:
-            from app.database import supabase
+            from app.database import supabase_admin
 
-            signed_url = supabase.storage.from_(bucket)\
+            signed_url = supabase_admin.storage.from_(bucket)\
                 .create_signed_url(storage_path, expires_in)
 
             if signed_url and 'signedURL' in signed_url:

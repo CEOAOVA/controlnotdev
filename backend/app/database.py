@@ -398,14 +398,14 @@ async def upload_to_storage(
         dict: Upload result with path and URL
     """
     try:
-        result = supabase.storage.from_(bucket).upload(
+        result = supabase_admin.storage.from_(bucket).upload(
             path=path,
             file=file_data,
             file_options={"content-type": content_type}
         )
 
         # Get public URL (if bucket is public) or generate signed URL
-        public_url = supabase.storage.from_(bucket).get_public_url(path)
+        public_url = supabase_admin.storage.from_(bucket).get_public_url(path)
 
         logger.info(
             "file_uploaded_to_storage",
@@ -437,7 +437,7 @@ async def download_from_storage(bucket: str, path: str) -> bytes:
         bytes: File content
     """
     try:
-        result = supabase.storage.from_(bucket).download(path)
+        result = supabase_admin.storage.from_(bucket).download(path)
 
         logger.info("file_downloaded_from_storage", bucket=bucket, path=path)
 
