@@ -3,7 +3,7 @@
  * Card displaying template info with selection state
  */
 
-import { FileText, Check, Cloud, HardDrive, Upload } from 'lucide-react';
+import { FileText, Check, Cloud, HardDrive, Upload, Database } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -17,20 +17,23 @@ interface TemplateCardProps {
   onSelect: () => void;
 }
 
-const sourceIcons = {
+const sourceIcons: Record<string, typeof Cloud> = {
   drive: Cloud,
   local: HardDrive,
   uploaded: Upload,
+  supabase: Database,
 };
 
-const sourceLabels = {
+const sourceLabels: Record<string, string> = {
   drive: 'Google Drive',
   local: 'Local',
   uploaded: 'Subido',
+  supabase: 'Supabase',
 };
 
 export function TemplateCard({ template, isSelected = false, onSelect }: TemplateCardProps) {
-  const SourceIcon = sourceIcons[template.source];
+  const SourceIcon = sourceIcons[template.source] || FileText;
+  const sourceLabel = sourceLabels[template.source] || template.source;
 
   return (
     <Card
@@ -50,7 +53,7 @@ export function TemplateCard({ template, isSelected = false, onSelect }: Templat
               </CardTitle>
               <CardDescription className="mt-1 flex items-center gap-1">
                 <SourceIcon className="w-3 h-3" />
-                <span className="text-xs">{sourceLabels[template.source]}</span>
+                <span className="text-xs">{sourceLabel}</span>
               </CardDescription>
             </div>
           </div>
