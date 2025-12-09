@@ -8,7 +8,7 @@ from typing import List, Dict, Optional
 import structlog
 from datetime import datetime
 
-from app.database import supabase_admin, upload_to_storage, download_from_storage, get_tenant_storage_path
+from app.database import supabase_admin, supabase, upload_to_storage, download_from_storage, get_tenant_storage_path
 
 logger = structlog.get_logger()
 
@@ -29,9 +29,15 @@ class SupabaseStorageService:
     def __init__(self, client=None):
         """
         Args:
-            client: Cliente de Supabase (opcional, usa supabase_admin por defecto para bypassear RLS)
+            client: Cliente de Supabase (opcional)
+
+        NOTA: Usamos supabase (anon key) para lectura porque:
+        - Las políticas RLS permiten lectura de templates públicos o del tenant
+        - supabase_admin requiere SERVICE_ROLE_KEY que puede no estar configurada
         """
-        self.client = client or supabase_admin
+        self.client = client or supabase
+        # Cliente admin para operaciones de escritura que bypasean RLS
+        self.admin_client = supabase_admin
 
         logger.debug("SupabaseStorageService inicializado")
 

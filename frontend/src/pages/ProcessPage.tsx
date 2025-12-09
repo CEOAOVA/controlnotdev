@@ -18,8 +18,7 @@ import { ProgressIndicator, type ProcessStep } from '@/components/progress/Progr
 import { ProcessingDetails } from '@/components/progress/ProcessingDetails';
 
 // Upload components
-import { TemplateSelector } from '@/components/template/TemplateSelector';
-import { CategorizedUploader } from '@/components/upload/CategorizedUploader';
+import { UnifiedUploader } from '@/components/upload/UnifiedUploader';
 
 // Editor components
 import { DataEditor } from '@/components/editor/DataEditor';
@@ -46,7 +45,7 @@ export function ProcessPage() {
   const { getTotalFilesCount, areAllCategoriesPopulated } = useCategories();
 
   // Stores
-  const { documentType, extractedData, editedData, reset, processingStep } = useDocumentStore();
+  const { extractedData, editedData, reset, processingStep } = useDocumentStore();
   const { selectedTemplate } = useTemplateStore();
   const { clearAll } = useCategoryStore();
 
@@ -154,15 +153,10 @@ export function ProcessPage() {
           {/* STEP 1: UPLOAD */}
           {currentStep === 'upload' && (
             <>
-              <Card className="p-6">
-                <TemplateSelector onTemplateSelected={setHasTemplate} />
-              </Card>
-
-              {documentType && (
-                <Card className="p-6">
-                  <CategorizedUploader onFilesChange={setFilesCount} />
-                </Card>
-              )}
+              <UnifiedUploader
+                onTemplateSelected={setHasTemplate}
+                onFilesChange={setFilesCount}
+              />
 
               {/* Actions */}
               <div className="flex items-center justify-between p-6 bg-muted/30 rounded-lg">

@@ -185,6 +185,7 @@ class TemplateInfo(BaseModel):
         {
             "id": "1abc...xyz",
             "name": "Compraventa_Template.docx",
+            "document_type": "compraventa",
             "size": 45678,
             "modified": "2024-01-15T10:30:00Z",
             "source": "drive"
@@ -192,6 +193,10 @@ class TemplateInfo(BaseModel):
     """
     id: str = Field(..., description="ID del template (file_id de Drive o nombre de archivo)")
     name: str = Field(..., description="Nombre del archivo .docx")
+    document_type: Optional[str] = Field(
+        None,
+        description="Tipo de documento (compraventa, donacion, testamento, poder, sociedad, cancelacion)"
+    )
     size: int = Field(..., description="Tamaño en bytes", ge=0)
     modified: str = Field(..., description="Fecha de última modificación (ISO 8601)")
     source: str = Field(
@@ -206,6 +211,7 @@ class TemplateInfo(BaseModel):
                 {
                     "id": "1abc...xyz",
                     "name": "Compraventa_Template.docx",
+                    "document_type": "compraventa",
                     "size": 45678,
                     "modified": "2025-01-15T10:30:00Z",
                     "source": "drive"

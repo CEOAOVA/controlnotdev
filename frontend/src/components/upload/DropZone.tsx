@@ -33,7 +33,8 @@ export function DropZone({
   const { getRootProps, getInputProps, isDragActive, isDragReject } = useDropzone({
     onDrop,
     accept: {
-      'image/*': ['.jpg', '.jpeg', '.png'],
+      'image/jpeg': ['.jpg', '.jpeg'],
+      'image/png': ['.png'],
       'application/pdf': ['.pdf'],
     },
     maxFiles,
