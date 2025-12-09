@@ -35,10 +35,10 @@ export function useTemplates() {
 
         // Transform to TemplateInfo format
         const templates: TemplateInfo[] = response.templates.map((t) => ({
-          id: t.name,
+          id: t.id || t.name,  // Usar UUID del backend, fallback a nombre
           name: t.display_name || t.name,
           type: t.document_type,
-          source: t.source as 'drive' | 'local',
+          source: t.source as 'drive' | 'local' | 'uploaded' | 'supabase',
           placeholders: t.placeholders,
         }));
 

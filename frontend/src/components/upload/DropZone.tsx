@@ -20,7 +20,7 @@ export function DropZone({
   onFilesAdded,
   maxFiles = 20,
   maxSizeMB = 10,
-  acceptedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'],
+  // acceptedTypes ahora se define directamente en el objeto accept
   disabled = false,
 }: DropZoneProps) {
   const onDrop = useCallback(
@@ -32,7 +32,10 @@ export function DropZone({
 
   const { getRootProps, getInputProps, isDragActive, isDragReject } = useDropzone({
     onDrop,
-    accept: acceptedTypes.reduce((acc, type) => ({ ...acc, [type]: [] }), {}),
+    accept: {
+      'image/*': ['.jpg', '.jpeg', '.png'],
+      'application/pdf': ['.pdf'],
+    },
     maxFiles,
     maxSize: maxSizeMB * 1024 * 1024,
     disabled,

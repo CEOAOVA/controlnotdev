@@ -10,7 +10,7 @@ export interface TemplateInfo {
   id: string;
   name: string;
   type?: DocumentType;
-  source: 'drive' | 'local' | 'uploaded';
+  source: 'drive' | 'local' | 'uploaded' | 'supabase';
   placeholders?: string[];
   uploadedFile?: File;
   createdAt?: string;
