@@ -117,15 +117,17 @@ export function useTemplates() {
       // Confirm with detected type
       if (result.detected_type) {
         await confirmMutation.mutateAsync({
-          template_name: template.name,
+          template_id: result.template_id,
           document_type: result.detected_type,
+          confirmed: true,
         });
       }
     } else if (template.type) {
       // Confirm existing template with its type
       await confirmMutation.mutateAsync({
-        template_name: template.name,
+        template_id: template.id,
         document_type: template.type,
+        confirmed: true,
       });
     }
   };
