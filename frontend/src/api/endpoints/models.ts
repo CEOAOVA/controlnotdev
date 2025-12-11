@@ -18,7 +18,7 @@ export const modelsApi = {
    */
   getDocumentTypes: async (): Promise<DocumentTypesListResponse> => {
     const { data } = await apiClient.get<DocumentTypesListResponse>(
-      '/api/models/types'
+      '/models/types'
     );
     return data;
   },
@@ -29,7 +29,7 @@ export const modelsApi = {
    */
   getCategories: async (docType: string): Promise<CategoriesResponse> => {
     const { data } = await apiClient.get<CategoriesResponse>(
-      `/api/models/categories/${docType}`
+      `/models/categories/${docType}`
     );
     return data;
   },
@@ -40,7 +40,7 @@ export const modelsApi = {
    */
   getAIModels: async (): Promise<AIModelsResponse> => {
     const { data } = await apiClient.get<AIModelsResponse>(
-      '/api/models/ai-models'
+      '/models/ai-models'
     );
     return data;
   },
@@ -51,7 +51,7 @@ export const modelsApi = {
    */
   getAIProvider: async (): Promise<{ provider: string; model: string }> => {
     const { data } = await apiClient.get<{ provider: string; model: string }>(
-      '/api/models/ai-provider'
+      '/models/ai-provider'
     );
     return data;
   },
@@ -68,7 +68,7 @@ export const modelsApi = {
    */
   getFields: async (documentType: string): Promise<DocumentFieldsResponse> => {
     const { data } = await apiClient.get<DocumentFieldsResponse>(
-      `/api/models/fields/${documentType}`
+      `/models/fields/${documentType}`
     );
     return data;
   },
