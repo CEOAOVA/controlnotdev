@@ -32,7 +32,7 @@ export const extractionApi = {
     });
 
     const { data } = await apiClient.post<OCRResponse>(
-      '/api/extraction/ocr',
+      '/extraction/ocr',
       formData,
       {
         headers: {
@@ -54,7 +54,7 @@ export const extractionApi = {
     payload: AIExtractionRequest
   ): Promise<AIExtractionResponse> => {
     const { data } = await apiClient.post<AIExtractionResponse>(
-      '/api/extraction/ai',
+      '/extraction/ai',
       payload,
       {
         // AI extraction can take a while
@@ -73,7 +73,7 @@ export const extractionApi = {
     payload: DataEditRequest
   ): Promise<DataEditResponse> => {
     const { data } = await apiClient.post<DataEditResponse>(
-      '/api/extraction/edit',
+      '/extraction/edit',
       payload
     );
 
