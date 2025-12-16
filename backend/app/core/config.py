@@ -81,8 +81,27 @@ class Settings(BaseSettings):
     def google_credentials_dict(self) -> dict:
         """Parse Google credentials from JSON string"""
         try:
-            return json.loads(self.GOOGLE_CREDENTIALS_JSON)
+            # Limpiar el JSON de posibles envolturas de Coolify/Docker
+            json_str = self.GOOGLE_CREDENTIALS_JSON.strip()
+
+            # Quitar comillas simples o dobles envolventes
+            if (json_str.startswith("'") and json_str.endswith("'")) or \
+               (json_str.startswith('"') and json_str.endswith('"')):
+                json_str = json_str[1:-1]
+
+            # Quitar escapes de comillas si existen
+            json_str = json_str.replace('\\"', '"')
+
+            return json.loads(json_str)
         except json.JSONDecodeError as e:
+            # Log para debugging
+            import structlog
+            logger = structlog.get_logger()
+            logger.error(
+                "Error parsing GOOGLE_CREDENTIALS_JSON",
+                raw_value_start=self.GOOGLE_CREDENTIALS_JSON[:50] if self.GOOGLE_CREDENTIALS_JSON else "EMPTY",
+                error=str(e)
+            )
             raise ValueError(f"Invalid GOOGLE_CREDENTIALS_JSON: {e}")
 
     # ==========================================
