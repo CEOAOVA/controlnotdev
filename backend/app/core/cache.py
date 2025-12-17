@@ -2,94 +2,92 @@
 ControlNot v2 - Redis Cache Client
 Gestión del cliente Redis singleton con conexión pool
 
-SEMANA 1 - QUICK WINS:
-- Cliente Redis singleton con connection pool
-- Soporte para Redis Cloud (free tier) o local
-- Manejo automático de reconexión
-- Logging detallado de operaciones
+IMPORTANTE: Este módulo es NON-BLOCKING. Si Redis no está disponible,
+las funciones retornan None/False/default en vez de lanzar excepciones.
+El sistema funciona sin caché si Redis falla.
 
 Uso:
-    >>> from app.core.cache import get_redis_client
-    >>> redis = get_redis_client()
-    >>> redis.set("key", "value", ex=300)
-    >>> value = redis.get("key")
+    >>> from app.core.cache import get_redis_client, is_redis_available
+    >>> if is_redis_available():
+    ...     redis = get_redis_client()
+    ...     redis.set("key", "value", ex=300)
 """
 import redis
 from redis.connection import ConnectionPool
 from typing import Optional
 import structlog
 
-from app.core.config import settings
-
 logger = structlog.get_logger()
 
 # Global Redis client instance (singleton)
 _redis_client: Optional[redis.Redis] = None
 _connection_pool: Optional[ConnectionPool] = None
+_redis_available: Optional[bool] = None  # Cache del estado de disponibilidad
 
 
-def get_redis_client() -> redis.Redis:
+def get_redis_client() -> Optional[redis.Redis]:
     """
-    Obtiene instancia singleton del cliente Redis
+    Obtiene instancia singleton del cliente Redis de forma NON-BLOCKING.
 
-    Usa connection pool para reutilizar conexiones y mejorar performance.
-    Se reconecta automáticamente si la conexión se pierde.
+    IMPORTANTE: Esta función NUNCA lanza excepciones. Si Redis no está
+    disponible, retorna None y el sistema funciona sin caché.
 
     Returns:
-        redis.Redis: Cliente Redis configurado
+        Optional[redis.Redis]: Cliente Redis o None si no disponible
 
     Example:
         >>> redis = get_redis_client()
-        >>> redis.ping()  # True
-        >>> redis.set("test", "value")
-        >>> redis.get("test")  # b'value'
-
-    Raises:
-        redis.ConnectionError: Si no puede conectar a Redis
+        >>> if redis:
+        ...     redis.set("test", "value")
     """
-    global _redis_client, _connection_pool
+    global _redis_client, _connection_pool, _redis_available
+
+    # Si ya sabemos que Redis no está disponible, retornar None rápido
+    if _redis_available is False:
+        return None
 
     if _redis_client is None:
         try:
-            # Crear connection pool (más eficiente que conexiones individuales)
+            # Importar settings aquí para evitar import circular
+            from app.core.config import settings
+
+            # Crear connection pool con timeout corto (2s) para no bloquear startup
             _connection_pool = ConnectionPool.from_url(
                 settings.REDIS_URL,
                 password=settings.REDIS_PASSWORD if settings.REDIS_PASSWORD else None,
                 max_connections=settings.REDIS_MAX_CONNECTIONS,
-                decode_responses=True,  # Auto-decodificar bytes a strings
-                socket_keepalive=True,  # Mantener conexiones vivas
-                socket_connect_timeout=5,  # 5 segundos timeout
-                retry_on_timeout=True  # Reintentar si timeout
+                decode_responses=True,
+                socket_keepalive=True,
+                socket_connect_timeout=2,  # Timeout CORTO: 2 segundos
+                socket_timeout=2,  # Timeout CORTO para operaciones
+                retry_on_timeout=False  # NO reintentar - falla rápido
             )
 
             # Crear cliente Redis con pool
             _redis_client = redis.Redis(connection_pool=_connection_pool)
 
-            # Verificar conexión
+            # Verificar conexión (timeout de 2s)
             _redis_client.ping()
 
+            _redis_available = True
             logger.info(
-                "✅ Redis client inicializado",
+                "redis_client_initialized",
                 url=settings.REDIS_URL,
                 max_connections=settings.REDIS_MAX_CONNECTIONS,
                 ttl_default=settings.REDIS_TTL
             )
 
-        except redis.ConnectionError as e:
-            logger.error(
-                "❌ Error al conectar a Redis",
-                error=str(e),
-                url=settings.REDIS_URL
-            )
-            raise
-
         except Exception as e:
-            logger.error(
-                "❌ Error inesperado al inicializar Redis",
+            # NO lanzar excepción - marcar como no disponible y continuar
+            logger.warning(
+                "redis_not_available_cache_disabled",
                 error=str(e),
-                error_type=type(e).__name__
+                message="Sistema funcionará sin caché Redis"
             )
-            raise
+            _redis_available = False
+            _redis_client = None
+            _connection_pool = None
+            return None
 
     return _redis_client
 
@@ -130,23 +128,19 @@ def close_redis_client():
 
 def is_redis_available() -> bool:
     """
-    Verifica si Redis está disponible y responde
+    Verifica si Redis está disponible de forma NON-BLOCKING.
 
     Returns:
-        bool: True si Redis responde a PING, False en caso contrario
+        bool: True si Redis está disponible, False en caso contrario
 
     Example:
         >>> if is_redis_available():
         ...     # usar cache
         ... else:
-        ...     # skip cache
+        ...     # skip cache (sistema funciona sin Redis)
     """
-    try:
-        redis_client = get_redis_client()
-        return redis_client.ping()
-    except Exception as e:
-        logger.warning("Redis no disponible", error=str(e))
-        return False
+    client = get_redis_client()
+    return client is not None
 
 
 # ==========================================
@@ -155,37 +149,29 @@ def is_redis_available() -> bool:
 
 def get_cached(key: str, default=None) -> Optional[str]:
     """
-    Obtiene valor del cache de forma segura
+    Obtiene valor del cache de forma segura (NON-BLOCKING)
 
     Args:
         key: Clave del cache
-        default: Valor por defecto si no existe o error
+        default: Valor por defecto si no existe, error, o Redis no disponible
 
     Returns:
         Optional[str]: Valor del cache o default
-
-    Example:
-        >>> value = get_cached("ocr:abc123")
-        >>> if value:
-        ...     data = json.loads(value)
     """
-    try:
-        redis_client = get_redis_client()
-        value = redis_client.get(key)
+    redis_client = get_redis_client()
+    if redis_client is None:
+        return default
 
+    try:
+        value = redis_client.get(key)
         if value:
-            logger.debug("Cache HIT", key=key)
+            logger.debug("cache_hit", key=key)
             return value
         else:
-            logger.debug("Cache MISS", key=key)
+            logger.debug("cache_miss", key=key)
             return default
-
     except Exception as e:
-        logger.warning(
-            "Error al leer cache, usando default",
-            key=key,
-            error=str(e)
-        )
+        logger.warning("cache_read_error", key=key, error=str(e))
         return default
 
 
@@ -195,72 +181,51 @@ def set_cached(
     ttl: Optional[int] = None
 ) -> bool:
     """
-    Guarda valor en cache de forma segura
+    Guarda valor en cache de forma segura (NON-BLOCKING)
 
     Args:
         key: Clave del cache
         value: Valor a guardar (string o JSON)
-        ttl: Time-to-live en segundos (usa settings.REDIS_TTL por defecto)
+        ttl: Time-to-live en segundos (usa 300 por defecto)
 
     Returns:
-        bool: True si guardó exitosamente, False en caso contrario
-
-    Example:
-        >>> import json
-        >>> data = {"field": "value"}
-        >>> set_cached("key", json.dumps(data), ttl=300)
+        bool: True si guardó exitosamente, False si Redis no disponible o error
     """
+    redis_client = get_redis_client()
+    if redis_client is None:
+        return False
+
     try:
-        redis_client = get_redis_client()
+        from app.core.config import settings
         ttl_seconds = ttl if ttl is not None else settings.REDIS_TTL
-
         redis_client.setex(key, ttl_seconds, value)
-
-        logger.debug(
-            "Cache SET",
-            key=key,
-            ttl=ttl_seconds,
-            value_length=len(value)
-        )
-
+        logger.debug("cache_set", key=key, ttl=ttl_seconds, value_length=len(value))
         return True
-
     except Exception as e:
-        logger.warning(
-            "Error al escribir cache",
-            key=key,
-            error=str(e)
-        )
+        logger.warning("cache_write_error", key=key, error=str(e))
         return False
 
 
 def delete_cached(key: str) -> bool:
     """
-    Elimina valor del cache
+    Elimina valor del cache (NON-BLOCKING)
 
     Args:
         key: Clave a eliminar
 
     Returns:
-        bool: True si eliminó, False en caso contrario
-
-    Example:
-        >>> delete_cached("ocr:abc123")
+        bool: True si eliminó, False si Redis no disponible o error
     """
+    redis_client = get_redis_client()
+    if redis_client is None:
+        return False
+
     try:
-        redis_client = get_redis_client()
         result = redis_client.delete(key)
-
-        logger.debug("Cache DELETE", key=key, deleted=bool(result))
-
+        logger.debug("cache_delete", key=key, deleted=bool(result))
         return bool(result)
-
     except Exception as e:
-        logger.warning(
-            "Error al eliminar cache",
-            key=key,
-            error=str(e)
-        )
+        logger.warning("cache_delete_error", key=key, error=str(e))
         return False
 
 
@@ -269,44 +234,34 @@ def clear_all_cache() -> bool:
     Limpia TODO el cache (usar con precaución)
 
     Returns:
-        bool: True si limpió, False en caso contrario
-
-    Example:
-        >>> clear_all_cache()  # ⚠️ ELIMINA TODO
+        bool: True si limpió, False si Redis no disponible o error
     """
+    redis_client = get_redis_client()
+    if redis_client is None:
+        return False
+
     try:
-        redis_client = get_redis_client()
         redis_client.flushdb()
-
-        logger.warning("⚠️ Cache completamente limpiado (FLUSHDB)")
-
+        logger.warning("cache_flushed_all")
         return True
-
     except Exception as e:
-        logger.error(
-            "Error al limpiar cache",
-            error=str(e)
-        )
+        logger.error("cache_flush_error", error=str(e))
         return False
 
 
 def get_cache_stats() -> dict:
     """
-    Obtiene estadísticas del cache Redis
+    Obtiene estadísticas del cache Redis (NON-BLOCKING)
 
     Returns:
-        dict: Estadísticas de Redis (keys, memory, hits, etc.)
-
-    Example:
-        >>> stats = get_cache_stats()
-        >>> print(f"Keys en cache: {stats['keys']}")
-        >>> print(f"Memoria usada: {stats['used_memory_human']}")
+        dict: Estadísticas de Redis o estado desconectado
     """
-    try:
-        redis_client = get_redis_client()
-        info = redis_client.info()
+    redis_client = get_redis_client()
+    if redis_client is None:
+        return {"connected": False, "error": "Redis not available"}
 
-        # Extraer métricas importantes
+    try:
+        info = redis_client.info()
         stats = {
             "connected": True,
             "keys": redis_client.dbsize(),
@@ -322,16 +277,10 @@ def get_cache_stats() -> dict:
             "evicted_keys": info.get('evicted_keys', 0),
             "expired_keys": info.get('expired_keys', 0)
         }
-
-        logger.info(
-            "📊 Cache stats",
-            **stats
-        )
-
+        logger.info("cache_stats", **stats)
         return stats
-
     except Exception as e:
-        logger.error("Error al obtener stats de cache", error=str(e))
+        logger.error("cache_stats_error", error=str(e))
         return {"connected": False, "error": str(e)}
 
 

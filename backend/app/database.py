@@ -1,5 +1,9 @@
 """
 Database configuration and Supabase client initialization
+
+IMPORTANTE: Los clientes Supabase usan LAZY INITIALIZATION para evitar
+bloquear el startup de la aplicación si Supabase no está disponible.
+Los clientes se crean la primera vez que se usan, no al importar este módulo.
 """
 from typing import Optional
 from supabase import create_client, Client
@@ -9,66 +13,100 @@ import structlog
 from app.core.config import get_settings
 
 logger = structlog.get_logger()
-settings = get_settings()
 
 # ========================================
-# SUPABASE CLIENT
+# LAZY SUPABASE CLIENTS
 # ========================================
+
+# Clientes singleton (inicializados como None - NO se conectan al importar)
+_supabase_client: Optional[Client] = None
+_supabase_admin_client: Optional[Client] = None
+
 
 def get_supabase_client() -> Client:
     """
-    Creates and returns Supabase client instance (anon key - sujeto a RLS)
+    Obtiene o crea el cliente Supabase (anon key) con lazy initialization.
+    Solo se conecta cuando se llama por primera vez, NO al importar el módulo.
 
     Returns:
         Client: Authenticated Supabase client
     """
-    try:
-        supabase: Client = create_client(
-            supabase_url=settings.SUPABASE_URL,
-            supabase_key=settings.SUPABASE_KEY
-        )
+    global _supabase_client
 
-        logger.info("supabase_client_initialized")
-        return supabase
+    if _supabase_client is None:
+        settings = get_settings()
+        try:
+            _supabase_client = create_client(
+                supabase_url=settings.SUPABASE_URL,
+                supabase_key=settings.SUPABASE_KEY
+            )
+            logger.info("supabase_client_initialized_lazy")
+        except Exception as e:
+            logger.error("supabase_client_initialization_failed", error=str(e))
+            raise
 
-    except Exception as e:
-        logger.error("supabase_client_initialization_failed", error=str(e))
-        raise
+    return _supabase_client
 
 
 def get_supabase_admin_client() -> Client:
     """
-    Creates and returns Supabase admin client (service_role key - bypasea RLS)
-
-    Usar este cliente para operaciones administrativas del backend que
-    necesitan escribir datos sin estar sujetas a las políticas RLS.
+    Obtiene o crea el cliente Supabase admin (service_role key) con lazy initialization.
+    Bypasea RLS para operaciones administrativas del backend.
 
     Returns:
         Client: Admin Supabase client que bypasea RLS
     """
-    try:
-        if not settings.SUPABASE_SERVICE_ROLE_KEY:
-            logger.warning("SUPABASE_SERVICE_ROLE_KEY no configurada, usando cliente normal (sujeto a RLS)")
+    global _supabase_admin_client
+
+    if _supabase_admin_client is None:
+        settings = get_settings()
+
+        # Validar que SERVICE_ROLE_KEY esté configurada correctamente
+        service_key = settings.SUPABASE_SERVICE_ROLE_KEY
+        if not service_key or service_key in ["TU_SERVICE_ROLE_KEY_AQUI", ""]:
+            logger.warning(
+                "SUPABASE_SERVICE_ROLE_KEY no configurada o inválida, "
+                "usando cliente anon (sujeto a RLS)"
+            )
             return get_supabase_client()
 
-        admin_client: Client = create_client(
-            supabase_url=settings.SUPABASE_URL,
-            supabase_key=settings.SUPABASE_SERVICE_ROLE_KEY
-        )
+        try:
+            _supabase_admin_client = create_client(
+                supabase_url=settings.SUPABASE_URL,
+                supabase_key=service_key
+            )
+            logger.info("supabase_admin_client_initialized_lazy")
+        except Exception as e:
+            logger.error("supabase_admin_client_initialization_failed", error=str(e))
+            raise
 
-        logger.info("supabase_admin_client_initialized")
-        return admin_client
-
-    except Exception as e:
-        logger.error("supabase_admin_client_initialization_failed", error=str(e))
-        raise
+    return _supabase_admin_client
 
 
-# Global Supabase client instance (anon key - para queries normales con RLS)
-supabase: Client = get_supabase_client()
+# ========================================
+# LAZY PROXY PARA COMPATIBILIDAD
+# ========================================
 
-# Global Supabase admin client (service_role key - bypasea RLS)
-supabase_admin: Client = get_supabase_admin_client()
+class _LazySupabaseProxy:
+    """
+    Proxy que carga el cliente Supabase solo cuando se accede a sus atributos.
+    Permite que los imports existentes (from app.database import supabase)
+    funcionen sin bloquear el startup.
+    """
+
+    def __init__(self, getter_func):
+        self._getter = getter_func
+        self._client = None
+
+    def __getattr__(self, name):
+        if self._client is None:
+            self._client = self._getter()
+        return getattr(self._client, name)
+
+
+# Estos objetos NO se conectan al importar - solo cuando se usan por primera vez
+supabase = _LazySupabaseProxy(get_supabase_client)
+supabase_admin = _LazySupabaseProxy(get_supabase_admin_client)
 
 
 # ========================================

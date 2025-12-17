@@ -109,11 +109,13 @@ services:
       # App
       - APP_URL=https://pruebas.aurinot.com
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      # Usar /ping que es más ligero que /health (no verifica dependencias)
+      test: ["CMD", "curl", "-f", "http://localhost:8000/ping"]
       interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
+      timeout: 5s
+      retries: 5
+      # Aumentar start_period para dar tiempo al startup con Gunicorn
+      start_period: 60s
     deploy:
       resources:
         limits:
