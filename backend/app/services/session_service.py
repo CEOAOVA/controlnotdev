@@ -8,6 +8,7 @@ This service manages:
 - Extraction results (from extraction.py)
 - Cancelación sessions (from cancelaciones.py)
 
+SEGURIDAD: Usa claves compuestas {tenant_id}:{session_id} para aislamiento multi-tenant.
 Future: Will be replaced with database persistence via session_repository
 """
 from typing import Dict, Optional, Any
@@ -16,6 +17,25 @@ import structlog
 from threading import Lock
 
 logger = structlog.get_logger()
+
+
+def _make_composite_key(tenant_id: Optional[str], session_id: str) -> str:
+    """
+    Crea clave compuesta para aislamiento multi-tenant
+
+    SEGURIDAD: Si tenant_id está presente, crea clave aislada.
+    Si no hay tenant_id (legacy), usa solo session_id.
+
+    Args:
+        tenant_id: UUID del tenant (opcional para retrocompatibilidad)
+        session_id: ID de la sesión/documento
+
+    Returns:
+        Clave compuesta en formato "tenant_id:session_id" o "session_id"
+    """
+    if tenant_id:
+        return f"{tenant_id}:{session_id}"
+    return session_id
 
 
 class SessionManager:
@@ -202,39 +222,93 @@ class SessionManager:
             logger.debug("cancelacion_session_deleted", session_id=session_id)
 
     # ==========================================
-    # GENERATED DOCUMENTS
+    # GENERATED DOCUMENTS (con aislamiento multi-tenant)
     # ==========================================
 
     def store_generated_document(
         self,
         doc_id: str,
         data: Dict[str, Any],
-        ttl: Optional[timedelta] = None
+        ttl: Optional[timedelta] = None,
+        tenant_id: Optional[str] = None
     ) -> None:
         """
         Store generated document content
+
+        SEGURIDAD: Si se proporciona tenant_id, usa clave compuesta para aislamiento.
 
         Args:
             doc_id: Unique document identifier
             data: Document data (content, filename, stats, etc.)
             ttl: Time-to-live for this document
+            tenant_id: UUID del tenant para aislamiento (recomendado)
         """
+        key = _make_composite_key(tenant_id, doc_id)
         with self._lock:
-            self._generated_documents[doc_id] = data
-            self._set_metadata(doc_id, "generated_doc", ttl or timedelta(hours=48))
-            logger.debug("generated_document_stored", doc_id=doc_id)
+            # Guardar tenant_id en data para validación posterior
+            if tenant_id:
+                data['_tenant_id'] = tenant_id
+            self._generated_documents[key] = data
+            self._set_metadata(key, "generated_doc", ttl or timedelta(hours=48))
+            logger.debug(
+                "generated_document_stored",
+                doc_id=doc_id,
+                tenant_id=tenant_id,
+                key=key
+            )
 
-    def get_generated_document(self, doc_id: str) -> Optional[Dict[str, Any]]:
-        """Get generated document data"""
-        self._check_expired(doc_id)
-        return self._generated_documents.get(doc_id)
+    def get_generated_document(
+        self,
+        doc_id: str,
+        tenant_id: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get generated document data
 
-    def delete_generated_document(self, doc_id: str) -> None:
+        SEGURIDAD: Si se proporciona tenant_id, busca con clave compuesta.
+        Valida que el documento pertenezca al tenant.
+
+        Args:
+            doc_id: ID del documento
+            tenant_id: UUID del tenant (recomendado para seguridad)
+
+        Returns:
+            Document data o None si no existe o no pertenece al tenant
+        """
+        key = _make_composite_key(tenant_id, doc_id)
+        self._check_expired(key)
+        doc = self._generated_documents.get(key)
+
+        # Si no se encontró con clave compuesta, intentar con solo doc_id (legacy)
+        if doc is None and tenant_id:
+            doc = self._generated_documents.get(doc_id)
+            # Si existe sin tenant_id, validar que no pertenezca a otro tenant
+            if doc and doc.get('_tenant_id') and doc['_tenant_id'] != tenant_id:
+                logger.warning(
+                    "generated_document_access_denied",
+                    doc_id=doc_id,
+                    requested_tenant=tenant_id,
+                    owner_tenant=doc.get('_tenant_id')
+                )
+                return None
+
+        return doc
+
+    def delete_generated_document(
+        self,
+        doc_id: str,
+        tenant_id: Optional[str] = None
+    ) -> None:
         """Delete generated document"""
+        key = _make_composite_key(tenant_id, doc_id)
         with self._lock:
-            self._generated_documents.pop(doc_id, None)
-            self._session_metadata.pop(doc_id, None)
-            logger.debug("generated_document_deleted", doc_id=doc_id)
+            self._generated_documents.pop(key, None)
+            self._session_metadata.pop(key, None)
+            # También intentar con clave legacy si existe
+            if tenant_id:
+                self._generated_documents.pop(doc_id, None)
+                self._session_metadata.pop(doc_id, None)
+            logger.debug("generated_document_deleted", doc_id=doc_id, tenant_id=tenant_id)
 
     # ==========================================
     # UTILITY METHODS

@@ -150,4 +150,35 @@ export const documentsApi = {
     const response = await apiClient.post<DocumentPreviewResponse>('/documents/preview', request);
     return response.data;
   },
+
+  /**
+   * Replace/update a document with a new file
+   * @param documentId - UUID of the document to replace
+   * @param file - New .docx file
+   */
+  replace: async (documentId: string, file: File): Promise<{ message: string; data: Record<string, unknown> }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await apiClient.put<{ message: string; data: Record<string, unknown> }>(
+      `/documents/${documentId}`,
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      }
+    );
+    return response.data;
+  },
+
+  /**
+   * Download a document by doc_id (generated ID like doc_xxx)
+   */
+  downloadByDocId: async (docId: string): Promise<Blob> => {
+    const response = await apiClient.get(`/documents/download/${docId}`, {
+      responseType: 'blob',
+    });
+    return response.data;
+  },
 };

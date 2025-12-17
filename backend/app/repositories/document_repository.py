@@ -284,10 +284,106 @@ class DocumentRepository(BaseRepository):
             descending=True
         )
 
+    async def get_by_doc_id(
+        self,
+        doc_id: str,
+        tenant_id: UUID
+    ) -> Optional[Dict]:
+        """
+        Busca un documento por su doc_id generado (ej: doc_abc123def456)
+
+        IMPORTANTE: Valida que el documento pertenezca al tenant para seguridad
+
+        Args:
+            doc_id: ID generado del documento (formato: doc_xxxxxxxxxxxx)
+            tenant_id: UUID del tenant (validación de seguridad)
+
+        Returns:
+            Documento encontrado o None
+        """
+        try:
+            # Buscar en metadata->doc_id con validación de tenant
+            result = self._table()\
+                .select('*')\
+                .eq('tenant_id', str(tenant_id))\
+                .filter('metadata->>doc_id', 'eq', doc_id)\
+                .single()\
+                .execute()
+
+            return result.data if result.data else None
+
+        except APIError as e:
+            if 'PGRST116' in str(e):  # No rows returned
+                return None
+            logger.error(
+                "document_get_by_doc_id_failed",
+                doc_id=doc_id,
+                tenant_id=str(tenant_id),
+                error=str(e)
+            )
+            raise
+
+    async def update_by_doc_id(
+        self,
+        doc_id: str,
+        tenant_id: UUID,
+        updates: Dict
+    ) -> Optional[Dict]:
+        """
+        Actualiza un documento por su doc_id generado
+
+        IMPORTANTE: Valida que el documento pertenezca al tenant para seguridad
+
+        Args:
+            doc_id: ID generado del documento
+            tenant_id: UUID del tenant (validación de seguridad)
+            updates: Campos a actualizar
+
+        Returns:
+            Documento actualizado o None si no existe o no pertenece al tenant
+        """
+        try:
+            # Primero buscar el documento para validar tenant
+            doc = await self.get_by_doc_id(doc_id, tenant_id)
+
+            if not doc:
+                logger.warning(
+                    "document_update_by_doc_id_not_found",
+                    doc_id=doc_id,
+                    tenant_id=str(tenant_id)
+                )
+                return None
+
+            # Actualizar usando el UUID de la BD
+            result = self._table()\
+                .update(updates)\
+                .eq('id', doc['id'])\
+                .eq('tenant_id', str(tenant_id))\
+                .execute()
+
+            if result.data:
+                logger.info(
+                    "document_updated_by_doc_id",
+                    doc_id=doc_id,
+                    tenant_id=str(tenant_id)
+                )
+                return result.data[0]
+
+            return None
+
+        except APIError as e:
+            logger.error(
+                "document_update_by_doc_id_failed",
+                doc_id=doc_id,
+                tenant_id=str(tenant_id),
+                error=str(e)
+            )
+            raise
+
     async def get_signed_url(
         self,
         storage_path: str,
-        bucket: str = 'generated',
+        bucket: str = 'documentos',
         expires_in: int = 3600
     ) -> str:
         """

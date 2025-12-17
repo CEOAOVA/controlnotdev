@@ -16,6 +16,7 @@ Migración v2:
 """
 from typing import List, Optional
 from uuid import UUID
+from datetime import datetime, timezone
 from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Depends, Query
 from fastapi.responses import StreamingResponse
 import structlog
@@ -50,8 +51,8 @@ from app.services import (
 )
 from app.services.email_service import EmailService
 from app.services.supabase_storage_service import SupabaseStorageService
-from app.core.dependencies import get_email_service, get_optional_tenant_id, get_supabase_storage, get_user_tenant_id
-from app.database import get_current_tenant_id, get_supabase_client
+from app.core.dependencies import get_email_service, get_supabase_storage, get_user_tenant_id
+from app.database import get_supabase_client
 from app.core.config import get_settings
 from app.repositories.session_repository import session_repository
 from app.repositories.uploaded_file_repository import uploaded_file_repository
@@ -78,25 +79,6 @@ MAX_FILE_SIZE_BYTES = settings.MAX_FILE_SIZE_MB * 1024 * 1024  # Convert MB to b
 
 
 # ============================================================================
-# HELPER FUNCTIONS PARA PERSISTENCIA EN BD
-# ============================================================================
-
-def get_tenant_id_safe() -> Optional[str]:
-    """
-    Obtiene tenant_id de forma segura (sin fallar si no hay autenticación activa)
-
-    Returns:
-        tenant_id o None si no hay autenticación
-    """
-    try:
-        # TODO: Activar cuando se implemente autenticación
-        # return get_current_tenant_id(authorization_header)
-        return None  # Por ahora sin auth
-    except Exception:
-        return None
-
-
-# ============================================================================
 # ENDPOINTS DE HISTORIAL DE DOCUMENTOS
 # ============================================================================
 
@@ -108,13 +90,13 @@ async def list_documents(
     sort_order: str = Query("desc", description="Orden (asc o desc)"),
     tipo_documento: Optional[str] = Query(None, description="Filtrar por tipo de documento"),
     estado: Optional[str] = Query(None, description="Filtrar por estado"),
-    tenant_id: Optional[str] = Depends(get_optional_tenant_id)
+    tenant_id: str = Depends(get_user_tenant_id)
 ):
     """
     Lista documentos generados con paginación
 
     Soporta filtros por tipo de documento y estado.
-    Si no hay tenant_id (usuario no autenticado), retorna lista vacía.
+    SEGURIDAD: Requiere autenticación (tenant_id obligatorio).
     """
     logger.info(
         "Listando documentos",
@@ -125,15 +107,6 @@ async def list_documents(
     )
 
     try:
-        # Si no hay tenant_id, retornar lista vacía
-        if not tenant_id:
-            return DocumentListResponse(
-                documents=[],
-                total=0,
-                page=page,
-                per_page=per_page,
-                total_pages=0
-            )
 
         # Construir filtros
         filters = {}
@@ -208,23 +181,17 @@ async def list_documents(
 
 @router.get("/stats", response_model=DocumentStatsResponse)
 async def get_document_stats(
-    tenant_id: Optional[str] = Depends(get_optional_tenant_id)
+    tenant_id: str = Depends(get_user_tenant_id)
 ):
     """
     Obtiene estadísticas de documentos del tenant
 
     Retorna conteos por tipo de documento y por estado.
+    SEGURIDAD: Requiere autenticación (tenant_id obligatorio).
     """
     logger.info("Obteniendo estadísticas de documentos", tenant_id=tenant_id)
 
     try:
-        # Si no hay tenant_id, retornar estadísticas vacías
-        if not tenant_id:
-            return DocumentStatsResponse(
-                total_documents=0,
-                by_type={},
-                by_status={}
-            )
 
         # Obtener todos los documentos para calcular estadísticas
         documents = await document_repository.list_by_tenant(
@@ -311,14 +278,16 @@ async def upload_categorized_documents(
     parte_b: List[UploadFile] = File(default=[]),
     otros: List[UploadFile] = File(default=[]),
     session_manager: SessionManager = Depends(get_session_manager),
-    tenant_id: Optional[str] = Depends(get_optional_tenant_id)
+    tenant_id: str = Depends(get_user_tenant_id)
 ):
     """
     Sube documentos categorizados por rol
 
+    SEGURIDAD: Requiere autenticación (tenant_id obligatorio).
+
     Migración v2:
     - Usa SessionManager para almacenamiento temporal
-    - TODO: Guardar en session_repository y uploaded_file_repository
+    - Persiste en BD session_repository y uploaded_file_repository
 
     Args:
         document_type: Tipo de documento ('compraventa', 'donacion', etc.)
@@ -327,6 +296,7 @@ async def upload_categorized_documents(
         parte_b: Archivos de la segunda categoría
         otros: Archivos de la tercera categoría
         session_manager: SessionManager dependency
+        tenant_id: ID del tenant (requerido)
 
     Returns:
         Confirmación con session_id para continuar el proceso
@@ -452,62 +422,62 @@ async def upload_categorized_documents(
         )
 
         # ====================================================================
-        # PERSISTENCIA EN BD: Guardar sesión y archivos (MEJORA v2)
+        # PERSISTENCIA EN BD: Guardar sesión y archivos
         # ====================================================================
         try:
-            # tenant_id viene del dependency injection (opcional)
-            if tenant_id:
-                # Crear sesión en BD
-                db_session = await session_repository.create_session(
-                    tenant_id=UUID(tenant_id),
-                    case_id=UUID('00000000-0000-0000-0000-000000000000'),  # TODO: case_id real
-                    tipo_documento=document_type,
-                    total_archivos=total_files,
-                    session_data={
-                        'template_id': template_id,
-                        'session_id': session_id
-                    }
+            # Crear sesión en BD (tenant_id ya validado por dependency)
+            db_session = await session_repository.create_session(
+                tenant_id=UUID(tenant_id),
+                case_id=UUID('00000000-0000-0000-0000-000000000000'),  # TODO: case_id real
+                tipo_documento=document_type,
+                total_archivos=total_files,
+                session_data={
+                    'template_id': template_id,
+                    'session_id': session_id
+                }
+            )
+
+            # Guardar metadata de archivos en BD
+            for file_info in files_info:
+                # Calcular hash del archivo
+                file_content = next(
+                    (f['content'] for f in categorized_files[file_info.category]
+                     if f['name'] == file_info.filename),
+                    None
                 )
 
-                # Guardar metadata de archivos en BD
-                for file_info in files_info:
-                    # Calcular hash del archivo
-                    file_content = next(
-                        (f['content'] for f in categorized_files[file_info.category]
-                         if f['name'] == file_info.filename),
-                        None
+                if file_content:
+                    file_hash = hashlib.sha256(file_content).hexdigest()
+
+                    # TODO: Subir a Supabase Storage
+                    storage_path = f"uploads/temp/{session_id}/{file_info.filename}"
+
+                    await uploaded_file_repository.create_uploaded_file(
+                        session_id=UUID(db_session['id']),
+                        filename=file_info.filename,
+                        storage_path=storage_path,
+                        category=file_info.category,
+                        original_filename=file_info.filename,
+                        file_hash=file_hash,
+                        content_type=file_info.content_type,
+                        size_bytes=file_info.size_bytes
                     )
 
-                    if file_content:
-                        file_hash = hashlib.sha256(file_content).hexdigest()
-
-                        # TODO: Subir a Supabase Storage
-                        storage_path = f"uploads/temp/{session_id}/{file_info.filename}"
-
-                        await uploaded_file_repository.create_uploaded_file(
-                            session_id=UUID(db_session['id']),
-                            filename=file_info.filename,
-                            storage_path=storage_path,
-                            category=file_info.category,
-                            original_filename=file_info.filename,
-                            file_hash=file_hash,
-                            content_type=file_info.content_type,
-                            size_bytes=file_info.size_bytes
-                        )
-
-                logger.info(
-                    "Sesión y archivos persistidos en BD",
-                    session_id=session_id,
-                    db_session_id=db_session['id'],
-                    files_count=len(files_info)
-                )
+            logger.info(
+                "Sesión y archivos persistidos en BD",
+                session_id=session_id,
+                db_session_id=db_session['id'],
+                tenant_id=tenant_id,
+                files_count=len(files_info)
+            )
 
         except Exception as db_error:
             # No fallar el upload si falla la persistencia en BD
             logger.warning(
                 "Error al persistir en BD (no crítico, datos en SessionManager)",
                 error=str(db_error),
-                session_id=session_id
+                session_id=session_id,
+                tenant_id=tenant_id
             )
 
         return CategorizedDocumentsUploadResponse(
@@ -540,22 +510,21 @@ async def upload_categorized_documents(
 async def generate_document(
     request: DocumentGenerationRequest,
     session_manager: SessionManager = Depends(get_session_manager),
-    tenant_id: Optional[str] = Depends(get_optional_tenant_id)
+    tenant_id: str = Depends(get_user_tenant_id),
+    supabase_storage: SupabaseStorageService = Depends(get_supabase_storage)
 ):
     """
     Genera el documento final con los datos extraídos
 
-    Migración v2:
-    - Elimina import circular de templates._template_sessions
-    - Usa SessionManager para acceder a template sessions
-    - TODO: Guardar en document_repository
+    SEGURIDAD: Requiere autenticación (tenant_id obligatorio).
 
     Proceso:
     1. Obtiene el template desde SessionManager
     2. Reemplaza placeholders con los datos
     3. Aplica formato negrita (**texto**)
     4. Guarda el documento generado en SessionManager
-    5. Retorna URL de descarga
+    5. Persiste en BD y Storage
+    6. Retorna URL de descarga
     """
     logger.info(
         "Generando documento",
@@ -589,7 +558,7 @@ async def generate_document(
         # Generar ID para el documento
         doc_id = f"doc_{uuid.uuid4().hex[:12]}"
 
-        # Guardar documento en SessionManager (almacenamiento temporal)
+        # Guardar documento en SessionManager con aislamiento por tenant
         session_manager.store_generated_document(
             doc_id=doc_id,
             data={
@@ -597,7 +566,8 @@ async def generate_document(
                 'filename': f"{request.output_filename}.docx",
                 'size': len(document_content),
                 'stats': stats
-            }
+            },
+            tenant_id=tenant_id
         )
 
         logger.info(
@@ -609,42 +579,69 @@ async def generate_document(
         )
 
         # ====================================================================
-        # PERSISTENCIA EN BD: Guardar documento generado (MEJORA v2)
+        # PERSISTENCIA: Storage + BD (transaccional)
         # ====================================================================
+        storage_path = None
+        storage_result = None
+
         try:
-            # tenant_id viene del dependency injection (opcional)
-            if tenant_id:
-                # TODO: Subir documento a Supabase Storage
-                storage_path = f"documentos/{tenant_id}/{doc_id}.docx"
+            # 1. SUBIR A SUPABASE STORAGE
+            storage_result = await supabase_storage.store_document(
+                tenant_id=tenant_id,
+                filename=f"{doc_id}.docx",
+                content=document_content,
+                metadata={
+                    'doc_id': doc_id,
+                    'original_filename': request.output_filename,
+                    'tipo_documento': template_session.get('tipo_documento', 'desconocido')
+                }
+            )
 
-                # Guardar metadata del documento en BD
-                await document_repository.create({
-                    'tenant_id': tenant_id,
-                    'template_id': UUID(request.template_id),
-                    'tipo_documento': template_session.get('tipo_documento', 'desconocido'),
-                    'nombre_documento': f"{request.output_filename}.docx",
-                    'estado': 'completado',
-                    'storage_path': storage_path,
-                    'extracted_data': request.responses,
-                    'metadata': {
-                        'doc_id': doc_id,
-                        'stats': stats,
-                        'placeholders_count': len(request.placeholders)
-                    }
-                })
+            storage_path = storage_result.get('path')
 
-                logger.info(
-                    "Documento persistido en BD",
-                    doc_id=doc_id,
-                    tenant_id=tenant_id
-                )
+            logger.info(
+                "Documento subido a Storage",
+                doc_id=doc_id,
+                tenant_id=tenant_id,
+                storage_path=storage_path,
+                bucket=storage_result.get('bucket')
+            )
 
-        except Exception as db_error:
-            # No fallar la generación si falla la persistencia
+            # 2. GUARDAR METADATA EN BD (solo si Storage fue exitoso)
+            await document_repository.create({
+                'tenant_id': tenant_id,
+                'template_id': UUID(request.template_id),
+                'tipo_documento': template_session.get('tipo_documento', 'desconocido'),
+                'nombre_documento': f"{request.output_filename}.docx",
+                'estado': 'completado',
+                'storage_path': storage_path,
+                'extracted_data': request.responses,
+                'metadata': {
+                    'doc_id': doc_id,
+                    'stats': stats,
+                    'placeholders_count': len(request.placeholders),
+                    'storage_bucket': storage_result.get('bucket'),
+                    'storage_url': storage_result.get('url')
+                }
+            })
+
+            logger.info(
+                "Documento persistido en BD",
+                doc_id=doc_id,
+                tenant_id=tenant_id,
+                storage_path=storage_path
+            )
+
+        except Exception as persist_error:
+            # Log del error pero no fallar la generación
+            # El documento sigue disponible en SessionManager temporalmente
             logger.warning(
-                "Error al persistir documento en BD (no crítico)",
-                error=str(db_error),
-                doc_id=doc_id
+                "Error al persistir documento (disponible en SessionManager temporalmente)",
+                error=str(persist_error),
+                error_type=type(persist_error).__name__,
+                doc_id=doc_id,
+                tenant_id=tenant_id,
+                storage_uploaded=storage_path is not None
             )
 
         # Calcular lista de placeholders faltantes
@@ -892,43 +889,78 @@ async def preview_document(
 @router.get("/download/{doc_id}")
 async def download_document(
     doc_id: str,
-    session_manager: SessionManager = Depends(get_session_manager)
+    session_manager: SessionManager = Depends(get_session_manager),
+    tenant_id: str = Depends(get_user_tenant_id),
+    supabase_storage: SupabaseStorageService = Depends(get_supabase_storage)
 ):
     """
     Descarga un documento generado
 
-    Migración v2:
-    - Recupera documento desde SessionManager
-    - TODO: Si no está en cache, recuperar de document_repository + Supabase Storage
+    SEGURIDAD: Requiere autenticación (tenant_id obligatorio).
+    Valida que el documento pertenezca al tenant antes de servir.
+
+    Flujo:
+    1. Intenta recuperar de SessionManager (cache temporal)
+    2. Si no está en cache, busca en BD y descarga de Storage
 
     Returns:
         StreamingResponse con el archivo .docx
     """
-    logger.info("Descargando documento", doc_id=doc_id)
+    logger.info("Descargando documento", doc_id=doc_id, tenant_id=tenant_id)
 
-    # Intentar recuperar desde SessionManager (cache temporal)
-    doc = session_manager.get_generated_document(doc_id)
+    document_content = None
+    filename = None
 
-    if not doc:
+    # 1. Intentar recuperar de SessionManager (cache temporal)
+    doc = session_manager.get_generated_document(doc_id, tenant_id=tenant_id)
+
+    if doc:
+        document_content = doc['content']
+        filename = doc['filename']
+        logger.info("Documento recuperado de SessionManager", doc_id=doc_id)
+    else:
+        # 2. Buscar en BD por doc_id (en metadata)
+        try:
+            db_doc = await document_repository.get_by_doc_id(doc_id, UUID(tenant_id))
+
+            if db_doc and db_doc.get('storage_path'):
+                # 3. Descargar de Supabase Storage
+                storage_path = db_doc['storage_path']
+                document_content = await supabase_storage.download_document(storage_path)
+                filename = db_doc.get('nombre_documento', f"{doc_id}.docx")
+
+                logger.info(
+                    "Documento recuperado de Storage",
+                    doc_id=doc_id,
+                    storage_path=storage_path
+                )
+        except Exception as e:
+            logger.warning(
+                "Error al buscar documento en BD/Storage",
+                doc_id=doc_id,
+                error=str(e)
+            )
+
+    if not document_content:
         raise HTTPException(
             status_code=404,
-            detail="Documento no encontrado en sesión"
+            detail="Documento no encontrado"
         )
 
     # Crear stream del documento
-    document_stream = BytesIO(doc['content'])
+    document_stream = BytesIO(document_content)
 
     logger.info(
         "Documento servido para descarga",
         doc_id=doc_id,
-        filename=doc['filename']
+        filename=filename
     )
 
     return StreamingResponse(
         document_stream,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={
-            "Content-Disposition": f"attachment; filename={doc['filename']}"
+            "Content-Disposition": f"attachment; filename={filename}"
         }
     )
 
@@ -937,36 +969,38 @@ async def download_document(
 async def send_document_email(
     request: EmailRequest,
     email_service: EmailService = Depends(get_email_service),
-    session_manager: SessionManager = Depends(get_session_manager)
+    session_manager: SessionManager = Depends(get_session_manager),
+    tenant_id: str = Depends(get_user_tenant_id)
 ):
     """
     Envía un documento generado por email
 
-    Migración v2:
-    - Recupera documento desde SessionManager
-    - TODO: Si no está en cache, recuperar de document_repository
+    SEGURIDAD: Requiere autenticación (tenant_id obligatorio).
 
     Args:
         request: EmailRequest con to_email, subject, body, document_id
         email_service: EmailService dependency
         session_manager: SessionManager dependency
+        tenant_id: ID del tenant (requerido)
 
     Returns:
         EmailResponse con confirmación del envío
 
     Raises:
+        HTTPException 401: Si no está autenticado
         HTTPException 404: Si el documento no existe
         HTTPException 500: Si falla el envío del email
     """
     logger.info(
         "Enviando documento por email",
         to_email=request.to_email,
-        document_id=request.document_id
+        document_id=request.document_id,
+        tenant_id=tenant_id
     )
 
     try:
-        # Obtener documento desde SessionManager
-        doc = session_manager.get_generated_document(request.document_id)
+        # Obtener documento desde SessionManager con validación de tenant
+        doc = session_manager.get_generated_document(request.document_id, tenant_id=tenant_id)
 
         if not doc:
             raise HTTPException(
@@ -1059,8 +1093,8 @@ async def confirm_document(
     )
 
     try:
-        # Obtener documento desde SessionManager
-        doc = session_manager.get_generated_document(doc_id)
+        # Obtener documento desde SessionManager con validación de tenant
+        doc = session_manager.get_generated_document(doc_id, tenant_id=tenant_id)
 
         if not doc:
             raise HTTPException(
@@ -1087,11 +1121,12 @@ async def confirm_document(
             storage_path=result['path']
         )
 
-        # Actualizar en BD si existe document_repository
+        # Actualizar en BD con validación de tenant
         try:
             await document_repository.update_by_doc_id(
                 doc_id=doc_id,
-                data={
+                tenant_id=UUID(tenant_id),
+                updates={
                     'storage_path': result['path'],
                     'estado': 'confirmado',
                     'confirmed_at': 'now()'
@@ -1100,7 +1135,8 @@ async def confirm_document(
         except Exception as db_error:
             logger.warning(
                 "No se pudo actualizar en BD (no crítico)",
-                error=str(db_error)
+                error=str(db_error),
+                tenant_id=tenant_id
             )
 
         return SuccessResponse(
@@ -1131,16 +1167,168 @@ async def confirm_document(
 
 
 # ============================================================================
+# ENDPOINT PUT PARA REEMPLAZAR DOCUMENTO
+# ============================================================================
+
+@router.put("/{document_id}", response_model=SuccessResponse)
+async def replace_document(
+    document_id: str,
+    file: UploadFile = File(..., description="Nuevo archivo .docx para reemplazar"),
+    tenant_id: str = Depends(get_user_tenant_id),
+    supabase_storage: SupabaseStorageService = Depends(get_supabase_storage)
+):
+    """
+    Reemplaza un documento existente con uno nuevo
+
+    SEGURIDAD: Requiere autenticación (tenant_id obligatorio).
+    Solo permite reemplazar documentos que pertenezcan al tenant.
+
+    Args:
+        document_id: ID del documento a reemplazar (UUID)
+        file: Nuevo archivo .docx
+        tenant_id: ID del tenant autenticado
+        supabase_storage: Servicio de Storage
+
+    Returns:
+        SuccessResponse con información del documento actualizado
+
+    Raises:
+        HTTPException 400: Si el archivo no es .docx
+        HTTPException 403: Si el documento no pertenece al tenant
+        HTTPException 404: Si el documento no existe
+    """
+    logger.info(
+        "Reemplazando documento",
+        document_id=document_id,
+        tenant_id=tenant_id,
+        new_filename=file.filename
+    )
+
+    try:
+        # Validar tipo de archivo
+        if not file.filename.endswith('.docx'):
+            raise HTTPException(
+                status_code=400,
+                detail="Solo se permiten archivos .docx"
+            )
+
+        if file.content_type != 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+            raise HTTPException(
+                status_code=400,
+                detail=f"Tipo de archivo no válido: {file.content_type}"
+            )
+
+        # Obtener documento de BD
+        document = await document_repository.get_by_id(UUID(document_id))
+
+        if not document:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Documento no encontrado: {document_id}"
+            )
+
+        # Verificar que pertenece al tenant
+        if str(document.get('tenant_id')) != tenant_id:
+            raise HTTPException(
+                status_code=403,
+                detail="No tiene permisos para modificar este documento"
+            )
+
+        # Leer contenido del nuevo archivo
+        new_content = await file.read()
+
+        if len(new_content) == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="El archivo está vacío"
+            )
+
+        if len(new_content) > MAX_FILE_SIZE_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Archivo muy grande. Máximo permitido: {settings.MAX_FILE_SIZE_MB}MB"
+            )
+
+        # Obtener storage_path existente o crear uno nuevo
+        old_storage_path = document.get('storage_path')
+        doc_id = document.get('metadata', {}).get('doc_id', document_id)
+
+        # Subir nuevo archivo a Storage (reemplaza si existe)
+        storage_result = await supabase_storage.store_document(
+            tenant_id=tenant_id,
+            filename=f"{doc_id}.docx",
+            content=new_content,
+            metadata={
+                'replaced_at': datetime.now(timezone.utc).isoformat(),
+                'original_filename': file.filename,
+                'previous_path': old_storage_path
+            }
+        )
+
+        new_storage_path = storage_result.get('path')
+
+        # Actualizar metadata en BD
+        await document_repository.update(
+            document_id=UUID(document_id),
+            data={
+                'storage_path': new_storage_path,
+                'nombre_documento': file.filename,
+                'estado': 'actualizado',
+                'metadata': {
+                    **document.get('metadata', {}),
+                    'replaced_at': datetime.now(timezone.utc).isoformat(),
+                    'previous_storage_path': old_storage_path
+                }
+            }
+        )
+
+        logger.info(
+            "Documento reemplazado exitosamente",
+            document_id=document_id,
+            tenant_id=tenant_id,
+            new_storage_path=new_storage_path,
+            old_storage_path=old_storage_path
+        )
+
+        return SuccessResponse(
+            message="Documento reemplazado exitosamente",
+            data={
+                'document_id': document_id,
+                'new_filename': file.filename,
+                'storage_path': new_storage_path,
+                'replaced_at': datetime.now(timezone.utc).isoformat()
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            "Error al reemplazar documento",
+            document_id=document_id,
+            tenant_id=tenant_id,
+            error=str(e),
+            error_type=type(e).__name__
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al reemplazar documento: {str(e)}"
+        )
+
+
+# ============================================================================
 # ENDPOINT GET POR ID (debe ir al final para no capturar otras rutas)
 # ============================================================================
 
 @router.get("/{document_id}", response_model=GetDocumentResponse)
 async def get_document(
     document_id: str,
-    tenant_id: Optional[str] = Depends(get_optional_tenant_id)
+    tenant_id: str = Depends(get_user_tenant_id)
 ):
     """
     Obtiene un documento específico por ID
+
+    SEGURIDAD: Requiere autenticación (tenant_id obligatorio).
 
     Retorna toda la información del documento incluyendo datos extraídos,
     URL de descarga y metadata.
@@ -1155,12 +1343,6 @@ async def get_document(
     )
 
     try:
-        # Si no hay tenant_id, retornar error de autenticación
-        if not tenant_id:
-            raise HTTPException(
-                status_code=401,
-                detail="Se requiere autenticación para acceder a documentos"
-            )
 
         # Obtener documento del repositorio
         document = await document_repository.get_by_id(UUID(document_id))

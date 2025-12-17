@@ -8,10 +8,19 @@ import { FileText, AlertCircle, Download } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { DocumentTable, type DocumentRecord } from '@/components/history/DocumentTable';
+import {
+  DocumentTable,
+  DocumentStats,
+  DocumentPreviewModal,
+  DocumentUpdateModal,
+  type DocumentRecord,
+  type DocumentStatsData,
+  type DocumentDetails,
+} from '@/components/history';
 import { Filters, type DocumentFilters } from '@/components/history/Filters';
 import { Pagination } from '@/components/history/Pagination';
 import { useDocuments, useToast } from '@/hooks';
+import { documentsApi } from '@/api/endpoints/documents';
 import type { DocumentListRequest } from '@/api/types/documents-types';
 
 export function History() {
@@ -32,6 +41,18 @@ export function History() {
   const [totalItems, setTotalItems] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+
+  // Stats state
+  const [stats, setStats] = useState<DocumentStatsData>({
+    totalDocuments: 0,
+    byStatus: {},
+    byType: {},
+  });
+  const [isLoadingStats, setIsLoadingStats] = useState(true);
+
+  // Modal states
+  const [previewDocument, setPreviewDocument] = useState<DocumentDetails | null>(null);
+  const [updateDocument, setUpdateDocument] = useState<{ id: string; name: string } | null>(null);
 
   // Filters state
   const [filters, setFilters] = useState<DocumentFilters>({
@@ -109,9 +130,32 @@ export function History() {
     }
   };
 
+  // Load stats from API
+  const loadStats = async () => {
+    setIsLoadingStats(true);
+    try {
+      const statsResponse = await documentsApi.getStats();
+      setStats({
+        totalDocuments: statsResponse.total_documents,
+        byStatus: {
+          completed: statsResponse.completed || 0,
+          processing: statsResponse.processing || 0,
+          error: statsResponse.error || 0,
+        },
+        byType: statsResponse.by_type || {},
+      });
+    } catch (err) {
+      console.error('Error loading stats:', err);
+      // Keep empty stats on error
+    } finally {
+      setIsLoadingStats(false);
+    }
+  };
+
   // Single useEffect for initial load only
   useEffect(() => {
     loadDocuments(currentPage, pageSize, filters);
+    loadStats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only run on mount
 
@@ -157,14 +201,23 @@ export function History() {
   };
 
   const handleView = (doc: DocumentRecord) => {
-    // TODO: Implement view details modal or navigation
-    console.log('View document:', doc);
-    toast.error('Funcionalidad de vista de detalles en desarrollo');
+    // Open preview modal with document details
+    const details: DocumentDetails = {
+      id: doc.id,
+      name: doc.name,
+      type: doc.type,
+      status: doc.status,
+      createdAt: doc.createdAt,
+      updatedAt: doc.updatedAt,
+      createdBy: doc.createdBy,
+      storagePath: doc.fileUrl,
+    };
+    setPreviewDocument(details);
   };
 
   const handleDownload = async (doc: DocumentRecord) => {
     try {
-      await downloadDocument(doc.id, `${doc.name}.pdf`);
+      await downloadDocument(doc.id, `${doc.name}.docx`);
       toast.success(`Documento "${doc.name}" descargado`);
     } catch (err: any) {
       toast.error(`Error al descargar: ${err.message}`);
@@ -185,6 +238,23 @@ export function History() {
       toast.success('Documento enviado exitosamente');
     } catch (err: any) {
       toast.error(`Error al enviar: ${err.message}`);
+    }
+  };
+
+  const handleReplace = (doc: DocumentRecord | DocumentDetails) => {
+    setUpdateDocument({ id: doc.id, name: doc.name });
+    setPreviewDocument(null); // Close preview if open
+  };
+
+  const handleUpdateDocument = async (documentId: string, file: File) => {
+    try {
+      await documentsApi.replace(documentId, file);
+      toast.success('Documento reemplazado exitosamente');
+      // Reload documents and stats
+      loadDocuments(currentPage, pageSize, filters);
+      loadStats();
+    } catch (err: any) {
+      throw new Error(err.response?.data?.detail || err.message || 'Error al reemplazar documento');
     }
   };
 
@@ -239,6 +309,9 @@ export function History() {
           </Alert>
         )}
 
+        {/* Stats Dashboard */}
+        <DocumentStats stats={stats} isLoading={isLoadingStats} />
+
         {/* Filters */}
         <Filters onFiltersChange={handleFiltersChange} isLoading={isLoading} />
 
@@ -281,6 +354,24 @@ export function History() {
           </div>
         )}
       </div>
+
+      {/* Preview Modal */}
+      <DocumentPreviewModal
+        document={previewDocument}
+        isOpen={!!previewDocument}
+        onClose={() => setPreviewDocument(null)}
+        onDownload={(doc) => handleDownload(doc as DocumentRecord)}
+        onEmail={(doc) => handleEmail(doc as DocumentRecord)}
+        onReplace={handleReplace}
+      />
+
+      {/* Update/Replace Modal */}
+      <DocumentUpdateModal
+        document={updateDocument}
+        isOpen={!!updateDocument}
+        onClose={() => setUpdateDocument(null)}
+        onUpdate={handleUpdateDocument}
+      />
     </MainLayout>
   );
 }
