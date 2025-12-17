@@ -79,7 +79,14 @@ class Settings(BaseSettings):
 
     @property
     def google_credentials_dict(self) -> dict:
-        """Parse Google credentials from JSON string"""
+        """
+        Parse Google credentials from JSON string.
+
+        Maneja múltiples formatos de escape comunes en Docker/Coolify:
+        - \\n escapados que deben ser newlines reales
+        - Comillas envolventes extras
+        - Escapes de comillas
+        """
         try:
             # Limpiar el JSON de posibles envolturas de Coolify/Docker
             json_str = self.GOOGLE_CREDENTIALS_JSON.strip()
@@ -92,7 +99,18 @@ class Settings(BaseSettings):
             # Quitar escapes de comillas si existen
             json_str = json_str.replace('\\"', '"')
 
-            return json.loads(json_str)
+            # Parsear el JSON
+            credentials = json.loads(json_str)
+
+            # IMPORTANTE: Convertir \\n escapados a newlines reales en private_key
+            # Esto es necesario porque Docker/Coolify escapan los newlines
+            if 'private_key' in credentials:
+                private_key = credentials['private_key']
+                # Reemplazar \\n literales con newlines reales
+                if '\\n' in private_key:
+                    credentials['private_key'] = private_key.replace('\\n', '\n')
+
+            return credentials
         except json.JSONDecodeError as e:
             # Log para debugging
             import structlog
