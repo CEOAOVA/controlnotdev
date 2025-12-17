@@ -79,6 +79,17 @@ export function ProcessPage() {
 
   // Handle step changes
   const goToStep = (step: ProcessStep) => {
+    // Proteger navegación desde "complete": solo permitir ir a "preview" o "edit"
+    if (currentStep === 'complete') {
+      if (step === 'upload') {
+        // No permitir volver a upload desde complete (requiere reset explícito)
+        return;
+      }
+    }
+    // Proteger navegación desde "preview": no permitir saltar a upload
+    if (currentStep === 'preview' && step === 'upload') {
+      return;
+    }
     setCurrentStep(step);
   };
 
