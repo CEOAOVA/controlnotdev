@@ -90,6 +90,12 @@ from app.services.model_service import (
     get_all_document_types_with_fields
 )
 
+# Image Preprocessing Service
+from app.services.image_preprocessing_service import (
+    ImagePreprocessingService,
+    get_image_preprocessing_service
+)
+
 __all__ = [
     # Classification
     "detect_document_type",
@@ -142,4 +148,8 @@ __all__ = [
     # Model
     "get_fields_for_document_type",
     "get_all_document_types_with_fields",
+
+    # Image Preprocessing
+    "ImagePreprocessingService",
+    "get_image_preprocessing_service",
 ]

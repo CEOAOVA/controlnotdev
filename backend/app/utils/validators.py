@@ -43,6 +43,8 @@ class ValidationType(Enum):
     FECHA = "fecha"
     NOMBRE = "nombre"
     MONTO = "monto"
+    CLAVE_ELECTOR = "clave_elector"
+    INE = "ine"
 
 
 @dataclass
@@ -437,6 +439,197 @@ class NotarialValidator:
             warnings=warnings,
             validation_type=ValidationType.FECHA
         )
+
+    # ==========================================
+    # CLAVE ELECTOR VALIDATION (INE)
+    # ==========================================
+
+    # Patron para clave de elector: 6 letras + 8 digitos + 4 alfanumericos
+    CLAVE_ELECTOR_PATTERN = r'^[A-Z]{6}\d{8}[A-Z0-9]{4}$'
+
+    def validate_clave_elector(self, clave: str) -> ValidationResult:
+        """
+        Valida clave de elector INE (18 caracteres)
+
+        Formato: 6 letras + 8 digitos + 4 caracteres alfanumericos
+
+        Args:
+            clave: Clave de elector a validar
+
+        Returns:
+            ValidationResult con resultado de validacion
+
+        Example:
+            >>> result = validator.validate_clave_elector("CRVRAL64081314H100")
+            >>> print(result.is_valid)  # True
+
+        Validaciones:
+        - Longitud exacta 18 caracteres
+        - Formato correcto (6 letras + 8 digitos + 4 alfanumericos)
+        """
+        errors = []
+        warnings = []
+
+        if not clave:
+            errors.append("Clave de elector vacia")
+            return ValidationResult(
+                is_valid=False,
+                value="",
+                errors=errors,
+                warnings=warnings,
+                validation_type=ValidationType.CLAVE_ELECTOR
+            )
+
+        clave_clean = clave.strip().upper()
+
+        # Validar longitud
+        if len(clave_clean) != 18:
+            errors.append(
+                f"Clave de elector debe tener 18 caracteres (actual: {len(clave_clean)})"
+            )
+
+        # Validar formato
+        if not re.match(self.CLAVE_ELECTOR_PATTERN, clave_clean):
+            errors.append(
+                "Formato de clave de elector invalido "
+                "(debe ser 6 letras + 8 digitos + 4 alfanumericos)"
+            )
+
+        is_valid = len(errors) == 0
+
+        if is_valid:
+            logger.debug("Clave de elector valida", clave=clave_clean)
+        else:
+            logger.warning("Clave de elector invalida", clave=clave_clean, errors=errors)
+
+        return ValidationResult(
+            is_valid=is_valid,
+            value=clave_clean,
+            errors=errors,
+            warnings=warnings,
+            validation_type=ValidationType.CLAVE_ELECTOR
+        )
+
+    def validate_seccion_electoral(self, seccion: str) -> ValidationResult:
+        """
+        Valida seccion electoral (4 digitos)
+
+        Args:
+            seccion: Seccion electoral a validar
+
+        Returns:
+            ValidationResult con resultado de validacion
+        """
+        errors = []
+        warnings = []
+
+        if not seccion:
+            errors.append("Seccion electoral vacia")
+            return ValidationResult(
+                is_valid=False,
+                value="",
+                errors=errors,
+                warnings=warnings,
+                validation_type=ValidationType.INE
+            )
+
+        seccion_clean = seccion.strip()
+
+        # Validar que sean digitos
+        if not seccion_clean.isdigit():
+            errors.append("Seccion electoral debe contener solo digitos")
+
+        # Validar longitud
+        if len(seccion_clean) != 4:
+            errors.append(
+                f"Seccion electoral debe tener 4 digitos (actual: {len(seccion_clean)})"
+            )
+
+        is_valid = len(errors) == 0
+
+        # Normalizar a 4 digitos con ceros a la izquierda
+        if seccion_clean.isdigit():
+            seccion_clean = seccion_clean.zfill(4)
+
+        return ValidationResult(
+            is_valid=is_valid,
+            value=seccion_clean,
+            errors=errors,
+            warnings=warnings,
+            validation_type=ValidationType.INE
+        )
+
+    def validate_ine_data(
+        self,
+        extracted_data: Dict[str, str]
+    ) -> Dict[str, ValidationResult]:
+        """
+        Valida todos los campos de una INE extraida
+
+        Args:
+            extracted_data: Datos extraidos de la INE
+
+        Returns:
+            Dict[str, ValidationResult]: Resultados por campo
+
+        Example:
+            >>> data = {
+            ...     "curp": "CEAR640813HMNRRL02",
+            ...     "clave_elector": "CRVRAL64081314H100",
+            ...     "fecha_nacimiento": "13/08/1964"
+            ... }
+            >>> results = validator.validate_ine_data(data)
+        """
+        results = {}
+
+        # Validar CURP si existe
+        curp = extracted_data.get('curp', '')
+        if curp and "NO ENCONTRADO" not in curp.upper():
+            results['curp'] = self.validate_curp(curp)
+
+        # Validar clave de elector si existe
+        clave = extracted_data.get('clave_elector', '')
+        if clave and "NO ENCONTRADO" not in clave.upper():
+            results['clave_elector'] = self.validate_clave_elector(clave)
+
+        # Validar fecha de nacimiento si existe
+        fecha = extracted_data.get('fecha_nacimiento', '')
+        if fecha and "NO ENCONTRADO" not in fecha.upper():
+            results['fecha_nacimiento'] = self.validate_fecha(fecha)
+
+        # Validar seccion electoral (4 digitos)
+        seccion = extracted_data.get('seccion_electoral', '')
+        if seccion and "NO ENCONTRADO" not in seccion.upper():
+            results['seccion_electoral'] = self.validate_seccion_electoral(seccion)
+
+        # Validar consistencia CURP-sexo si ambos existen
+        sexo = extracted_data.get('sexo', '')
+        if curp and sexo and len(curp) >= 11:
+            curp_sexo = curp[10]  # Posicion 11 del CURP
+            if sexo.upper() in ['H', 'M'] and curp_sexo != sexo.upper():
+                results['sexo_consistency'] = ValidationResult(
+                    is_valid=False,
+                    value=sexo,
+                    errors=[
+                        f"Sexo '{sexo}' no coincide con CURP (indica '{curp_sexo}')"
+                    ],
+                    warnings=[],
+                    validation_type=ValidationType.INE
+                )
+
+        # Log resumen
+        total = len(results)
+        valid = sum(1 for r in results.values() if r.is_valid)
+        invalid = total - valid
+
+        logger.info(
+            "Validacion de datos INE",
+            total_validations=total,
+            valid=valid,
+            invalid=invalid
+        )
+
+        return results
 
     # ==========================================
     # BATCH VALIDATION

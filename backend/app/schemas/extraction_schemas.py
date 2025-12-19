@@ -416,3 +416,127 @@ class ModelsListResponse(BaseModel):
             ]
         }
     }
+
+
+class VisionExtractionRequest(BaseModel):
+    """
+    Request para extraccion directa con Claude Vision
+
+    Envia imagenes directamente a Claude (sin OCR previo)
+    Soporta: INE/IFE, Pasaporte mexicano, Constancia CURP
+
+    Example:
+        {
+            "session_id": "session_abc123",
+            "document_type": "ine_ife"
+        }
+    """
+    session_id: str = Field(..., description="ID de sesion con imagenes subidas")
+    document_type: str = Field(
+        default="ine_ife",
+        description="Tipo de documento: ine_ife, pasaporte, curp_constancia, compraventa, etc."
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "session_id": "session_abc123",
+                    "document_type": "ine_ife"
+                },
+                {
+                    "session_id": "session_xyz789",
+                    "document_type": "pasaporte"
+                }
+            ]
+        }
+    }
+
+
+class VisionExtractionResponse(BaseModel):
+    """
+    Response de extraccion con Claude Vision
+
+    Contiene los datos estructurados extraidos directamente de las imagenes
+
+    Example:
+        {
+            "session_id": "session_abc123",
+            "extracted_data": {
+                "nombre_completo": "CERVANTES AREVALO RAUL",
+                "curp": "CEAR640813HMNRRL02",
+                "clave_elector": "CRVRAL64081314H100"
+            },
+            "images_processed": 2,
+            "total_keys": 13,
+            "keys_found": 10,
+            "completeness_percent": 76.9,
+            "model_used": "claude-sonnet-4-20250514",
+            "tokens_used": 3500,
+            "processing_time_seconds": 4.2,
+            "cache_hit": false
+        }
+    """
+    session_id: str = Field(..., description="ID de sesion procesada")
+    extracted_data: Dict[str, str] = Field(
+        ...,
+        description="Datos extraidos estructurados (clave: valor)"
+    )
+    images_processed: int = Field(
+        ...,
+        description="Cantidad de imagenes procesadas",
+        ge=0
+    )
+    total_keys: int = Field(
+        ...,
+        description="Total de campos esperados del modelo",
+        ge=0
+    )
+    keys_found: int = Field(
+        ...,
+        description="Campos encontrados en las imagenes",
+        ge=0
+    )
+    completeness_percent: float = Field(
+        ...,
+        description="Porcentaje de completitud (0-100)",
+        ge=0,
+        le=100
+    )
+    model_used: str = Field(..., description="Modelo Claude usado")
+    tokens_used: int = Field(..., description="Tokens consumidos", ge=0)
+    processing_time_seconds: float = Field(
+        ...,
+        description="Tiempo de procesamiento",
+        ge=0
+    )
+    cache_hit: bool = Field(
+        ...,
+        description="Si se uso prompt caching de Anthropic"
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "session_id": "session_abc123",
+                    "extracted_data": {
+                        "nombre_completo": "CERVANTES AREVALO RAUL",
+                        "curp": "CEAR640813HMNRRL02",
+                        "clave_elector": "CRVRAL64081314H100",
+                        "fecha_nacimiento": "13/08/1964",
+                        "sexo": "H",
+                        "estado": "JALISCO"
+                    },
+                    "images_processed": 2,
+                    "total_keys": 13,
+                    "keys_found": 10,
+                    "completeness_percent": 76.9,
+                    "model_used": "claude-sonnet-4-20250514",
+                    "tokens_used": 3500,
+                    "processing_time_seconds": 4.2,
+                    "cache_hit": False
+                }
+            ]
+        }
+    }

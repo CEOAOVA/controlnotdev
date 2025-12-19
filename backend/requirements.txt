@@ -25,6 +25,9 @@ google-api-core>=2.19.0
 # Document Generation
 python-docx==1.1.0
 
+# Image Processing (Claude Vision)
+Pillow>=10.0.0  # Preprocesamiento de imágenes para Claude Vision
+
 # Utils
 python-dotenv==1.0.0
 structlog==24.1.0

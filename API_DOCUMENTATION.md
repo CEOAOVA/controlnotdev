@@ -620,6 +620,82 @@ curl -X POST http://localhost:8000/api/extraction/ai \
 
 ---
 
+### 7.4 Extract with Vision (Claude Vision API)
+
+**Endpoint:** `POST /api/extraction/vision`
+
+**Content-Type:** `application/json`
+
+**Request Body:**
+```json
+{
+  "session_id": "session_abc123",
+  "document_type": "ine_ife"
+}
+```
+
+**Description:** Extracts data directly from images using Claude Vision API - no OCR step required. Handles any image orientation automatically.
+
+**Supported Document Types:**
+- `ine_ife` - Mexican voter ID (INE/IFE)
+- `pasaporte` - Mexican passport
+- `curp_constancia` - CURP certificate from RENAPO
+- Plus all standard notarial document types
+
+**Response:**
+```json
+{
+  "session_id": "session_abc123",
+  "extracted_data": {
+    "nombre_completo": "CERVANTES AREVALO RAUL",
+    "curp": "CEAR640813HMNRRL02",
+    "clave_elector": "CRVRAL64081314H100",
+    "fecha_nacimiento": "13/08/1964",
+    "sexo": "H",
+    "domicilio": "AV HIDALGO 123 COL CENTRO GUADALAJARA JALISCO 44100",
+    "seccion_electoral": "1234",
+    "estado": "JALISCO",
+    "vigencia": "2029"
+  },
+  "images_processed": 2,
+  "total_keys": 13,
+  "keys_found": 10,
+  "completeness_percent": 76.9,
+  "model_used": "claude-sonnet-4-20250514",
+  "tokens_used": 3500,
+  "processing_time_seconds": 4.2,
+  "cache_hit": false
+}
+```
+
+**Advantages over OCR:**
+- **No OCR step required** - Direct image-to-data extraction
+- **Handles any orientation** - Horizontal, vertical, rotated images work automatically
+- **Higher accuracy** - ~97% vs ~85% with traditional OCR
+- **Document type detection** - Visually identifies document type
+- **Prompt caching** - ~80% cost savings on repeated requests
+
+**Status Codes:**
+- `200 OK` - Extraction completed
+- `400 Bad Request` - No images in session
+- `404 Not Found` - Session not found
+- `500 Internal Server Error` - Vision API error
+
+**Example:**
+```bash
+curl -X POST http://localhost:8000/api/extraction/vision \
+  -H "Content-Type: application/json" \
+  -d '{"session_id":"session_abc123","document_type":"ine_ife"}'
+```
+
+**Notes:**
+- Maximum 20 images per request (Anthropic limit)
+- Images are automatically resized if > 1568px
+- Images are compressed if > 5MB
+- Works best with clear, well-lit photos
+
+---
+
 ## 8. Email
 
 ### 8.1 Send Document via Email

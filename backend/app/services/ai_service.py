@@ -477,6 +477,9 @@ RESPONDE EN FORMATO JSON con las claves exactas de los campos solicitados.
             if "NO ENCONTRADO" in str(value)
         ]
 
+        # FIX: Restar campos con valor NO ENCONTRADO del conteo
+        found_fields = found_fields - set(not_found_values)
+
         completeness = len(found_fields) / len(required_fields) if required_fields else 0.0
 
         stats = {

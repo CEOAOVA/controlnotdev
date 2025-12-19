@@ -151,6 +151,14 @@ class Settings(BaseSettings):
     MAX_FILE_SIZE_MB: int = 10
 
     # ==========================================
+    # CLAUDE VISION (Extracción directa de imágenes)
+    # ==========================================
+    MAX_IMAGE_DIMENSION: int = 1568  # Máximo recomendado por Anthropic
+    MAX_IMAGE_SIZE_MB: int = 5  # Límite de Anthropic por imagen
+    MAX_IMAGES_PER_REQUEST: int = 20  # Límite de Anthropic por request
+    VISION_TEMPERATURE: float = 0.1  # Más determinístico para datos exactos
+
+    # ==========================================
     # AI PROVIDER STRATEGY
     # ==========================================
     @property
