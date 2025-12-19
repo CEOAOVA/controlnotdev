@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     # ANTHROPIC (Semana 1 - Quick Wins)
     # ==========================================
     ANTHROPIC_API_KEY: Optional[str] = None
-    ANTHROPIC_MODEL: str = "claude-3-5-sonnet-20241022"
+    ANTHROPIC_MODEL: str = "claude-sonnet-4-20250514"
     ANTHROPIC_MAX_TOKENS: int = 4096
     ANTHROPIC_TEMPERATURE: float = 0.3
 

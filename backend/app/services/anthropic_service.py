@@ -63,8 +63,8 @@ class AnthropicExtractionService:
         "cancelacion": CancelacionKeys
     }
 
-    # Modelo recomendado (Sonnet 3.5 = mejor calidad/precio)
-    DEFAULT_MODEL = "claude-3-5-sonnet-20241022"
+    # Modelo recomendado (Sonnet 4 = más reciente y mejor rendimiento)
+    DEFAULT_MODEL = "claude-sonnet-4-20250514"
 
     def __init__(self, api_key: Optional[str] = None):
         """

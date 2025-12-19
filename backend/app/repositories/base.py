@@ -253,6 +253,74 @@ class BaseRepository(Generic[T]):
             )
             raise
 
+    async def list(
+        self,
+        filters: Optional[Dict[str, Any]] = None,
+        limit: int = 50,
+        offset: int = 0,
+        order_by: str = 'created_at',
+        descending: bool = True
+    ) -> List[Dict[str, Any]]:
+        """
+        Lista registros con filtros opcionales (sin filtro de tenant)
+
+        Args:
+            filters: Filtros opcionales {campo: valor}
+            limit: Número máximo de resultados
+            offset: Offset para paginación
+            order_by: Campo para ordenar
+            descending: Ordenar descendente
+
+        Returns:
+            Lista de registros
+        """
+        start_time = time.time()
+        logger.debug(
+            "db_list_starting",
+            table=self.table_name,
+            filters=filters,
+            limit=limit,
+            offset=offset
+        )
+
+        try:
+            query = self._table().select('*')
+
+            # Aplicar filtros
+            if filters:
+                for field, value in filters.items():
+                    query = query.eq(field, value)
+
+            # Ordenar
+            query = query.order(order_by, desc=descending)
+
+            # Paginación
+            query = query.range(offset, offset + limit - 1)
+
+            result = query.execute()
+            duration_ms = (time.time() - start_time) * 1000
+            count = len(result.data) if result.data else 0
+
+            logger.debug(
+                "db_list_complete",
+                table=self.table_name,
+                results_count=count,
+                duration_ms=round(duration_ms, 2)
+            )
+
+            return result.data if result.data else []
+
+        except APIError as e:
+            duration_ms = (time.time() - start_time) * 1000
+            logger.error(
+                "db_list_failed",
+                table=self.table_name,
+                error=str(e),
+                error_type=type(e).__name__,
+                duration_ms=round(duration_ms, 2)
+            )
+            raise
+
     async def list_by_tenant(
         self,
         tenant_id: UUID,
