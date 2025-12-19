@@ -427,9 +427,9 @@ async def upload_categorized_documents(
         # ====================================================================
         try:
             # Crear sesión en BD (tenant_id ya validado por dependency)
+            # case_id es opcional - se asigna cuando se crea/vincula un caso
             db_session = await session_repository.create_session(
                 tenant_id=UUID(tenant_id),
-                case_id=UUID('00000000-0000-0000-0000-000000000000'),  # TODO: case_id real
                 tipo_documento=document_type,
                 total_archivos=total_files,
                 session_data={

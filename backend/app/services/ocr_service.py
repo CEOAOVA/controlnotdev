@@ -147,6 +147,7 @@ class OCRService:
                 'file_name': file_name,
                 'category': category,
                 'text': text,
+                'text_length': len(text),
                 'success': True,
                 'error': None
             }
@@ -163,6 +164,7 @@ class OCRService:
                 'file_name': file_name,
                 'category': category,
                 'text': "",
+                'text_length': 0,
                 'success': False,
                 'error': str(e)
             }
@@ -201,6 +203,7 @@ class OCRService:
                     'file_name': file_name,
                     'category': category,
                     'text': text,
+                    'text_length': len(text),
                     'success': True,
                     'error': None
                 }
@@ -217,6 +220,7 @@ class OCRService:
                     'file_name': file_name,
                     'category': category,
                     'text': "",
+                    'text_length': 0,
                     'success': False,
                     'error': str(e)
                 }

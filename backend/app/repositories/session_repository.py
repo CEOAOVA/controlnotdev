@@ -26,8 +26,8 @@ class SessionRepository(BaseRepository):
     async def create_session(
         self,
         tenant_id: UUID,
-        case_id: UUID,
         tipo_documento: str,
+        case_id: Optional[UUID] = None,
         total_archivos: int = 0,
         session_data: Optional[Dict] = None
     ) -> Optional[Dict]:
@@ -36,8 +36,8 @@ class SessionRepository(BaseRepository):
 
         Args:
             tenant_id: UUID de la notaría
-            case_id: UUID del caso al que pertenece esta sesión
             tipo_documento: Tipo de documento (compraventa, cancelacion, etc.)
+            case_id: UUID del caso al que pertenece esta sesión (opcional)
             total_archivos: Número total de archivos a procesar
             session_data: Datos adicionales de la sesión (JSONB)
 
@@ -46,7 +46,6 @@ class SessionRepository(BaseRepository):
         """
         session_info = {
             'tenant_id': str(tenant_id),
-            'case_id': str(case_id),
             'tipo_documento': tipo_documento,
             'estado': 'iniciado',
             'total_archivos': total_archivos,
@@ -54,6 +53,10 @@ class SessionRepository(BaseRepository):
             'progreso_porcentaje': 0.0,
             'session_data': session_data or {}
         }
+
+        # Solo agregar case_id si se proporciona
+        if case_id:
+            session_info['case_id'] = str(case_id)
 
         return await self.create(session_info)
 

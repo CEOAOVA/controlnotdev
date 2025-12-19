@@ -19,10 +19,11 @@ import time
 import structlog
 from uuid import UUID
 
-from app.database import get_supabase_client
+from app.database import get_supabase_admin_client
 
 logger = structlog.get_logger()
-supabase = get_supabase_client()
+# Usar admin client para bypassear RLS en audit_logs
+supabase = get_supabase_admin_client()
 
 # Mapeo de rutas a acciones auditables
 ACTION_MAP = {
