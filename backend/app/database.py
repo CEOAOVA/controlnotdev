@@ -243,7 +243,7 @@ class TenantContext:
 
     def __init__(self, tenant_id: str):
         self.tenant_id = tenant_id
-        self.client = supabase
+        self.client = get_supabase_admin_client()
 
     def table(self, table_name: str):
         """

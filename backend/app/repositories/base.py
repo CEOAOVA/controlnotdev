@@ -8,7 +8,7 @@ from uuid import UUID
 import structlog
 from postgrest.exceptions import APIError
 
-from app.database import supabase
+from app.database import get_supabase_admin_client
 
 logger = structlog.get_logger()
 
@@ -30,7 +30,7 @@ class BaseRepository(Generic[T]):
             table_name: Nombre de la tabla en Supabase
         """
         self.table_name = table_name
-        self.client = supabase
+        self.client = get_supabase_admin_client()
 
     def _table(self):
         """Retorna query builder para la tabla"""
