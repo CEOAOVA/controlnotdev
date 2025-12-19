@@ -11,6 +11,7 @@ Endpoints disponibles:
 6. health - Health checks y metadata del sistema
 7. models - Modelos AI y tipos de documento
 8. cancelaciones - Procesamiento especializado de cancelaciones de hipotecas
+9. auth - Logging de eventos de autenticación
 """
 
 from app.api.endpoints.clients import router as clients_router
@@ -21,6 +22,7 @@ from app.api.endpoints.extraction import router as extraction_router
 from app.api.endpoints.health import router as health_router
 from app.api.endpoints.models import router as models_router
 from app.api.endpoints.cancelaciones import router as cancelaciones_router
+from app.api.endpoints.auth import router as auth_router
 
 
 __all__ = [
@@ -32,4 +34,5 @@ __all__ = [
     "health_router",
     "models_router",
     "cancelaciones_router",
+    "auth_router",
 ]

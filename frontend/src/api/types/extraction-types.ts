@@ -38,12 +38,11 @@ export interface OCRResponse {
 }
 
 export interface AIExtractionRequest {
-  session_id?: string;
-  text?: string;
+  session_id: string;
+  text: string;
   document_type: DocumentType;
   template_placeholders?: string[];
   model?: string;
-  ocr_results?: any;
 }
 
 export interface AIExtractionResponse {

@@ -8,6 +8,7 @@ Rutas:
 - POST   /api/templates/confirm         - Confirmar template y tipo
 - GET    /api/types                     - Listar tipos de documento
 """
+import time
 from typing import List, Optional
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Query
 from fastapi.responses import JSONResponse
@@ -63,11 +64,16 @@ async def upload_template(
 
     Basado en por_partes.py líneas 1458-1502, 1639-1684
     """
-    logger.info("Upload de template recibido", filename=file.filename)
+    upload_start = time.time()
+    logger.info(
+        "template_upload_received",
+        filename=file.filename,
+        tenant_id=tenant_id
+    )
 
     # Validar extensión
     if not file.filename.endswith('.docx'):
-        logger.error("Archivo no es .docx", filename=file.filename)
+        logger.error("template_invalid_extension", filename=file.filename)
         raise HTTPException(
             status_code=400,
             detail="El archivo debe ser un documento Word (.docx)"
@@ -75,7 +81,16 @@ async def upload_template(
 
     try:
         # Leer contenido del archivo
+        read_start = time.time()
         content = await file.read()
+        read_duration = (time.time() - read_start) * 1000
+
+        logger.debug(
+            "template_file_read",
+            filename=file.filename,
+            size_bytes=len(content),
+            duration_ms=round(read_duration, 2)
+        )
 
         if len(content) == 0:
             raise HTTPException(
@@ -84,7 +99,17 @@ async def upload_template(
             )
 
         # Extraer placeholders
+        extract_start = time.time()
         placeholders = extract_placeholders_from_template(content)
+        extract_duration = (time.time() - extract_start) * 1000
+
+        logger.info(
+            "template_placeholders_extracted",
+            filename=file.filename,
+            placeholders_count=len(placeholders) if placeholders else 0,
+            placeholders_preview=placeholders[:10] if placeholders else [],
+            duration_ms=round(extract_duration, 2)
+        )
 
         if not placeholders or len(placeholders) == 0:
             raise HTTPException(
@@ -93,23 +118,38 @@ async def upload_template(
             )
 
         # Auto-detectar tipo de documento con confidence score
+        detect_start = time.time()
         detection_result = detect_document_type(placeholders, file.filename)
         document_type = detection_result['detected_type']
         confidence_score = detection_result['confidence_score']
         requires_confirmation = detection_result['requires_confirmation']
+        detect_duration = (time.time() - detect_start) * 1000
 
         logger.info(
-            "Tipo de documento detectado",
+            "template_type_detected",
+            filename=file.filename,
             document_type=document_type,
-            confidence=f"{confidence_score * 100:.1f}%",
-            requires_confirmation=requires_confirmation
+            confidence_score=round(confidence_score, 3),
+            confidence_percent=f"{confidence_score * 100:.1f}%",
+            requires_confirmation=requires_confirmation,
+            duration_ms=round(detect_duration, 2)
         )
 
         # Mapear placeholders a claves estándar
+        map_start = time.time()
         placeholder_mapping = map_placeholders_to_keys_by_type(
             placeholders,
             document_type,
             file.filename
+        )
+        map_duration = (time.time() - map_start) * 1000
+
+        logger.debug(
+            "template_placeholders_mapped",
+            filename=file.filename,
+            original_count=len(placeholders),
+            mapped_count=len(placeholder_mapping) if placeholder_mapping else 0,
+            duration_ms=round(map_duration, 2)
         )
 
         # Generar ID de sesión
@@ -130,29 +170,53 @@ async def upload_template(
         )
 
         # Persistir en Supabase Storage
+        storage_start = time.time()
+        storage_path = None
+        storage_duration = 0
         try:
+            logger.debug(
+                "template_storage_upload_starting",
+                bucket="templates",
+                tenant_id=tenant_id,
+                filename=file.filename,
+                size_bytes=len(content)
+            )
+
             storage_result = await supabase_storage.save_template(
                 file_name=file.filename,
                 content=content,
                 tenant_id=tenant_id
             )
             storage_path = storage_result.get('path', f"{tenant_id}/{file.filename}")
+            storage_duration = (time.time() - storage_start) * 1000
 
             logger.info(
-                "Template subido a Supabase Storage",
+                "template_storage_upload_complete",
                 tenant_id=tenant_id,
-                path=storage_path
+                path=storage_path,
+                duration_ms=round(storage_duration, 2)
             )
         except Exception as storage_error:
+            storage_duration = (time.time() - storage_start) * 1000
             logger.error(
-                "Error al subir template a Storage (continuando con sesión)",
-                error=str(storage_error)
+                "template_storage_upload_failed",
+                error=str(storage_error),
+                error_type=type(storage_error).__name__,
+                duration_ms=round(storage_duration, 2)
             )
-            storage_path = None
 
         # Insertar registro en tabla templates
+        db_start = time.time()
         db_template_id = template_id  # Default al ID temporal
+        db_duration = 0
         try:
+            logger.debug(
+                "template_db_insert_starting",
+                table="templates",
+                tenant_id=tenant_id,
+                filename=file.filename
+            )
+
             template_record = supabase_admin.table('templates').insert({
                 'tenant_id': tenant_id,
                 'tipo_documento': document_type,
@@ -162,25 +226,39 @@ async def upload_template(
                 'total_placeholders': len(placeholders)
             }).execute()
 
+            db_duration = (time.time() - db_start) * 1000
+
             if template_record.data:
                 db_template_id = str(template_record.data[0]['id'])
                 logger.info(
-                    "Template insertado en BD",
+                    "template_db_insert_complete",
                     db_template_id=db_template_id,
-                    tenant_id=tenant_id
+                    tenant_id=tenant_id,
+                    duration_ms=round(db_duration, 2)
                 )
         except Exception as db_error:
+            db_duration = (time.time() - db_start) * 1000
             logger.error(
-                "Error al insertar template en BD (continuando con sesión)",
-                error=str(db_error)
+                "template_db_insert_failed",
+                error=str(db_error),
+                error_type=type(db_error).__name__,
+                duration_ms=round(db_duration, 2)
             )
 
+        # Resumen final del endpoint
+        total_duration = (time.time() - upload_start) * 1000
         logger.info(
-            "Template procesado exitosamente",
+            "template_upload_endpoint_complete",
             template_id=db_template_id,
             filename=file.filename,
             document_type=document_type,
-            placeholders_count=len(placeholders)
+            placeholders_count=len(placeholders),
+            total_ms=round(total_duration, 2),
+            extract_ms=round(extract_duration, 2),
+            detect_ms=round(detect_duration, 2),
+            map_ms=round(map_duration, 2),
+            storage_ms=round(storage_duration, 2),
+            db_ms=round(db_duration, 2)
         )
 
         return PlaceholderExtractionResponse(

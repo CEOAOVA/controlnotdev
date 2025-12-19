@@ -42,19 +42,37 @@ apiClient.interceptors.request.use(
 
 /**
  * Response interceptor
- * Maneja errores globalmente
+ * Maneja errores globalmente con logging detallado
  */
 apiClient.interceptors.response.use(
   (response) => response,
-  (error: AxiosError) => {
-    // Handle common errors
+  (error: AxiosError<{ detail?: string; message?: string }>) => {
+    // Log detailed error information for debugging
+    const errorInfo = {
+      url: error.config?.url,
+      method: error.config?.method?.toUpperCase(),
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      detail: error.response?.data?.detail || error.response?.data?.message,
+      timeout: error.code === 'ECONNABORTED',
+    };
+
+    console.error('[API Error]', errorInfo);
+
+    // Handle specific error cases
     if (error.response?.status === 401) {
-      // Redirect to login if auth fails
-      console.error('Unauthorized');
+      console.error('[Auth] Session expired or unauthorized');
+      // Could trigger logout or redirect here
+    } else if (error.response?.status === 422) {
+      console.error('[Validation] Request validation failed:', error.response?.data);
     } else if (error.response?.status === 500) {
-      console.error('Server error');
+      console.error('[Server] Internal server error');
+    } else if (error.code === 'ECONNABORTED') {
+      console.error('[Timeout] Request timed out after', error.config?.timeout, 'ms');
+    } else if (!error.response) {
+      console.error('[Network] No response from server - check if backend is running');
     }
-    
+
     return Promise.reject(error);
   }
 );

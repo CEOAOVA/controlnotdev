@@ -19,13 +19,31 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 import structlog
 import time
+import uuid
+import logging
 
 from app.core.config import settings
 from app.api.router import api_router
 from app.middleware.audit import audit_middleware
 
-# Configurar logger estructurado
+# Configurar structlog correctamente
+structlog.configure(
+    processors=[
+        structlog.contextvars.merge_contextvars,
+        structlog.processors.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.dev.ConsoleRenderer() if settings.ENVIRONMENT == "development" else structlog.processors.JSONRenderer()
+    ],
+    wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
+    context_class=dict,
+    logger_factory=structlog.PrintLoggerFactory(),
+    cache_logger_on_first_use=True
+)
+
 logger = structlog.get_logger()
+
+# Rutas que NO deben loguearse (health checks, docs)
+SILENT_ROUTES = {"/ping", "/health", "/docs", "/redoc", "/openapi.json", "/favicon.ico"}
 
 
 @asynccontextmanager
@@ -138,40 +156,61 @@ app.add_middleware(
 )
 
 
-# Middleware para logging de requests
+# Middleware para logging de requests (con filtrado inteligente)
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     """
-    Middleware para loguear todas las requests
+    Middleware para loguear requests importantes
 
     Registra:
-    - Método HTTP y ruta
+    - Método HTTP y ruta (excluyendo health checks)
     - Tiempo de procesamiento
     - Status code de respuesta
+    - Correlation ID para trazabilidad
+
+    NO registra:
+    - /ping, /health (health checks)
+    - /docs, /redoc, /openapi.json (documentación)
     """
     start_time = time.time()
+    path = request.url.path
 
-    logger.info(
-        "Request recibido",
-        method=request.method,
-        path=request.url.path,
-        client=request.client.host if request.client else None
-    )
+    # Generar correlation ID para trazabilidad
+    correlation_id = request.headers.get("X-Correlation-ID") or str(uuid.uuid4())[:8]
+
+    # Almacenar en request.state para uso en otros middlewares/endpoints
+    request.state.correlation_id = correlation_id
+
+    # Verificar si es una ruta silenciosa
+    is_silent = path in SILENT_ROUTES or path.startswith("/docs") or path.startswith("/api/health")
+
+    if not is_silent:
+        logger.info(
+            "Request",
+            correlation_id=correlation_id,
+            method=request.method,
+            path=path,
+            client=request.client.host if request.client else None
+        )
 
     response = await call_next(request)
-
     process_time = time.time() - start_time
 
-    logger.info(
-        "Request procesado",
-        method=request.method,
-        path=request.url.path,
-        status_code=response.status_code,
-        process_time_seconds=f"{process_time:.3f}"
-    )
+    # Solo loguear respuestas de rutas no silenciosas o errores
+    if not is_silent or response.status_code >= 400:
+        log_level = "warning" if response.status_code >= 400 else "info"
+        getattr(logger, log_level)(
+            "Response",
+            correlation_id=correlation_id,
+            method=request.method,
+            path=path,
+            status_code=response.status_code,
+            duration_ms=round(process_time * 1000, 2)
+        )
 
-    # Agregar header con tiempo de procesamiento
+    # Headers de respuesta
     response.headers["X-Process-Time"] = f"{process_time:.3f}"
+    response.headers["X-Correlation-ID"] = correlation_id
 
     return response
 

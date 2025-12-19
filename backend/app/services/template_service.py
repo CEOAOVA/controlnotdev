@@ -5,9 +5,11 @@ Extrae placeholders de templates Word (.docx)
 Migrado de por_partes.py líneas 1458-1502
 """
 import re
+import time
 import tempfile
 from typing import List
 from pathlib import Path
+import os
 import structlog
 from docx import Document
 
@@ -47,6 +49,7 @@ class PlaceholderExtractor:
             ['Cliente_Nombre', 'Fecha_Escritura', 'Notario_Numero']
         """
         placeholders = set()
+        extract_start = time.time()
 
         # Crear archivo temporal para procesar
         with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as temp_file:
@@ -56,8 +59,21 @@ class PlaceholderExtractor:
                 temp_file.write(template_content)
                 temp_file.flush()
 
+                logger.debug(
+                    "temp_file_created_for_extraction",
+                    temp_path=str(temp_path),
+                    template_size_bytes=len(template_content)
+                )
+
                 # Abrir documento con python-docx
                 doc = Document(temp_path)
+
+                logger.debug(
+                    "docx_opened_for_extraction",
+                    paragraphs=len(doc.paragraphs),
+                    tables=len(doc.tables),
+                    sections=len(doc.sections)
+                )
 
                 # Extraer texto de diferentes partes del documento
                 text_parts = []
@@ -87,17 +103,33 @@ class PlaceholderExtractor:
                 # Buscar placeholders en todo el texto extraído
                 all_text = "\n".join(text_parts)
 
-                for pattern in PlaceholderExtractor.PLACEHOLDER_PATTERNS:
+                logger.debug(
+                    "text_extraction_complete",
+                    text_parts_count=len(text_parts),
+                    total_text_length=len(all_text)
+                )
+
+                # Contadores por patrón para logging detallado
+                pattern_counts = {}
+                for i, pattern in enumerate(PlaceholderExtractor.PLACEHOLDER_PATTERNS):
+                    pattern_name = "double_curly" if i == 0 else "single_curly"
+                    pattern_matches = 0
                     matches = re.finditer(pattern, all_text)
                     for match in matches:
                         placeholder = match.group(1).strip()
                         if placeholder:  # Ignorar placeholders vacíos
                             placeholders.add(placeholder)
+                            pattern_matches += 1
+                    pattern_counts[pattern_name] = pattern_matches
 
+                extract_duration = (time.time() - extract_start) * 1000
                 logger.info(
-                    "Placeholders extraídos del template",
-                    total_placeholders=len(placeholders),
-                    placeholders=sorted(placeholders)[:5]  # Primeros 5 para log
+                    "placeholders_extracted_from_template",
+                    total_unique=len(placeholders),
+                    double_curly_matches=pattern_counts.get("double_curly", 0),
+                    single_curly_matches=pattern_counts.get("single_curly", 0),
+                    placeholders_preview=sorted(placeholders)[:10],
+                    duration_ms=round(extract_duration, 2)
                 )
 
             except Exception as e:
@@ -111,9 +143,13 @@ class PlaceholderExtractor:
                 # Limpiar archivo temporal
                 try:
                     temp_path.unlink()
+                    logger.debug(
+                        "temp_file_cleanup_success",
+                        temp_path=str(temp_path)
+                    )
                 except Exception as cleanup_error:
                     logger.warning(
-                        "No se pudo eliminar archivo temporal",
+                        "temp_file_cleanup_failed",
                         temp_path=str(temp_path),
                         error=str(cleanup_error)
                     )
@@ -132,12 +168,32 @@ class PlaceholderExtractor:
         Returns:
             List[str]: Lista ordenada de placeholders únicos
         """
-        logger.info("Extrayendo placeholders de archivo", file_path=str(file_path))
+        start_time = time.time()
+        logger.info(
+            "extract_from_file_starting",
+            file_path=str(file_path)
+        )
 
         with open(file_path, 'rb') as f:
             content = f.read()
 
-        return PlaceholderExtractor.extract_from_bytes(content)
+        logger.debug(
+            "file_content_read",
+            file_path=str(file_path),
+            size_bytes=len(content)
+        )
+
+        result = PlaceholderExtractor.extract_from_bytes(content)
+
+        duration_ms = (time.time() - start_time) * 1000
+        logger.info(
+            "extract_from_file_complete",
+            file_path=str(file_path),
+            placeholders_found=len(result),
+            duration_ms=round(duration_ms, 2)
+        )
+
+        return result
 
 
 def extract_placeholders_from_template(template_content: bytes) -> List[str]:

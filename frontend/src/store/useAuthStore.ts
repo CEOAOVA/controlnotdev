@@ -6,6 +6,38 @@ import { create } from 'zustand';
 import { devtools, persist } from 'zustand/middleware';
 import { supabase } from '@/lib/supabase';
 import type { User, Session } from '@supabase/supabase-js';
+import { env } from '@/config/env';
+
+// Tipos para eventos de auth
+type AuthEventType = 'login_success' | 'login_failed' | 'logout' | 'signup' | 'password_reset';
+
+interface AuthEventPayload {
+  event_type: AuthEventType;
+  user_id?: string;
+  email?: string;
+  tenant_id?: string;
+  error_message?: string;
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Envía evento de autenticación al backend para logging
+ * No bloquea ni lanza errores - es fire-and-forget
+ */
+async function logAuthEvent(payload: AuthEventPayload): Promise<void> {
+  try {
+    await fetch(`${env.apiUrl}/api/auth/log`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+  } catch (error) {
+    // Silenciar errores de logging - no debe afectar la UX
+    console.debug('Auth logging failed (non-critical):', error);
+  }
+}
 
 interface UserProfile {
   id: string;
@@ -70,7 +102,15 @@ export const useAuthStore = create<AuthState>()(
               password,
             });
 
-            if (error) throw error;
+            if (error) {
+              // Log login fallido
+              logAuthEvent({
+                event_type: 'login_failed',
+                email,
+                error_message: error.message,
+              });
+              throw error;
+            }
 
             if (data.session && data.user) {
               set({
@@ -81,6 +121,15 @@ export const useAuthStore = create<AuthState>()(
 
               // Fetch user profile
               await get().fetchProfile(data.user.id);
+
+              // Log login exitoso (después de obtener el profile para tener tenant_id)
+              const profile = get().profile;
+              logAuthEvent({
+                event_type: 'login_success',
+                user_id: data.user.id,
+                email: data.user.email,
+                tenant_id: profile?.tenant_id,
+              });
             }
           } catch (error: any) {
             set({ error: error.message || 'Error al iniciar sesión' });
@@ -116,6 +165,16 @@ export const useAuthStore = create<AuthState>()(
 
               // Create user profile in database
               await get().createProfile(data.user.id, email, fullName);
+
+              // Log signup exitoso
+              const profile = get().profile;
+              logAuthEvent({
+                event_type: 'signup',
+                user_id: data.user.id,
+                email: data.user.email,
+                tenant_id: profile?.tenant_id,
+                metadata: { full_name: fullName },
+              });
             }
           } catch (error: any) {
             set({ error: error.message || 'Error al registrar usuario' });
@@ -130,8 +189,21 @@ export const useAuthStore = create<AuthState>()(
           try {
             set({ isLoading: true, error: null });
 
+            // Guardar datos antes de limpiar para el log
+            const { user, profile } = get();
+
             const { error } = await supabase.auth.signOut();
             if (error) throw error;
+
+            // Log logout antes de limpiar el estado
+            if (user) {
+              logAuthEvent({
+                event_type: 'logout',
+                user_id: user.id,
+                email: user.email ?? undefined,
+                tenant_id: profile?.tenant_id,
+              });
+            }
 
             set({
               user: null,
@@ -157,6 +229,12 @@ export const useAuthStore = create<AuthState>()(
             });
 
             if (error) throw error;
+
+            // Log solicitud de reset exitosa
+            logAuthEvent({
+              event_type: 'password_reset',
+              email,
+            });
           } catch (error: any) {
             set({ error: error.message || 'Error al enviar email de recuperación' });
             throw error;

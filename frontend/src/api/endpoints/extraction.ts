@@ -5,7 +5,6 @@
 
 import { apiClient } from '../client';
 import type {
-  OCRRequest,
   OCRResponse,
   AIExtractionRequest,
   AIExtractionResponse,
@@ -16,28 +15,16 @@ import type {
 export const extractionApi = {
   /**
    * POST /api/extraction/ocr
-   * Process categorized images with OCR
+   * Process OCR for documents in an existing session
+   *
+   * IMPORTANT: Files must be uploaded first via /documents/upload
+   * This endpoint processes files already stored in the session
    */
-  processOCR: async (payload: OCRRequest): Promise<OCRResponse> => {
-    const formData = new FormData();
-
-    // Add document type
-    formData.append('document_type', payload.document_type);
-
-    // Add categorized files
-    payload.categorized_files.forEach((category) => {
-      category.files.forEach((file) => {
-        formData.append(`${category.category_name}[]`, file);
-      });
-    });
-
+  processOCR: async (sessionId: string): Promise<OCRResponse> => {
     const { data } = await apiClient.post<OCRResponse>(
-      '/extraction/ocr',
-      formData,
+      `/extraction/ocr?session_id=${encodeURIComponent(sessionId)}`,
+      {},
       {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
         // OCR can take a while, extend timeout
         timeout: 120000, // 2 minutes
       }

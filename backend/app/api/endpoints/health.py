@@ -133,3 +133,100 @@ async def get_services_status():
         "services": services,
         "environment": settings.ENVIRONMENT if hasattr(settings, 'ENVIRONMENT') else "development"
     }
+
+
+@router.get("/ai-ready")
+async def check_ai_readiness():
+    """
+    Verifica que los servicios de IA estén correctamente configurados.
+
+    Chequea:
+    - ANTHROPIC_API_KEY configurado
+    - OPENROUTER_API_KEY o OPENAI_API_KEY configurado
+    - GOOGLE_CREDENTIALS_JSON configurado para OCR
+
+    Returns:
+        ai_ready: True si al menos un servicio de IA está listo
+        ocr_ready: True si OCR está configurado
+        services: Estado detallado de cada servicio
+    """
+    logger.info("Verificando readiness de servicios de IA")
+
+    # Check AI services
+    anthropic_configured = bool(
+        getattr(settings, 'ANTHROPIC_API_KEY', None) and
+        settings.ANTHROPIC_API_KEY != "TU_ANTHROPIC_API_KEY_AQUI"
+    )
+
+    openrouter_configured = bool(
+        getattr(settings, 'OPENROUTER_API_KEY', None) and
+        settings.OPENROUTER_API_KEY != "TU_OPENROUTER_API_KEY_AQUI"
+    )
+
+    openai_configured = bool(
+        getattr(settings, 'OPENAI_API_KEY', None) and
+        settings.OPENAI_API_KEY != "TU_OPENAI_API_KEY_AQUI"
+    )
+
+    # Check OCR (Google Vision)
+    google_credentials = getattr(settings, 'GOOGLE_CREDENTIALS_JSON', None)
+    ocr_configured = bool(
+        google_credentials and
+        google_credentials != "" and
+        google_credentials != "{}"
+    )
+
+    # Determine readiness
+    ai_ready = anthropic_configured or openrouter_configured or openai_configured
+    ocr_ready = ocr_configured
+
+    # Build response
+    services = {
+        "anthropic": {
+            "configured": anthropic_configured,
+            "model": getattr(settings, 'ANTHROPIC_MODEL', 'claude-3-5-sonnet-20241022')
+        },
+        "openrouter": {
+            "configured": openrouter_configured,
+            "model": getattr(settings, 'OPENROUTER_MODEL', None)
+        },
+        "openai": {
+            "configured": openai_configured
+        },
+        "google_vision": {
+            "configured": ocr_configured
+        }
+    }
+
+    # Determine active AI provider
+    active_provider = None
+    if anthropic_configured:
+        active_provider = "anthropic"
+    elif openrouter_configured:
+        active_provider = "openrouter"
+    elif openai_configured:
+        active_provider = "openai"
+
+    logger.info(
+        "AI readiness check completado",
+        ai_ready=ai_ready,
+        ocr_ready=ocr_ready,
+        active_provider=active_provider
+    )
+
+    return {
+        "ai_ready": ai_ready,
+        "ocr_ready": ocr_ready,
+        "all_ready": ai_ready and ocr_ready,
+        "active_provider": active_provider,
+        "services": services,
+        "message": (
+            "Sistema listo para procesar documentos" if (ai_ready and ocr_ready)
+            else "Faltan configuraciones: " + ", ".join([
+                s for s, ready in [
+                    ("IA (ANTHROPIC/OPENROUTER/OPENAI)", not ai_ready),
+                    ("OCR (GOOGLE_CREDENTIALS_JSON)", not ocr_ready)
+                ] if ready
+            ])
+        )
+    }

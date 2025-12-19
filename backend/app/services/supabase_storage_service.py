@@ -4,6 +4,7 @@ Gestión de almacenamiento en Supabase Storage buckets
 
 Reemplaza DriveStorageService y LocalStorageService
 """
+import time
 from typing import List, Dict, Optional
 import structlog
 from datetime import datetime
@@ -71,11 +72,19 @@ class SupabaseStorageService:
                 'placeholders': ['vendedor', 'comprador', ...]
             }
         """
+        start_time = time.time()
+        logger.debug(
+            "storage_get_templates_starting",
+            tenant_id=tenant_id,
+            include_public=include_public
+        )
+
         try:
             templates = []
 
             # Leer desde la tabla 'templates' (tiene tipo_documento)
             try:
+                db_start = time.time()
                 if tenant_id and include_public:
                     # Templates del tenant + públicos (tenant_id es null)
                     result = self.client.table('templates').select("*").or_(
@@ -92,6 +101,13 @@ class SupabaseStorageService:
                         'tenant_id', 'null'
                     ).execute()
 
+                db_duration = (time.time() - db_start) * 1000
+                logger.debug(
+                    "storage_get_templates_db_query_complete",
+                    records_found=len(result.data) if result.data else 0,
+                    duration_ms=round(db_duration, 2)
+                )
+
                 for record in result.data:
                     templates.append({
                         'id': str(record.get('id', '')),
@@ -107,28 +123,34 @@ class SupabaseStorageService:
                     })
 
             except Exception as e:
+                db_duration = (time.time() - db_start) * 1000
                 logger.warning(
-                    "No se pudieron listar templates desde tabla, intentando Storage",
-                    error=str(e)
+                    "storage_get_templates_db_failed_fallback_to_storage",
+                    error=str(e),
+                    duration_ms=round(db_duration, 2)
                 )
                 # Fallback: intentar leer desde Storage (sin document_type)
                 return self._get_templates_from_storage(tenant_id, include_public)
 
+            total_duration = (time.time() - start_time) * 1000
             logger.info(
-                "Templates listados desde tabla Supabase",
+                "storage_get_templates_complete",
                 tenant_id=tenant_id,
                 include_public=include_public,
-                total_templates=len(templates)
+                total_templates=len(templates),
+                duration_ms=round(total_duration, 2)
             )
 
             return templates
 
         except Exception as e:
+            total_duration = (time.time() - start_time) * 1000
             logger.error(
-                "Error al listar templates desde Supabase",
+                "storage_get_templates_failed",
                 tenant_id=tenant_id,
                 error=str(e),
-                error_type=type(e).__name__
+                error_type=type(e).__name__,
+                duration_ms=round(total_duration, 2)
             )
             raise
 
@@ -195,23 +217,34 @@ class SupabaseStorageService:
         Raises:
             Exception: Si falla la descarga
         """
+        start_time = time.time()
+        logger.debug(
+            "storage_read_template_starting",
+            bucket=self.TEMPLATES_BUCKET,
+            path=path
+        )
+
         try:
             content = self.client.storage.from_(self.TEMPLATES_BUCKET).download(path)
+            duration_ms = (time.time() - start_time) * 1000
 
             logger.info(
-                "Template leído desde Supabase",
+                "storage_read_template_complete",
                 path=path,
-                size_bytes=len(content)
+                size_bytes=len(content),
+                duration_ms=round(duration_ms, 2)
             )
 
             return content
 
         except Exception as e:
+            duration_ms = (time.time() - start_time) * 1000
             logger.error(
-                "Error al leer template desde Supabase",
+                "storage_read_template_failed",
                 path=path,
                 error=str(e),
-                error_type=type(e).__name__
+                error_type=type(e).__name__,
+                duration_ms=round(duration_ms, 2)
             )
             raise
 
@@ -244,6 +277,15 @@ class SupabaseStorageService:
         folder = "public" if is_public else tenant_id
         path = f"{folder}/{file_name}"
 
+        start_time = time.time()
+        logger.debug(
+            "storage_save_template_starting",
+            bucket=self.TEMPLATES_BUCKET,
+            path=path,
+            size_bytes=len(content),
+            is_public=is_public
+        )
+
         try:
             result = await upload_to_storage(
                 bucket=self.TEMPLATES_BUCKET,
@@ -251,12 +293,14 @@ class SupabaseStorageService:
                 file_data=content,
                 content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             )
+            duration_ms = (time.time() - start_time) * 1000
 
             logger.info(
-                "Template guardado en Supabase",
+                "storage_save_template_complete",
                 path=path,
                 size_bytes=len(content),
-                is_public=is_public
+                is_public=is_public,
+                duration_ms=round(duration_ms, 2)
             )
 
             return {
@@ -268,11 +312,13 @@ class SupabaseStorageService:
             }
 
         except Exception as e:
+            duration_ms = (time.time() - start_time) * 1000
             logger.error(
-                "Error al guardar template en Supabase",
+                "storage_save_template_failed",
                 path=path,
                 error=str(e),
-                error_type=type(e).__name__
+                error_type=type(e).__name__,
+                duration_ms=round(duration_ms, 2)
             )
             raise
 
@@ -360,6 +406,16 @@ class SupabaseStorageService:
         """
         path = get_tenant_storage_path(tenant_id, "generated", filename)
 
+        start_time = time.time()
+        logger.debug(
+            "storage_store_document_starting",
+            bucket=self.DOCUMENTS_BUCKET,
+            tenant_id=tenant_id,
+            filename=filename,
+            path=path,
+            size_bytes=len(content)
+        )
+
         try:
             result = await upload_to_storage(
                 bucket=self.DOCUMENTS_BUCKET,
@@ -367,13 +423,15 @@ class SupabaseStorageService:
                 file_data=content,
                 content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             )
+            duration_ms = (time.time() - start_time) * 1000
 
             logger.info(
-                "Documento guardado en Supabase",
+                "storage_store_document_complete",
                 tenant_id=tenant_id,
                 filename=filename,
                 path=path,
-                size_bytes=len(content)
+                size_bytes=len(content),
+                duration_ms=round(duration_ms, 2)
             )
 
             return {
@@ -387,12 +445,14 @@ class SupabaseStorageService:
             }
 
         except Exception as e:
+            duration_ms = (time.time() - start_time) * 1000
             logger.error(
-                "Error al guardar documento en Supabase",
+                "storage_store_document_failed",
                 tenant_id=tenant_id,
                 filename=filename,
                 error=str(e),
-                error_type=type(e).__name__
+                error_type=type(e).__name__,
+                duration_ms=round(duration_ms, 2)
             )
             raise
 
@@ -407,27 +467,40 @@ class SupabaseStorageService:
         Returns:
             bytes: Contenido del documento
         """
+        start_time = time.time()
+        logger.debug(
+            "storage_download_document_starting",
+            bucket=self.DOCUMENTS_BUCKET,
+            tenant_id=tenant_id,
+            path=path
+        )
+
         try:
             content = await download_from_storage(
                 bucket=self.DOCUMENTS_BUCKET,
                 path=path
             )
+            duration_ms = (time.time() - start_time) * 1000
 
             logger.info(
-                "Documento descargado desde Supabase",
+                "storage_download_document_complete",
                 tenant_id=tenant_id,
-                path=path
+                path=path,
+                size_bytes=len(content),
+                duration_ms=round(duration_ms, 2)
             )
 
             return content
 
         except Exception as e:
+            duration_ms = (time.time() - start_time) * 1000
             logger.error(
-                "Error al descargar documento desde Supabase",
+                "storage_download_document_failed",
                 tenant_id=tenant_id,
                 path=path,
                 error=str(e),
-                error_type=type(e).__name__
+                error_type=type(e).__name__,
+                duration_ms=round(duration_ms, 2)
             )
             raise
 

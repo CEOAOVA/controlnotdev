@@ -17,6 +17,7 @@ Migración v2:
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime, timezone
+import time
 from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Depends, Query
 from fastapi.responses import StreamingResponse
 import structlog
@@ -526,16 +527,27 @@ async def generate_document(
     5. Persiste en BD y Storage
     6. Retorna URL de descarga
     """
+    endpoint_start = time.time()
+
     logger.info(
-        "Generando documento",
+        "generate_endpoint_starting",
         template_id=request.template_id,
         output_filename=request.output_filename,
-        placeholders_count=len(request.placeholders)
+        placeholders_count=len(request.placeholders),
+        responses_count=len(request.responses),
+        tenant_id=tenant_id
     )
 
     try:
         # Obtener template desde SessionManager (NO import circular)
+        session_start = time.time()
         template_session = session_manager.get_template_session(request.template_id)
+        session_duration = (time.time() - session_start) * 1000
+
+        logger.debug("template_session_retrieved",
+            template_id=request.template_id,
+            found=template_session is not None,
+            duration_ms=round(session_duration, 2))
 
         if not template_session:
             raise HTTPException(
@@ -545,7 +557,12 @@ async def generate_document(
 
         template_content = template_session['content']
 
+        logger.debug("template_content_ready",
+            template_size_bytes=len(template_content),
+            tipo_documento=template_session.get('tipo_documento', 'unknown'))
+
         # Generar documento
+        gen_start = time.time()
         generator = DocumentGenerator()
 
         document_content, stats = generator.generate_document(
@@ -554,11 +571,19 @@ async def generate_document(
             placeholders=request.placeholders,
             output_filename=request.output_filename
         )
+        gen_duration = (time.time() - gen_start) * 1000
+
+        logger.info("document_generated",
+            doc_size_bytes=len(document_content),
+            total_replaced=stats['total_replaced'],
+            missing=stats['missing'],
+            generation_ms=round(gen_duration, 2))
 
         # Generar ID para el documento
         doc_id = f"doc_{uuid.uuid4().hex[:12]}"
 
         # Guardar documento en SessionManager con aislamiento por tenant
+        store_start = time.time()
         session_manager.store_generated_document(
             doc_id=doc_id,
             data={
@@ -569,13 +594,15 @@ async def generate_document(
             },
             tenant_id=tenant_id
         )
+        store_duration = (time.time() - store_start) * 1000
 
         logger.info(
-            "Documento generado y guardado en SessionManager",
+            "document_stored_in_session",
             doc_id=doc_id,
             filename=request.output_filename,
             size=len(document_content),
-            placeholders_replaced=stats['total_replaced']
+            placeholders_replaced=stats['total_replaced'],
+            store_ms=round(store_duration, 2)
         )
 
         # ====================================================================
@@ -583,9 +610,18 @@ async def generate_document(
         # ====================================================================
         storage_path = None
         storage_result = None
+        storage_duration = 0
+        db_duration = 0
 
         try:
             # 1. SUBIR A SUPABASE STORAGE
+            storage_start = time.time()
+            logger.info("storage_upload_starting",
+                doc_id=doc_id,
+                tenant_id=tenant_id,
+                bucket="documentos",
+                size_bytes=len(document_content))
+
             storage_result = await supabase_storage.store_document(
                 tenant_id=tenant_id,
                 filename=f"{doc_id}.docx",
@@ -597,17 +633,25 @@ async def generate_document(
                 }
             )
 
+            storage_duration = (time.time() - storage_start) * 1000
             storage_path = storage_result.get('path')
 
             logger.info(
-                "Documento subido a Storage",
+                "storage_upload_complete",
                 doc_id=doc_id,
                 tenant_id=tenant_id,
                 storage_path=storage_path,
-                bucket=storage_result.get('bucket')
+                bucket=storage_result.get('bucket'),
+                duration_ms=round(storage_duration, 2)
             )
 
             # 2. GUARDAR METADATA EN BD (solo si Storage fue exitoso)
+            db_start = time.time()
+            logger.debug("db_insert_starting",
+                table="documentos",
+                doc_id=doc_id,
+                tenant_id=tenant_id)
+
             await document_repository.create({
                 'tenant_id': tenant_id,
                 'template_id': UUID(request.template_id),
@@ -625,23 +669,28 @@ async def generate_document(
                 }
             })
 
+            db_duration = (time.time() - db_start) * 1000
+
             logger.info(
-                "Documento persistido en BD",
+                "db_insert_complete",
                 doc_id=doc_id,
                 tenant_id=tenant_id,
-                storage_path=storage_path
+                storage_path=storage_path,
+                duration_ms=round(db_duration, 2)
             )
 
         except Exception as persist_error:
             # Log del error pero no fallar la generación
             # El documento sigue disponible en SessionManager temporalmente
             logger.warning(
-                "Error al persistir documento (disponible en SessionManager temporalmente)",
+                "persist_error_non_blocking",
                 error=str(persist_error),
                 error_type=type(persist_error).__name__,
                 doc_id=doc_id,
                 tenant_id=tenant_id,
-                storage_uploaded=storage_path is not None
+                storage_uploaded=storage_path is not None,
+                storage_ms=round(storage_duration, 2) if storage_duration else 0,
+                db_ms=round(db_duration, 2) if db_duration else 0
             )
 
         # Calcular lista de placeholders faltantes
@@ -655,6 +704,13 @@ async def generate_document(
             if not value or value == "No encontrado" or "NO ENCONTRADO" in value.upper():
                 missing_list.append(placeholder)
 
+        # Log de placeholders faltantes si los hay
+        if missing_list:
+            logger.warning("placeholders_missing_detail",
+                doc_id=doc_id,
+                missing_count=len(missing_list),
+                missing_keys=missing_list[:20])  # Limitar a 20 para no saturar logs
+
         # Crear response con estadísticas
         generation_stats = DocumentGenerationStats(
             placeholders_replaced=stats['total_replaced'],
@@ -666,6 +722,21 @@ async def generate_document(
             replaced_in_footers=stats.get('replaced_in_footers', 0),
             bold_conversions=stats.get('bold_conversions', 0)
         )
+
+        # Log final del endpoint con métricas totales
+        total_duration = (time.time() - endpoint_start) * 1000
+        logger.info("generate_endpoint_complete",
+            doc_id=doc_id,
+            tenant_id=tenant_id,
+            filename=f"{request.output_filename}.docx",
+            size_bytes=len(document_content),
+            total_replaced=stats['total_replaced'],
+            missing=len(missing_list),
+            persisted=storage_path is not None,
+            total_ms=round(total_duration, 2),
+            generation_ms=round(gen_duration, 2),
+            storage_ms=round(storage_duration, 2),
+            db_ms=round(db_duration, 2))
 
         return DocumentGenerationResponse(
             success=True,
@@ -680,10 +751,14 @@ async def generate_document(
     except HTTPException:
         raise
     except Exception as e:
+        error_duration = (time.time() - endpoint_start) * 1000
         logger.error(
-            "Error al generar documento",
+            "generate_endpoint_error",
             error=str(e),
-            error_type=type(e).__name__
+            error_type=type(e).__name__,
+            template_id=request.template_id,
+            tenant_id=tenant_id,
+            duration_ms=round(error_duration, 2)
         )
         raise HTTPException(
             status_code=500,

@@ -22,9 +22,50 @@ import type {
   DocumentGenerationResponse,
   SendEmailRequest,
   SendEmailResponse,
+  CategorizedDocumentsUploadResponse,
 } from '../types/document-types';
+import type { Category, DocumentType } from '@/types';
 
 export const documentsApi = {
+  /**
+   * Upload categorized documents for processing
+   * This creates a session and stores files for subsequent OCR processing
+   *
+   * @param documentType - Type of document (compraventa, donacion, etc.)
+   * @param templateId - Template ID to use for generation
+   * @param categorizedFiles - Files organized by category (parte_a, parte_b, otros)
+   */
+  uploadCategorized: async (
+    documentType: DocumentType,
+    templateId: string,
+    categorizedFiles: Record<Category, File[]>
+  ): Promise<CategorizedDocumentsUploadResponse> => {
+    const formData = new FormData();
+
+    // Add document type and template ID
+    formData.append('document_type', documentType);
+    formData.append('template_id', templateId);
+
+    // Add files by category
+    Object.entries(categorizedFiles).forEach(([category, files]) => {
+      files.forEach((file) => {
+        formData.append(category, file);
+      });
+    });
+
+    const response = await apiClient.post<CategorizedDocumentsUploadResponse>(
+      '/documents/upload',
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        timeout: 60000, // 1 minute for upload
+      }
+    );
+    return response.data;
+  },
+
   /**
    * List all documents with optional filtering and pagination
    */

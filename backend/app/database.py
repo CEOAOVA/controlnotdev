@@ -5,6 +5,7 @@ IMPORTANTE: Los clientes Supabase usan LAZY INITIALIZATION para evitar
 bloquear el startup de la aplicación si Supabase no está disponible.
 Los clientes se crean la primera vez que se usan, no al importar este módulo.
 """
+import time
 from typing import Optional
 from supabase import create_client, Client
 from fastapi import Header, HTTPException
@@ -130,10 +131,19 @@ async def get_current_user(authorization: str = Header(..., alias="Authorization
         # Remove "Bearer " prefix if present
         token = authorization.replace("Bearer ", "")
 
+        # Log del intento de autenticación (sin exponer el token completo)
+        token_preview = f"{token[:8]}...{token[-4:]}" if len(token) > 12 else "***"
+        logger.debug("auth_attempt", token_preview=token_preview)
+
         # Get user from Supabase Auth
         user_response = supabase.auth.get_user(token)
 
         if not user_response or not user_response.user:
+            logger.warning(
+                "auth_invalid_token",
+                reason="user_not_found_in_supabase",
+                token_preview=token_preview
+            )
             raise HTTPException(
                 status_code=401,
                 detail="Invalid authentication credentials"
@@ -145,13 +155,23 @@ async def get_current_user(authorization: str = Header(..., alias="Authorization
             "metadata": user_response.user.user_metadata
         }
 
-        logger.info("user_authenticated", user_id=user_data["id"])
+        # Log exitoso con contexto útil
+        logger.info(
+            "auth_success",
+            user_id=user_data["id"],
+            email=user_data["email"]
+        )
         return user_data
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("authentication_failed", error=str(e))
+        # Log detallado del error de autenticación
+        logger.error(
+            "auth_failed",
+            error=str(e),
+            error_type=type(e).__name__
+        )
         raise HTTPException(
             status_code=401,
             detail="Authentication failed"
@@ -435,21 +455,39 @@ async def upload_to_storage(
     Returns:
         dict: Upload result with path and URL
     """
+    start_time = time.time()
+    logger.debug(
+        "storage_upload_starting",
+        bucket=bucket,
+        path=path,
+        size_bytes=len(file_data),
+        content_type=content_type
+    )
+
     try:
+        upload_start = time.time()
         result = supabase_admin.storage.from_(bucket).upload(
             path=path,
             file=file_data,
             file_options={"content-type": content_type, "upsert": "true"}
         )
+        upload_duration = (time.time() - upload_start) * 1000
 
         # Get public URL (if bucket is public) or generate signed URL
+        url_start = time.time()
         public_url = supabase_admin.storage.from_(bucket).get_public_url(path)
+        url_duration = (time.time() - url_start) * 1000
+
+        total_duration = (time.time() - start_time) * 1000
 
         logger.info(
-            "file_uploaded_to_storage",
+            "storage_upload_complete",
             bucket=bucket,
             path=path,
-            size=len(file_data)
+            size_bytes=len(file_data),
+            upload_ms=round(upload_duration, 2),
+            url_ms=round(url_duration, 2),
+            total_ms=round(total_duration, 2)
         )
 
         return {
@@ -459,7 +497,15 @@ async def upload_to_storage(
         }
 
     except Exception as e:
-        logger.error("storage_upload_failed", bucket=bucket, path=path, error=str(e))
+        duration_ms = (time.time() - start_time) * 1000
+        logger.error(
+            "storage_upload_failed",
+            bucket=bucket,
+            path=path,
+            error=str(e),
+            error_type=type(e).__name__,
+            duration_ms=round(duration_ms, 2)
+        )
         raise
 
 
@@ -474,13 +520,35 @@ async def download_from_storage(bucket: str, path: str) -> bytes:
     Returns:
         bytes: File content
     """
+    start_time = time.time()
+    logger.debug(
+        "storage_download_starting",
+        bucket=bucket,
+        path=path
+    )
+
     try:
         result = supabase_admin.storage.from_(bucket).download(path)
+        duration_ms = (time.time() - start_time) * 1000
 
-        logger.info("file_downloaded_from_storage", bucket=bucket, path=path)
+        logger.info(
+            "storage_download_complete",
+            bucket=bucket,
+            path=path,
+            size_bytes=len(result),
+            duration_ms=round(duration_ms, 2)
+        )
 
         return result
 
     except Exception as e:
-        logger.error("storage_download_failed", bucket=bucket, path=path, error=str(e))
+        duration_ms = (time.time() - start_time) * 1000
+        logger.error(
+            "storage_download_failed",
+            bucket=bucket,
+            path=path,
+            error=str(e),
+            error_type=type(e).__name__,
+            duration_ms=round(duration_ms, 2)
+        )
         raise

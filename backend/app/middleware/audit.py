@@ -26,27 +26,40 @@ supabase = get_supabase_client()
 
 # Mapeo de rutas a acciones auditables
 ACTION_MAP = {
+    # Clientes
     ('POST', '/api/clients'): 'create_client',
     ('PUT', '/api/clients'): 'update_client',
     ('DELETE', '/api/clients'): 'delete_client',
 
+    # Casos/Expedientes
     ('POST', '/api/cases'): 'create_case',
     ('PUT', '/api/cases'): 'update_case',
     ('DELETE', '/api/cases'): 'delete_case',
 
+    # Documentos
     ('POST', '/api/documents/upload'): 'upload_documents',
     ('POST', '/api/documents/generate'): 'generate_document',
     ('POST', '/api/documents/send-email'): 'send_email',
+    ('DELETE', '/api/documents'): 'delete_document',
 
+    # Extracción/Procesamiento
     ('POST', '/api/extraction/ocr'): 'start_ocr',
     ('POST', '/api/extraction/ai'): 'extract_data',
     ('POST', '/api/extraction/edit'): 'validate_data',
 
+    # Templates
     ('POST', '/api/templates/upload'): 'upload_template',
+    ('POST', '/api/templates'): 'create_template',
     ('DELETE', '/api/templates'): 'delete_template',
 
+    # Cancelaciones
     ('POST', '/api/cancelaciones/upload'): 'upload_documents',
     ('POST', '/api/cancelaciones/validate'): 'validate_data',
+    ('POST', '/api/cancelaciones/procesar'): 'process_cancelacion',
+
+    # Configuración/Preferencias
+    ('PUT', '/api/settings'): 'update_settings',
+    ('POST', '/api/settings'): 'update_settings',
 }
 
 # Mapeo de rutas a tipos de entidad
@@ -76,6 +89,48 @@ def extract_entity_type(path: str) -> Optional[str]:
     return 'system'
 
 
+def get_user_info_from_token(request: Request) -> tuple[Optional[str], Optional[str]]:
+    """
+    Extrae user_id y tenant_id del token JWT de Supabase
+
+    Args:
+        request: FastAPI Request object
+
+    Returns:
+        tuple: (user_id, tenant_id) o (None, None) si no se puede extraer
+    """
+    try:
+        auth_header = request.headers.get('authorization')
+        if not auth_header:
+            return None, None
+
+        # Extraer token (quitar "Bearer ")
+        token = auth_header.replace("Bearer ", "")
+
+        # Validar token con Supabase y obtener usuario
+        user_response = supabase.auth.get_user(token)
+
+        if not user_response or not user_response.user:
+            return None, None
+
+        user_id = user_response.user.id
+
+        # Obtener tenant_id de la tabla users
+        result = supabase.table('users')\
+            .select('tenant_id')\
+            .eq('id', user_id)\
+            .single()\
+            .execute()
+
+        tenant_id = result.data.get('tenant_id') if result.data else None
+
+        return str(user_id), str(tenant_id) if tenant_id else None
+
+    except Exception as e:
+        logger.debug("audit_token_extraction_failed", error=str(e))
+        return None, None
+
+
 def get_tenant_id_from_request(request: Request) -> Optional[str]:
     """
     Extrae tenant_id del request (de token o state)
@@ -87,17 +142,14 @@ def get_tenant_id_from_request(request: Request) -> Optional[str]:
         tenant_id o None
     """
     try:
-        # TODO: Activar cuando se implemente autenticación
-        # Buscar en request.state (seteado por dependency)
+        # Primero buscar en request.state (seteado por dependency)
         if hasattr(request.state, 'tenant_id'):
             return str(request.state.tenant_id)
 
-        # O buscar en headers de autorización
-        # auth_header = request.headers.get('authorization')
-        # if auth_header:
-        #     return extract_tenant_from_token(auth_header)
+        # Intentar extraer del token
+        _, tenant_id = get_user_info_from_token(request)
+        return tenant_id
 
-        return None
     except Exception:
         return None
 
@@ -113,11 +165,14 @@ def get_user_id_from_request(request: Request) -> Optional[str]:
         user_id o None
     """
     try:
-        # TODO: Activar cuando se implemente autenticación
+        # Primero buscar en request.state
         if hasattr(request.state, 'user_id'):
             return str(request.state.user_id)
 
-        return None
+        # Intentar extraer del token
+        user_id, _ = get_user_info_from_token(request)
+        return user_id
+
     except Exception:
         return None
 

@@ -1,13 +1,17 @@
 /**
  * useProcessDocument - Main hook for orchestrating document processing workflow
- * Handles: OCR → AI Extraction → Edit → Generate
+ * Handles: Upload → OCR → AI Extraction → Edit → Generate
+ *
+ * CORRECT FLOW:
+ * 1. Upload files via /documents/upload → get session_id
+ * 2. Process OCR via /extraction/ocr?session_id=xxx
+ * 3. Extract with AI via /extraction/ai {session_id, text, document_type}
  */
 
 import { useMutation } from '@tanstack/react-query';
 import { extractionApi, documentsApi } from '@/api/endpoints';
-import { useDocumentStore, useCategoryStore } from '@/store';
+import { useDocumentStore, useCategoryStore, useTemplateStore } from '@/store';
 import type {
-  OCRRequest,
   AIExtractionRequest,
   DocumentGenerationRequest,
   SendEmailRequest,
@@ -26,35 +30,72 @@ export function useProcessDocument() {
   } = useDocumentStore();
 
   const { files } = useCategoryStore();
+  const { selectedTemplate, placeholders } = useTemplateStore();
 
-  // OCR Processing
-  const ocrMutation = useMutation({
-    mutationFn: async (request: OCRRequest) => {
+  // Step 1: Upload categorized documents
+  const uploadMutation = useMutation({
+    mutationFn: async () => {
+      if (!documentType || !selectedTemplate) {
+        throw new Error('Tipo de documento o plantilla no seleccionado');
+      }
+
       setProcessing(true, 'ocr');
       setError(null);
-      return extractionApi.processOCR(request);
-    },
-    onSuccess: (data) => {
-      // Transform OCR results to store format: concatenate text from each category
-      if (data.ocr_results) {
-        const transformedResults: { [category: string]: string } = {};
-        Object.entries(data.ocr_results).forEach(([category, results]) => {
-          transformedResults[category] = results
-            .filter((r) => r.success && r.text)
-            .map((r) => r.text)
-            .join('\n\n');
-        });
-        setOCRResults(transformedResults);
-      }
-      setProcessing(false, 'idle');
+
+      // Transform files from store format to API format
+      const categorizedFiles: Record<Category, File[]> = {
+        parte_a: [],
+        parte_b: [],
+        otros: [],
+      };
+
+      Object.entries(files).forEach(([category, uploadedFiles]) => {
+        const cat = category as Category;
+        categorizedFiles[cat] = uploadedFiles.map((f) => f.file);
+      });
+
+      return documentsApi.uploadCategorized(
+        documentType,
+        selectedTemplate.id,
+        categorizedFiles
+      );
     },
     onError: (error: any) => {
-      setError(error?.message || 'Error durante el OCR');
+      const message = error?.response?.data?.detail || error?.message || 'Error al subir documentos';
+      setError(message);
       setProcessing(false, 'idle');
     },
   });
 
-  // AI Extraction
+  // Step 2: Process OCR
+  const ocrMutation = useMutation({
+    mutationFn: async (sessionId: string) => {
+      setProcessing(true, 'ocr');
+      return extractionApi.processOCR(sessionId);
+    },
+    onSuccess: (data) => {
+      // Transform OCR results to store format: concatenate text from each category
+      if (data.results_by_category) {
+        const transformedResults: { [category: string]: string } = {};
+        Object.entries(data.results_by_category).forEach(([category, results]) => {
+          if (Array.isArray(results)) {
+            transformedResults[category] = results
+              .filter((r) => r.success && r.text)
+              .map((r) => r.text || '')
+              .join('\n\n');
+          }
+        });
+        setOCRResults(transformedResults);
+      }
+    },
+    onError: (error: any) => {
+      const message = error?.response?.data?.detail || error?.message || 'Error durante el OCR';
+      setError(message);
+      setProcessing(false, 'idle');
+    },
+  });
+
+  // Step 3: AI Extraction
   const aiMutation = useMutation({
     mutationFn: async (request: AIExtractionRequest) => {
       setProcessing(true, 'ai');
@@ -63,13 +104,14 @@ export function useProcessDocument() {
     },
     onSuccess: (data) => {
       setExtractedData(data.extracted_data);
-      if (data.confidence !== undefined && data.confidence !== null) {
-        setConfidence(data.confidence);
+      if (data.completeness_percent !== undefined) {
+        setConfidence(data.completeness_percent / 100);
       }
       setProcessing(false, 'complete');
     },
     onError: (error: any) => {
-      setError(error?.message || 'Error durante la extracción con IA');
+      const message = error?.response?.data?.detail || error?.message || 'Error durante la extracción con IA';
+      setError(message);
       setProcessing(false, 'idle');
     },
   });
@@ -80,7 +122,8 @@ export function useProcessDocument() {
       return documentsApi.generate(request);
     },
     onError: (error: any) => {
-      setError(error?.message || 'Error al generar documento');
+      const message = error?.response?.data?.detail || error?.message || 'Error al generar documento';
+      setError(message);
     },
   });
 
@@ -90,41 +133,73 @@ export function useProcessDocument() {
       return documentsApi.sendEmail(request);
     },
     onError: (error: any) => {
-      setError(error?.message || 'Error al enviar email');
+      const message = error?.response?.data?.detail || error?.message || 'Error al enviar email';
+      setError(message);
     },
   });
 
-  // Helper to process full OCR + AI workflow
+  /**
+   * Process full OCR + AI workflow
+   *
+   * CORRECT FLOW:
+   * 1. Upload files to /documents/upload → get session_id
+   * 2. Process OCR with /extraction/ocr?session_id=xxx
+   * 3. Extract with AI using session_id + extracted_text
+   */
   const processFullWorkflow = async () => {
     if (!documentType) {
       setError('Tipo de documento no seleccionado');
       return;
     }
 
-    // Step 1: OCR
-    const categorizedFiles = Object.entries(files).map(([category, uploadedFiles]) => ({
-      category_name: category as Category,
-      files: uploadedFiles.map((f) => f.file),
-    }));
+    if (!selectedTemplate) {
+      setError('Plantilla no seleccionada');
+      return;
+    }
 
-    const ocrRequest: OCRRequest = {
-      document_type: documentType,
-      categorized_files: categorizedFiles,
-    };
+    // Check if there are files to process
+    const hasFiles = Object.values(files).some((categoryFiles) => categoryFiles.length > 0);
+    if (!hasFiles) {
+      setError('No hay documentos para procesar');
+      return;
+    }
 
-    const ocrResult = await ocrMutation.mutateAsync(ocrRequest);
+    try {
+      // Step 1: Upload files and get session_id
+      console.log('[ProcessDocument] Step 1: Uploading files...');
+      const uploadResult = await uploadMutation.mutateAsync();
+      const sessionId = uploadResult.session_id;
+      console.log('[ProcessDocument] Upload complete, session_id:', sessionId);
 
-    // Step 2: AI Extraction
-    const aiRequest: AIExtractionRequest = {
-      document_type: documentType,
-      ocr_results: ocrResult.ocr_results,
-    };
+      // Step 2: Process OCR with session_id
+      console.log('[ProcessDocument] Step 2: Processing OCR...');
+      const ocrResult = await ocrMutation.mutateAsync(sessionId);
+      console.log('[ProcessDocument] OCR complete, extracted_text length:', ocrResult.extracted_text?.length);
 
-    await aiMutation.mutateAsync(aiRequest);
+      // Step 3: AI Extraction with session_id + text
+      console.log('[ProcessDocument] Step 3: Extracting with AI...');
+      const aiRequest: AIExtractionRequest = {
+        session_id: sessionId,
+        text: ocrResult.extracted_text,
+        document_type: documentType,
+        template_placeholders: placeholders.length > 0 ? placeholders : undefined,
+      };
+
+      await aiMutation.mutateAsync(aiRequest);
+      console.log('[ProcessDocument] AI extraction complete');
+
+    } catch (error: any) {
+      console.error('[ProcessDocument] Workflow failed:', error);
+      // Error already set by individual mutations
+    }
   };
 
   // Helper to generate document with current edited data
-  const generateDocument = async (templateId: string, placeholders?: string[], outputFilename?: string) => {
+  const generateDocument = async (
+    templateId: string,
+    placeholdersList?: string[],
+    outputFilename?: string
+  ) => {
     if (!editedData || !documentType) {
       setError('Datos o tipo de documento faltantes');
       return null;
@@ -139,7 +214,7 @@ export function useProcessDocument() {
     const request: DocumentGenerationRequest = {
       template_id: templateId,
       responses,
-      placeholders: placeholders || Object.keys(editedData),
+      placeholders: placeholdersList || Object.keys(editedData),
       output_filename: outputFilename || `documento_${documentType}_${Date.now()}.docx`,
     };
 
@@ -149,6 +224,7 @@ export function useProcessDocument() {
 
   return {
     // Mutations
+    uploadMutation,
     ocrMutation,
     aiMutation,
     generateMutation,
@@ -159,12 +235,13 @@ export function useProcessDocument() {
     generateDocument,
 
     // Loading states
+    isUploading: uploadMutation.isPending,
     isProcessingOCR: ocrMutation.isPending,
     isProcessingAI: aiMutation.isPending,
     isGenerating: generateMutation.isPending,
     isSendingEmail: emailMutation.isPending,
 
     // Overall loading
-    isProcessing: ocrMutation.isPending || aiMutation.isPending,
+    isProcessing: uploadMutation.isPending || ocrMutation.isPending || aiMutation.isPending,
   };
 }

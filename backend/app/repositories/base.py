@@ -2,6 +2,7 @@
 ControlNot v2 - Base Repository
 Repositorio base con métodos CRUD genéricos para todas las entidades
 """
+import time
 from typing import Any, Dict, List, Optional, TypeVar, Generic
 from uuid import UUID
 import structlog
@@ -45,24 +46,41 @@ class BaseRepository(Generic[T]):
         Returns:
             Registro creado o None si falla
         """
+        start_time = time.time()
+        logger.debug(
+            "db_create_starting",
+            table=self.table_name,
+            data_keys=list(data.keys())
+        )
+
         try:
             result = self._table().insert(data).execute()
+            duration_ms = (time.time() - start_time) * 1000
 
             if result.data:
                 logger.info(
-                    f"{self.table_name}_created",
+                    "db_create_complete",
                     table=self.table_name,
-                    id=result.data[0].get('id')
+                    id=result.data[0].get('id'),
+                    duration_ms=round(duration_ms, 2)
                 )
                 return result.data[0]
 
+            logger.warning(
+                "db_create_no_result",
+                table=self.table_name,
+                duration_ms=round(duration_ms, 2)
+            )
             return None
 
         except APIError as e:
+            duration_ms = (time.time() - start_time) * 1000
             logger.error(
-                f"{self.table_name}_create_failed",
+                "db_create_failed",
                 table=self.table_name,
-                error=str(e)
+                error=str(e),
+                error_type=type(e).__name__,
+                duration_ms=round(duration_ms, 2)
             )
             raise
 
@@ -76,6 +94,13 @@ class BaseRepository(Generic[T]):
         Returns:
             Registro encontrado o None
         """
+        start_time = time.time()
+        logger.debug(
+            "db_get_by_id_starting",
+            table=self.table_name,
+            id=str(id)
+        )
+
         try:
             result = self._table()\
                 .select('*')\
@@ -83,16 +108,36 @@ class BaseRepository(Generic[T]):
                 .single()\
                 .execute()
 
+            duration_ms = (time.time() - start_time) * 1000
+            found = result.data is not None
+
+            logger.debug(
+                "db_get_by_id_complete",
+                table=self.table_name,
+                id=str(id),
+                found=found,
+                duration_ms=round(duration_ms, 2)
+            )
+
             return result.data if result.data else None
 
         except APIError as e:
+            duration_ms = (time.time() - start_time) * 1000
             if 'PGRST116' in str(e):  # No rows returned
+                logger.debug(
+                    "db_get_by_id_not_found",
+                    table=self.table_name,
+                    id=str(id),
+                    duration_ms=round(duration_ms, 2)
+                )
                 return None
             logger.error(
-                f"{self.table_name}_get_failed",
+                "db_get_by_id_failed",
                 table=self.table_name,
                 id=str(id),
-                error=str(e)
+                error=str(e),
+                error_type=type(e).__name__,
+                duration_ms=round(duration_ms, 2)
             )
             raise
 
@@ -107,28 +152,49 @@ class BaseRepository(Generic[T]):
         Returns:
             Registro actualizado o None
         """
+        start_time = time.time()
+        logger.debug(
+            "db_update_starting",
+            table=self.table_name,
+            id=str(id),
+            update_fields=list(updates.keys())
+        )
+
         try:
             result = self._table()\
                 .update(updates)\
                 .eq('id', str(id))\
                 .execute()
 
+            duration_ms = (time.time() - start_time) * 1000
+
             if result.data:
                 logger.info(
-                    f"{self.table_name}_updated",
+                    "db_update_complete",
                     table=self.table_name,
-                    id=str(id)
+                    id=str(id),
+                    fields_updated=len(updates),
+                    duration_ms=round(duration_ms, 2)
                 )
                 return result.data[0]
 
+            logger.warning(
+                "db_update_no_result",
+                table=self.table_name,
+                id=str(id),
+                duration_ms=round(duration_ms, 2)
+            )
             return None
 
         except APIError as e:
+            duration_ms = (time.time() - start_time) * 1000
             logger.error(
-                f"{self.table_name}_update_failed",
+                "db_update_failed",
                 table=self.table_name,
                 id=str(id),
-                error=str(e)
+                error=str(e),
+                error_type=type(e).__name__,
+                duration_ms=round(duration_ms, 2)
             )
             raise
 
@@ -142,29 +208,48 @@ class BaseRepository(Generic[T]):
         Returns:
             True si se eliminó, False si no existía
         """
+        start_time = time.time()
+        logger.debug(
+            "db_delete_starting",
+            table=self.table_name,
+            id=str(id)
+        )
+
         try:
             result = self._table()\
                 .delete()\
                 .eq('id', str(id))\
                 .execute()
 
+            duration_ms = (time.time() - start_time) * 1000
             deleted = len(result.data) > 0 if result.data else False
 
             if deleted:
                 logger.info(
-                    f"{self.table_name}_deleted",
+                    "db_delete_complete",
                     table=self.table_name,
-                    id=str(id)
+                    id=str(id),
+                    duration_ms=round(duration_ms, 2)
+                )
+            else:
+                logger.debug(
+                    "db_delete_not_found",
+                    table=self.table_name,
+                    id=str(id),
+                    duration_ms=round(duration_ms, 2)
                 )
 
             return deleted
 
         except APIError as e:
+            duration_ms = (time.time() - start_time) * 1000
             logger.error(
-                f"{self.table_name}_delete_failed",
+                "db_delete_failed",
                 table=self.table_name,
                 id=str(id),
-                error=str(e)
+                error=str(e),
+                error_type=type(e).__name__,
+                duration_ms=round(duration_ms, 2)
             )
             raise
 
@@ -191,6 +276,16 @@ class BaseRepository(Generic[T]):
         Returns:
             Lista de registros
         """
+        start_time = time.time()
+        logger.debug(
+            "db_list_by_tenant_starting",
+            table=self.table_name,
+            tenant_id=str(tenant_id),
+            filters=filters,
+            limit=limit,
+            offset=offset
+        )
+
         try:
             query = self._table()\
                 .select('*')\
@@ -208,15 +303,28 @@ class BaseRepository(Generic[T]):
             query = query.range(offset, offset + limit - 1)
 
             result = query.execute()
+            duration_ms = (time.time() - start_time) * 1000
+            count = len(result.data) if result.data else 0
+
+            logger.debug(
+                "db_list_by_tenant_complete",
+                table=self.table_name,
+                tenant_id=str(tenant_id),
+                results_count=count,
+                duration_ms=round(duration_ms, 2)
+            )
 
             return result.data if result.data else []
 
         except APIError as e:
+            duration_ms = (time.time() - start_time) * 1000
             logger.error(
-                f"{self.table_name}_list_failed",
+                "db_list_by_tenant_failed",
                 table=self.table_name,
                 tenant_id=str(tenant_id),
-                error=str(e)
+                error=str(e),
+                error_type=type(e).__name__,
+                duration_ms=round(duration_ms, 2)
             )
             raise
 
@@ -235,6 +343,14 @@ class BaseRepository(Generic[T]):
         Returns:
             Número de registros
         """
+        start_time = time.time()
+        logger.debug(
+            "db_count_by_tenant_starting",
+            table=self.table_name,
+            tenant_id=str(tenant_id),
+            filters=filters
+        )
+
         try:
             query = self._table()\
                 .select('id', count='exact')\
@@ -245,14 +361,27 @@ class BaseRepository(Generic[T]):
                     query = query.eq(field, value)
 
             result = query.execute()
+            duration_ms = (time.time() - start_time) * 1000
+            count = result.count if result.count is not None else 0
 
-            return result.count if result.count is not None else 0
-
-        except APIError as e:
-            logger.error(
-                f"{self.table_name}_count_failed",
+            logger.debug(
+                "db_count_by_tenant_complete",
                 table=self.table_name,
                 tenant_id=str(tenant_id),
-                error=str(e)
+                count=count,
+                duration_ms=round(duration_ms, 2)
+            )
+
+            return count
+
+        except APIError as e:
+            duration_ms = (time.time() - start_time) * 1000
+            logger.error(
+                "db_count_by_tenant_failed",
+                table=self.table_name,
+                tenant_id=str(tenant_id),
+                error=str(e),
+                error_type=type(e).__name__,
+                duration_ms=round(duration_ms, 2)
             )
             raise

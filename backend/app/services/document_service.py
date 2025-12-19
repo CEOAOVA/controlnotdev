@@ -5,6 +5,7 @@ Generación de documentos Word con reemplazo de placeholders y formato
 Migrado de por_partes.py líneas 1688-1743, 1939-1956
 """
 import re
+import time
 import tempfile
 from typing import Dict, List, Tuple
 from pathlib import Path
@@ -140,6 +141,8 @@ class DocumentGenerator:
                 - total_replaced: int
                 - missing: int (placeholders no encontrados en responses)
         """
+        replace_start = time.time()
+
         stats = {
             'replaced_in_body': 0,
             'replaced_in_tables': 0,
@@ -149,6 +152,11 @@ class DocumentGenerator:
             'missing': 0
         }
 
+        # Log de estructura del documento
+        logger.debug("replacing_placeholders_body",
+            paragraph_count=len(doc.paragraphs),
+            placeholders_to_find=len(placeholders))
+
         # 1. Reemplazar en párrafos del body
         for paragraph in doc.paragraphs:
             stats['replaced_in_body'] += self._replace_in_paragraph(
@@ -157,6 +165,9 @@ class DocumentGenerator:
                 placeholders
             )
 
+        logger.debug("replacing_placeholders_tables",
+            table_count=len(doc.tables))
+
         # 2. Reemplazar en tablas
         for table in doc.tables:
             stats['replaced_in_tables'] += self._replace_in_table(
@@ -164,6 +175,9 @@ class DocumentGenerator:
                 responses,
                 placeholders
             )
+
+        logger.debug("replacing_placeholders_headers",
+            section_count=len(doc.sections))
 
         # 3. Reemplazar en headers
         for section in doc.sections:
@@ -182,6 +196,9 @@ class DocumentGenerator:
                     responses,
                     placeholders
                 )
+
+        logger.debug("replacing_placeholders_footers",
+            section_count=len(doc.sections))
 
         # 4. Reemplazar en footers
         for section in doc.sections:
@@ -209,10 +226,24 @@ class DocumentGenerator:
             stats['replaced_in_footers']
         )
 
-        # Contar placeholders sin valor
+        # Contar placeholders sin valor y guardar cuáles faltan
+        missing_placeholders = []
         for placeholder in placeholders:
             if placeholder not in responses or responses[placeholder] == self.DEFAULT_MISSING:
                 stats['missing'] += 1
+                missing_placeholders.append(placeholder)
+
+        # Log de resumen con duración
+        replace_duration = (time.time() - replace_start) * 1000
+        logger.info("placeholders_replaced_summary",
+            total_found=stats['total_replaced'],
+            replaced_in_body=stats['replaced_in_body'],
+            replaced_in_tables=stats['replaced_in_tables'],
+            replaced_in_headers=stats['replaced_in_headers'],
+            replaced_in_footers=stats['replaced_in_footers'],
+            missing_count=stats['missing'],
+            missing_keys=missing_placeholders[:10] if missing_placeholders else [],
+            duration_ms=round(replace_duration, 2))
 
         return stats
 
@@ -352,11 +383,14 @@ class DocumentGenerator:
             >>> print(stats)
             {'total_replaced': 2, 'missing': 1, ...}
         """
+        gen_start = time.time()
+
         logger.info(
-            "Generando documento",
+            "document_generation_starting",
             output_filename=output_filename,
             placeholders_count=len(placeholders),
-            responses_count=len(responses)
+            responses_count=len(responses),
+            template_size_bytes=len(template_content)
         )
 
         # Crear archivo temporal para el template
@@ -365,39 +399,73 @@ class DocumentGenerator:
             temp_template.write(template_content)
             temp_template.flush()
 
+        logger.debug("temp_file_created",
+            path=str(temp_template_path),
+            size_bytes=len(template_content))
+
         try:
             # Abrir template
             doc = Document(temp_template_path)
 
+            logger.debug("template_opened",
+                paragraphs=len(doc.paragraphs),
+                tables=len(doc.tables),
+                sections=len(doc.sections))
+
             # 1. Reemplazar placeholders
+            replace_start = time.time()
             replace_stats = self._replace_placeholders_in_document(
                 doc,
                 responses,
                 placeholders
             )
+            replace_duration = (time.time() - replace_start) * 1000
 
             # 2. Aplicar formato negrita
+            bold_start = time.time()
             bold_conversions = self._apply_bold_formatting(doc)
+            bold_duration = (time.time() - bold_start) * 1000
+
+            logger.debug("bold_formatting_complete",
+                conversions=bold_conversions,
+                duration_ms=round(bold_duration, 2))
 
             # Guardar en BytesIO
+            save_start = time.time()
             output_buffer = BytesIO()
             doc.save(output_buffer)
             output_buffer.seek(0)
+            save_duration = (time.time() - save_start) * 1000
+
+            output_bytes = output_buffer.getvalue()
+
+            logger.debug("document_saved_to_buffer",
+                size_bytes=len(output_bytes),
+                duration_ms=round(save_duration, 2))
 
             # Estadísticas completas
+            gen_duration = (time.time() - gen_start) * 1000
             stats = {
                 **replace_stats,
                 'bold_conversions': bold_conversions,
                 'output_filename': output_filename,
-                'output_size_bytes': len(output_buffer.getvalue())
+                'output_size_bytes': len(output_bytes)
             }
 
             logger.info(
-                "Documento generado exitosamente",
-                **stats
+                "document_generation_complete",
+                output_filename=output_filename,
+                output_size_bytes=len(output_bytes),
+                total_replaced=replace_stats['total_replaced'],
+                missing=replace_stats['missing'],
+                bold_conversions=bold_conversions,
+                duration_ms=round(gen_duration, 2),
+                replace_ms=round(replace_duration, 2),
+                bold_ms=round(bold_duration, 2),
+                save_ms=round(save_duration, 2)
             )
 
-            return output_buffer.getvalue(), stats
+            return output_bytes, stats
 
         except Exception as e:
             logger.error(

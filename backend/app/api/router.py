@@ -11,6 +11,7 @@ Estructura de rutas:
 - /api/health             - Health checks
 - /api/models/*           - Modelos AI y tipos
 - /api/cancelaciones/*    - Cancelaciones de hipotecas
+- /api/auth/*             - Logging de eventos de autenticación
 """
 from fastapi import APIRouter
 import structlog
@@ -23,7 +24,8 @@ from app.api.endpoints import (
     extraction_router,
     health_router,
     models_router,
-    cancelaciones_router
+    cancelaciones_router,
+    auth_router
 )
 
 logger = structlog.get_logger()
@@ -103,6 +105,14 @@ def include_all_routers():
         # tags: ["Cancelaciones"]
     )
     logger.debug("Router de cancelaciones incluido")
+
+    # 9. Auth - Logging de eventos de autenticación
+    api_router.include_router(
+        auth_router,
+        # prefix: /auth
+        # tags: ["Auth"]
+    )
+    logger.debug("Router de auth incluido")
 
     logger.info("Todos los routers incluidos exitosamente")
 
