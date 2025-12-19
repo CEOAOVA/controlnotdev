@@ -196,7 +196,10 @@ async def get_current_tenant_id(authorization: str = Header(..., alias="Authoriz
         user = await get_current_user(authorization)
 
         # Query users table to get tenant_id
-        result = supabase.table('users')\
+        # IMPORTANTE: Usamos admin client para bypassear RLS ya que el cliente
+        # anon no puede ver la tabla users (RLS requiere auth.uid() que es NULL aquí)
+        admin_client = get_supabase_admin_client()
+        result = admin_client.table('users')\
             .select('tenant_id')\
             .eq('id', user['id'])\
             .single()\
