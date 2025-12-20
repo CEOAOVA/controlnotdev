@@ -53,7 +53,7 @@ from app.services import (
 from app.services.email_service import EmailService
 from app.services.supabase_storage_service import SupabaseStorageService
 from app.core.dependencies import get_email_service, get_supabase_storage, get_user_tenant_id
-from app.database import get_supabase_client
+from app.database import supabase_admin
 from app.core.config import get_settings
 from app.repositories.session_repository import session_repository
 from app.repositories.uploaded_file_repository import uploaded_file_repository
@@ -63,7 +63,6 @@ import hashlib
 logger = structlog.get_logger()
 router = APIRouter(prefix="/documents", tags=["Documents"])
 settings = get_settings()
-supabase = get_supabase_client()
 
 # Configuración de validación de archivos
 ALLOWED_MIME_TYPES = [
@@ -825,8 +824,8 @@ async def preview_document(
             )
 
             try:
-                # Buscar en tabla templates
-                result = supabase.table('templates').select('*').eq(
+                # Buscar en tabla templates (usar supabase_admin para bypasear RLS)
+                result = supabase_admin.table('templates').select('*').eq(
                     'id', request.template_id
                 ).eq('tenant_id', tenant_id).single().execute()
 
