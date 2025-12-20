@@ -26,7 +26,8 @@ from app.api.endpoints import (
     models_router,
     cancelaciones_router,
     auth_router,
-    notary_profile_router
+    notary_profile_router,
+    template_versions_router
 )
 
 logger = structlog.get_logger()
@@ -122,6 +123,14 @@ def include_all_routers():
         # tags: ["Notary Profile"]
     )
     logger.debug("Router de notary-profile incluido")
+
+    # 11. Template Versions - Versionamiento de templates
+    api_router.include_router(
+        template_versions_router,
+        # prefix: /templates (mismo que templates, endpoints anidados)
+        # tags: ["Template Versions"]
+    )
+    logger.debug("Router de template-versions incluido")
 
     logger.info("Todos los routers incluidos exitosamente")
 

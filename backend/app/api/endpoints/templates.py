@@ -30,7 +30,8 @@ from app.services import (
     map_placeholders_to_keys_by_type,
     get_all_document_types,
     SessionManager,
-    get_session_manager
+    get_session_manager,
+    TemplateVersionService
 )
 from app.services.supabase_storage_service import SupabaseStorageService
 from app.core.dependencies import (
@@ -169,81 +170,129 @@ async def upload_template(
             }
         )
 
-        # Persistir en Supabase Storage
-        storage_start = time.time()
-        storage_path = None
-        storage_duration = 0
-        try:
-            logger.debug(
-                "template_storage_upload_starting",
-                bucket="templates",
-                tenant_id=tenant_id,
-                filename=file.filename,
-                size_bytes=len(content)
-            )
-
-            storage_result = await supabase_storage.save_template(
-                file_name=file.filename,
-                content=content,
-                tenant_id=tenant_id
-            )
-            storage_path = storage_result.get('path', f"{tenant_id}/{file.filename}")
-            storage_duration = (time.time() - storage_start) * 1000
-
-            logger.info(
-                "template_storage_upload_complete",
-                tenant_id=tenant_id,
-                path=storage_path,
-                duration_ms=round(storage_duration, 2)
-            )
-        except Exception as storage_error:
-            storage_duration = (time.time() - storage_start) * 1000
-            logger.error(
-                "template_storage_upload_failed",
-                error=str(storage_error),
-                error_type=type(storage_error).__name__,
-                duration_ms=round(storage_duration, 2)
-            )
-
-        # Insertar registro en tabla templates
+        # ============================================================
+        # VERSIONAMIENTO: Buscar si existe template con mismo nombre
+        # ============================================================
         db_start = time.time()
         db_template_id = template_id  # Default al ID temporal
-        db_duration = 0
+        version_number = 1
+        is_new_template = True
+        existing_template = None
+
         try:
-            logger.debug(
-                "template_db_insert_starting",
-                table="templates",
-                tenant_id=tenant_id,
+            # Buscar template existente por nombre + tenant
+            existing_result = supabase_admin.table('templates').select(
+                'id, nombre, storage_path'
+            ).eq('nombre', file.filename).eq('tenant_id', tenant_id).limit(1).execute()
+
+            if existing_result.data and len(existing_result.data) > 0:
+                existing_template = existing_result.data[0]
+                db_template_id = str(existing_template['id'])
+                is_new_template = False
+                logger.info(
+                    "template_existing_found",
+                    template_id=db_template_id,
+                    filename=file.filename,
+                    tenant_id=tenant_id
+                )
+        except Exception as lookup_error:
+            logger.warning(
+                "template_lookup_failed",
+                error=str(lookup_error),
                 filename=file.filename
             )
 
-            template_record = supabase_admin.table('templates').insert({
-                'tenant_id': tenant_id,
-                'tipo_documento': document_type,
-                'nombre': file.filename,
-                'storage_path': storage_path,
-                'placeholders': placeholders,
-                'total_placeholders': len(placeholders)
-            }).execute()
-
-            db_duration = (time.time() - db_start) * 1000
-
-            if template_record.data:
-                db_template_id = str(template_record.data[0]['id'])
-                logger.info(
-                    "template_db_insert_complete",
-                    db_template_id=db_template_id,
+        # ============================================================
+        # Crear nuevo template si no existe
+        # ============================================================
+        if is_new_template:
+            try:
+                logger.debug(
+                    "template_db_insert_starting",
+                    table="templates",
                     tenant_id=tenant_id,
-                    duration_ms=round(db_duration, 2)
+                    filename=file.filename
                 )
-        except Exception as db_error:
-            db_duration = (time.time() - db_start) * 1000
-            logger.error(
-                "template_db_insert_failed",
-                error=str(db_error),
-                error_type=type(db_error).__name__,
-                duration_ms=round(db_duration, 2)
+
+                template_record = supabase_admin.table('templates').insert({
+                    'tenant_id': tenant_id,
+                    'tipo_documento': document_type,
+                    'nombre': file.filename,
+                    'storage_path': None,  # Se actualizará con la versión
+                    'placeholders': placeholders,
+                    'total_placeholders': len(placeholders)
+                }).execute()
+
+                if template_record.data:
+                    db_template_id = str(template_record.data[0]['id'])
+                    logger.info(
+                        "template_db_insert_complete",
+                        db_template_id=db_template_id,
+                        tenant_id=tenant_id
+                    )
+            except Exception as db_error:
+                logger.error(
+                    "template_db_insert_failed",
+                    error=str(db_error),
+                    error_type=type(db_error).__name__
+                )
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Error al crear template: {str(db_error)}"
+                )
+
+        # ============================================================
+        # Crear versión del template (nueva o actualización)
+        # ============================================================
+        version_start = time.time()
+        storage_path = None
+        try:
+            version_service = TemplateVersionService(storage_service=supabase_storage)
+            version_result = await version_service.create_version(
+                template_id=db_template_id,
+                content=content,
+                placeholders=placeholders,
+                placeholder_mapping=placeholder_mapping,
+                tenant_id=tenant_id,
+                notas=f"{'Nueva versión' if not is_new_template else 'Versión inicial'} - {document_type}"
             )
+
+            version_number = version_result['version_number']
+            storage_path = version_result['storage_path']
+            version_duration = (time.time() - version_start) * 1000
+
+            logger.info(
+                "template_version_created",
+                template_id=db_template_id,
+                version_number=version_number,
+                is_new_template=is_new_template,
+                storage_path=storage_path,
+                duration_ms=round(version_duration, 2)
+            )
+        except Exception as version_error:
+            version_duration = (time.time() - version_start) * 1000
+            logger.error(
+                "template_version_create_failed",
+                template_id=db_template_id,
+                error=str(version_error),
+                duration_ms=round(version_duration, 2)
+            )
+            # Fallback: guardar directamente en storage sin versionamiento
+            try:
+                storage_result = await supabase_storage.save_template(
+                    file_name=file.filename,
+                    content=content,
+                    tenant_id=tenant_id
+                )
+                storage_path = storage_result.get('path', f"{tenant_id}/{file.filename}")
+                # Actualizar storage_path del template
+                supabase_admin.table('templates').update({
+                    'storage_path': storage_path
+                }).eq('id', db_template_id).execute()
+            except Exception as fallback_error:
+                logger.error("template_fallback_storage_failed", error=str(fallback_error))
+
+        db_duration = (time.time() - db_start) * 1000
 
         # Resumen final del endpoint
         total_duration = (time.time() - upload_start) * 1000
@@ -252,12 +301,13 @@ async def upload_template(
             template_id=db_template_id,
             filename=file.filename,
             document_type=document_type,
+            version_number=version_number,
+            is_new_template=is_new_template,
             placeholders_count=len(placeholders),
             total_ms=round(total_duration, 2),
             extract_ms=round(extract_duration, 2),
             detect_ms=round(detect_duration, 2),
             map_ms=round(map_duration, 2),
-            storage_ms=round(storage_duration, 2),
             db_ms=round(db_duration, 2)
         )
 

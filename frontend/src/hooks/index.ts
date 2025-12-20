@@ -10,3 +10,4 @@ export { useCases } from './useCases';
 export { useDocuments } from './useDocuments';
 export { useToast } from './useToast';
 export { useFieldMetadata } from './useFieldMetadata';
+export { useTemplateVersions, useTemplateVersion } from './useTemplateVersions';

@@ -25,6 +25,7 @@ from app.api.endpoints.models import router as models_router
 from app.api.endpoints.cancelaciones import router as cancelaciones_router
 from app.api.endpoints.auth import router as auth_router
 from app.api.endpoints.notary_profile import router as notary_profile_router
+from app.api.endpoints.template_versions import router as template_versions_router
 
 
 __all__ = [
@@ -38,4 +39,5 @@ __all__ = [
     "cancelaciones_router",
     "auth_router",
     "notary_profile_router",
+    "template_versions_router",
 ]

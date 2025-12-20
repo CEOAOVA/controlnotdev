@@ -87,18 +87,25 @@ class SupabaseStorageService:
                 db_start = time.time()
                 if tenant_id and include_public:
                     # Templates del tenant + públicos (tenant_id es null)
+                    # FILTRO: Solo templates con storage_path válido, ordenados por fecha desc
                     result = self.client.table('templates').select("*").or_(
                         f"tenant_id.eq.{tenant_id},tenant_id.is.null"
+                    ).not_.is_('storage_path', 'null').order(
+                        'created_at', desc=True
                     ).execute()
                 elif tenant_id:
                     # Solo templates del tenant
                     result = self.client.table('templates').select("*").eq(
                         'tenant_id', tenant_id
+                    ).not_.is_('storage_path', 'null').order(
+                        'created_at', desc=True
                     ).execute()
                 else:
                     # Solo templates públicos
                     result = self.client.table('templates').select("*").is_(
                         'tenant_id', 'null'
+                    ).not_.is_('storage_path', 'null').order(
+                        'created_at', desc=True
                     ).execute()
 
                 db_duration = (time.time() - db_start) * 1000
@@ -108,10 +115,18 @@ class SupabaseStorageService:
                     duration_ms=round(db_duration, 2)
                 )
 
+                # Deduplicar por nombre: mantener solo el más reciente (ya ordenado por created_at DESC)
+                seen_names = {}
                 for record in result.data:
+                    template_name = record.get('nombre', '')
+                    # Si ya vimos este nombre, saltar (es una versión más vieja)
+                    if template_name in seen_names:
+                        continue
+                    seen_names[template_name] = True
+
                     templates.append({
                         'id': str(record.get('id', '')),
-                        'name': record.get('nombre', ''),
+                        'name': template_name,
                         'document_type': record.get('tipo_documento'),  # CLAVE: Incluir tipo
                         'source': 'supabase',
                         'storage_path': record.get('storage_path', ''),

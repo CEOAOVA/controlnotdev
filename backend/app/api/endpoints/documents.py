@@ -833,24 +833,40 @@ async def preview_document(
                 if result.data:
                     template_db = result.data
                     storage_path = template_db.get('storage_path')
+                    template_name = template_db.get('nombre', 'desconocido')
 
-                    if storage_path:
-                        # Descargar desde Supabase Storage
-                        template_content = supabase_storage.read_template(storage_path)
-
-                        # Cachear en SessionManager para futuras peticiones
-                        session_manager.store_template_session(request.template_id, {
-                            'content': template_content,
-                            'tipo_documento': template_db.get('tipo_documento'),
-                            'filename': template_db.get('nombre'),
-                            'placeholders': template_db.get('placeholders', [])
-                        })
-
-                        logger.info(
-                            "template_loaded_from_storage",
+                    if not storage_path:
+                        # Template existe en BD pero sin archivo en Storage
+                        logger.warning(
+                            "template_missing_storage_path",
                             template_id=request.template_id,
-                            storage_path=storage_path
+                            template_name=template_name,
+                            created_at=template_db.get('created_at')
                         )
+                        raise HTTPException(
+                            status_code=404,
+                            detail=f"El template '{template_name}' no tiene archivo asociado. Por favor, vuelva a subirlo desde la sección de Templates."
+                        )
+
+                    # Descargar desde Supabase Storage
+                    template_content = supabase_storage.read_template(storage_path)
+
+                    # Cachear en SessionManager para futuras peticiones
+                    session_manager.store_template_session(request.template_id, {
+                        'content': template_content,
+                        'tipo_documento': template_db.get('tipo_documento'),
+                        'filename': template_name,
+                        'placeholders': template_db.get('placeholders', [])
+                    })
+
+                    logger.info(
+                        "template_loaded_from_storage",
+                        template_id=request.template_id,
+                        storage_path=storage_path
+                    )
+            except HTTPException:
+                # Re-raise HTTPExceptions (mensajes de error específicos)
+                raise
             except Exception as db_error:
                 logger.warning(
                     "template_database_lookup_failed",

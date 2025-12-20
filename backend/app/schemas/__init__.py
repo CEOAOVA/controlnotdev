@@ -70,6 +70,17 @@ from app.schemas.email_schemas import (
     EmailResponse
 )
 
+# ===== VERSION SCHEMAS =====
+from app.schemas.version_schemas import (
+    TemplateVersionCreate,
+    TemplateVersionResponse,
+    TemplateVersionListResponse,
+    VersionCompareRequest,
+    VersionCompareResponse,
+    ActivateVersionRequest,
+    ActivateVersionResponse
+)
+
 
 __all__ = [
     # Response Schemas
@@ -122,4 +133,13 @@ __all__ = [
     # Email Schemas
     "EmailRequest",
     "EmailResponse",
+
+    # Version Schemas
+    "TemplateVersionCreate",
+    "TemplateVersionResponse",
+    "TemplateVersionListResponse",
+    "VersionCompareRequest",
+    "VersionCompareResponse",
+    "ActivateVersionRequest",
+    "ActivateVersionResponse",
 ]

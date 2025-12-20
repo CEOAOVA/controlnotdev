@@ -96,6 +96,11 @@ from app.services.image_preprocessing_service import (
     get_image_preprocessing_service
 )
 
+# Template Version Service
+from app.services.template_version_service import (
+    TemplateVersionService
+)
+
 __all__ = [
     # Classification
     "detect_document_type",
@@ -152,4 +157,7 @@ __all__ = [
     # Image Preprocessing
     "ImagePreprocessingService",
     "get_image_preprocessing_service",
+
+    # Template Version
+    "TemplateVersionService",
 ]
