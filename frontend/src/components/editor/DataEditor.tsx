@@ -227,6 +227,8 @@ export function DataEditor() {
                     description={field.help}
                     type={inputType}
                     required={field.required}
+                    optional={field.optional}
+                    source={field.source}
                   />
                 );
               })}

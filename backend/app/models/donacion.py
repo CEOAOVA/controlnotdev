@@ -138,12 +138,14 @@ Si después de excluir al donador no queda nadie con documentos de identidad: 'N
 
     Numero_Registro: Optional[str] = Field(
         None,
-        description="Número de inscripción RPP en palabras MAYÚSCULAS. Ejemplo: VEINTISIETE"
+        description="Número de inscripción RPP en palabras MAYÚSCULAS. Ejemplo: VEINTISIETE",
+        json_schema_extra={"optional_field": True, "source": "boleta_rpp"}
     )
 
     Numero_tomo_Registro: Optional[str] = Field(
         None,
-        description="Tomo del RPP en palabras MAYÚSCULAS. Ejemplo: TRESCIENTOS OCHENTA Y UNO"
+        description="Tomo del RPP en palabras MAYÚSCULAS. Ejemplo: TRESCIENTOS OCHENTA Y UNO",
+        json_schema_extra={"optional_field": True, "source": "boleta_rpp"}
     )
 
     Nombre_ANTECEDENTE_TRANSMITENTE: Optional[str] = Field(
@@ -185,12 +187,37 @@ Si después de excluir al donador no queda nadie con documentos de identidad: 'N
     # Datos personales Donador
     Edad_Parte_Donadora: Optional[str] = Field(
         None,
-        description="Edad en letras + años. Ejemplo: ochenta años"
+        description="""CALCULAR la edad del DONADOR a partir de su fecha de nacimiento.
+
+FORMATO DE SALIDA: número en palabras + "años"
+Ejemplo: ochenta años, sesenta y un años
+
+PROCESO DE CÁLCULO:
+1. Localiza la fecha de nacimiento del DONADOR en:
+   - Acta de Nacimiento (fecha registrada)
+   - INE/IFE (fecha de nacimiento)
+   - CURP (los 6 dígitos después de las letras = AAMMDD)
+2. Calcula: año_actual - año_de_nacimiento
+3. Si el cumpleaños de este año aún no ha pasado, resta 1
+4. Convierte el número a palabras en español
+
+CONVERSIÓN A PALABRAS:
+- 45 = cuarenta y cinco años
+- 61 = sesenta y un años
+- 78 = setenta y ocho años
+- 82 = ochenta y dos años
+
+Si no encuentras fecha de nacimiento: '**[NO ENCONTRADO]**'"""
     )
 
     Dia_nacimiento_Parte_Donadora: Optional[str] = Field(
         None,
-        description="Fecha de nacimiento completa en palabras minúsculas"
+        description="""Fecha de nacimiento del DONADOR en palabras minúsculas.
+
+FORMATO: día de mes de año (todo en palabras)
+Ejemplo: trece de agosto de mil novecientos sesenta y cuatro
+
+FUENTES: Acta de Nacimiento, INE, CURP"""
     )
 
     Origen_Parte_Donadora: Optional[str] = Field(
@@ -236,21 +263,56 @@ Si después de excluir al donador no queda nadie con documentos de identidad: 'N
     Parte_Donadora_Ocupacion: Optional[str] = Field(
         None,
         description="""FORMATO DE SALIDA: Ocupación en minúsculas
-Ejemplo: comerciante
+Ejemplo: comerciante, empleado, hogar, jubilado
 
-Extrae la ocupación o profesión del DONADOR.
-Fuente: Acta de nacimiento, manifestación en generales o INE."""
+FUENTES DE BÚSQUEDA (en orden de prioridad):
+1. MANIFESTACIÓN EN GENERALES: Buscar frases como "de ocupación...", "dedicado a...", "se dedica a..."
+2. ACTA DE NACIMIENTO: Sección de anotaciones marginales o datos de los padres
+3. INE/IFE: Algunos formatos incluyen ocupación
+
+OCUPACIONES COMUNES EN NOTARÍAS:
+- Profesiones: licenciado, ingeniero, contador, arquitecto, médico, abogado
+- Oficios: comerciante, empleado, obrero, agricultor, ganadero, artesano
+- Sin actividad: hogar, jubilado, pensionado, estudiante
+
+IMPORTANTE: Usa minúsculas sin artículo (no "el comerciante", solo "comerciante")
+
+Si no encuentras ocupación explícita: '**[NO ENCONTRADO]**'"""
     )
 
     # Datos personales Donatario
     Edad_Parte_Donataria: Optional[str] = Field(
         None,
-        description="Edad en letras + años. Ejemplo: treinta y siete años"
+        description="""CALCULAR la edad del DONATARIO a partir de su fecha de nacimiento.
+
+FORMATO DE SALIDA: número en palabras + "años"
+Ejemplo: treinta y siete años, cuarenta y cinco años
+
+PROCESO DE CÁLCULO:
+1. Localiza la fecha de nacimiento del DONATARIO en:
+   - Acta de Nacimiento (fecha registrada)
+   - INE/IFE (fecha de nacimiento)
+   - CURP (los 6 dígitos después de las letras = AAMMDD)
+2. Calcula: año_actual - año_de_nacimiento
+3. Si el cumpleaños de este año aún no ha pasado, resta 1
+4. Convierte el número a palabras en español
+
+CONVERSIÓN A PALABRAS:
+- 37 = treinta y siete años
+- 45 = cuarenta y cinco años
+- 52 = cincuenta y dos años
+
+Si no encuentras fecha de nacimiento: '**[NO ENCONTRADO]**'"""
     )
 
     Dia_nacimiento_Parte_Donataria: Optional[str] = Field(
         None,
-        description="Fecha de nacimiento completa en palabras minúsculas"
+        description="""Fecha de nacimiento del DONATARIO en palabras minúsculas.
+
+FORMATO: día de mes de año (todo en palabras)
+Ejemplo: veintidós de marzo de mil novecientos ochenta y ocho
+
+FUENTES: Acta de Nacimiento, INE, CURP"""
     )
 
     Origen_Parte_Donataria: Optional[str] = Field(
@@ -296,10 +358,21 @@ Fuente: Acta de nacimiento, manifestación en generales o INE."""
     Parte_Donataria_Ocupacion: Optional[str] = Field(
         None,
         description="""FORMATO DE SALIDA: Ocupación en minúsculas
-Ejemplo: empleado
+Ejemplo: empleado, comerciante, hogar, estudiante
 
-Extrae la ocupación o profesión del DONATARIO.
-Fuente: Acta de nacimiento, manifestación en generales o INE."""
+FUENTES DE BÚSQUEDA (en orden de prioridad):
+1. MANIFESTACIÓN EN GENERALES: Buscar frases como "de ocupación...", "dedicado a...", "se dedica a..."
+2. ACTA DE NACIMIENTO: Sección de anotaciones marginales
+3. INE/IFE: Algunos formatos incluyen ocupación
+
+OCUPACIONES COMUNES EN NOTARÍAS:
+- Profesiones: licenciado, ingeniero, contador, arquitecto, médico, abogado
+- Oficios: comerciante, empleado, obrero, agricultor, ganadero, artesano
+- Sin actividad: hogar, jubilado, pensionado, estudiante
+
+IMPORTANTE: Usa minúsculas sin artículo (no "la empleada", solo "empleada")
+
+Si no encuentras ocupación explícita: '**[NO ENCONTRADO]**'"""
     )
 
     # Documentos oficiales
@@ -355,14 +428,64 @@ Si no aparece: 'NO LOCALIZADO'"""
 
     Estado_civil_acreditacion_Parte_Donataria: Optional[str] = Field(
         None,
-        description="""Estado civil del donatario y documento que lo acredita.
-Ejemplo: tal y como lo acredita con la copia certificada de su acta de matrimonio la cual quedará agregada al apéndice de la presente escritura"""
+        description="""FRASE LEGAL COMPLETA que acredita el estado civil del DONATARIO.
+
+FORMATO POR ESTADO CIVIL:
+
+CASADO(A):
+"tal y como lo acredita con la copia certificada de su acta de matrimonio la cual quedará agregada al apéndice de la presente escritura"
+
+SOLTERO(A):
+"estado civil que manifiesta bajo protesta de decir verdad"
+(alternativa: "tal y como lo acredita con su acta de nacimiento en donde no aparece anotación marginal de matrimonio")
+
+VIUDO(A):
+"tal y como lo acredita con la copia certificada del acta de defunción de quien en vida fue su cónyuge"
+
+DIVORCIADO(A):
+"tal y como lo acredita con la sentencia de divorcio debidamente ejecutoriada"
+
+UNIÓN LIBRE:
+"estado civil que manifiesta bajo protesta de decir verdad"
+
+INSTRUCCIÓN:
+1. Identifica el estado civil del DONATARIO (casado, soltero, viudo, divorciado)
+2. Busca el documento que lo acredita entre los documentos adjuntos
+3. Genera la frase legal correspondiente
+
+Si solo hay manifestación verbal: 'estado civil que manifiesta bajo protesta de decir verdad'
+Si no hay información: '**[NO ENCONTRADO]**'"""
     )
 
     Estado_civil_acreditacion_Parte_Donadora: Optional[str] = Field(
         None,
-        description="""Estado civil del donador y documento que lo acredita.
-Ejemplo: tal y como lo acredita con la copia certificada de su acta de matrimonio la cual quedará agregada al apéndice de la presente escritura"""
+        description="""FRASE LEGAL COMPLETA que acredita el estado civil del DONADOR.
+
+FORMATO POR ESTADO CIVIL:
+
+CASADO(A):
+"tal y como lo acredita con la copia certificada de su acta de matrimonio la cual quedará agregada al apéndice de la presente escritura"
+
+SOLTERO(A):
+"estado civil que manifiesta bajo protesta de decir verdad"
+(alternativa: "tal y como lo acredita con su acta de nacimiento en donde no aparece anotación marginal de matrimonio")
+
+VIUDO(A):
+"tal y como lo acredita con la copia certificada del acta de defunción de quien en vida fue su cónyuge"
+
+DIVORCIADO(A):
+"tal y como lo acredita con la sentencia de divorcio debidamente ejecutoriada"
+
+UNIÓN LIBRE:
+"estado civil que manifiesta bajo protesta de decir verdad"
+
+INSTRUCCIÓN:
+1. Identifica el estado civil del DONADOR (casado, soltero, viudo, divorciado)
+2. Busca el documento que lo acredita entre los documentos adjuntos
+3. Genera la frase legal correspondiente
+
+Si solo hay manifestación verbal: 'estado civil que manifiesta bajo protesta de decir verdad'
+Si no hay información: '**[NO ENCONTRADO]**'"""
     )
 
     Acreditacion_Parentesco: Optional[str] = Field(

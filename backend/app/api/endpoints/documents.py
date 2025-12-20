@@ -769,7 +769,9 @@ async def generate_document(
 @router.post("/preview", response_model=DocumentPreviewResponse)
 async def preview_document(
     request: DocumentPreviewRequest,
-    session_manager: SessionManager = Depends(get_session_manager)
+    session_manager: SessionManager = Depends(get_session_manager),
+    supabase_storage: SupabaseStorageService = Depends(get_supabase_storage),
+    tenant_id: str = Depends(get_user_tenant_id)
 ):
     """
     Genera preview del documento sin guardarlo permanentemente
@@ -803,16 +805,64 @@ async def preview_document(
     )
 
     try:
-        # 1. Obtener template desde SessionManager
+        # 1. Obtener template con fallback: SessionManager -> BD + Supabase Storage
         template_session = session_manager.get_template_session(request.template_id)
+        template_content = None
 
-        if not template_session:
-            raise HTTPException(
-                status_code=404,
-                detail="Template no encontrado en sesión"
+        if template_session and template_session.get('content'):
+            # Encontrado en cache de sesión
+            template_content = template_session['content']
+            logger.debug(
+                "template_found_in_session",
+                template_id=request.template_id
+            )
+        else:
+            # Fallback: Buscar en base de datos + Supabase Storage
+            logger.info(
+                "template_not_in_session_trying_database",
+                template_id=request.template_id,
+                tenant_id=tenant_id
             )
 
-        template_content = template_session['content']
+            try:
+                # Buscar en tabla templates
+                result = supabase.table('templates').select('*').eq(
+                    'id', request.template_id
+                ).eq('tenant_id', tenant_id).single().execute()
+
+                if result.data:
+                    template_db = result.data
+                    storage_path = template_db.get('storage_path')
+
+                    if storage_path:
+                        # Descargar desde Supabase Storage
+                        template_content = supabase_storage.read_template(storage_path)
+
+                        # Cachear en SessionManager para futuras peticiones
+                        session_manager.store_template_session(request.template_id, {
+                            'content': template_content,
+                            'tipo_documento': template_db.get('tipo_documento'),
+                            'filename': template_db.get('nombre'),
+                            'placeholders': template_db.get('placeholders', [])
+                        })
+
+                        logger.info(
+                            "template_loaded_from_storage",
+                            template_id=request.template_id,
+                            storage_path=storage_path
+                        )
+            except Exception as db_error:
+                logger.warning(
+                    "template_database_lookup_failed",
+                    template_id=request.template_id,
+                    error=str(db_error)
+                )
+
+        if not template_content:
+            raise HTTPException(
+                status_code=404,
+                detail="Template no encontrado en sesión ni en base de datos"
+            )
 
         # 2. Leer documento Word para extraer texto y placeholders
         doc_stream = BytesIO(template_content)

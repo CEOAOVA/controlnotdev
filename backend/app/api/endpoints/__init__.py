@@ -12,6 +12,7 @@ Endpoints disponibles:
 7. models - Modelos AI y tipos de documento
 8. cancelaciones - Procesamiento especializado de cancelaciones de hipotecas
 9. auth - Logging de eventos de autenticación
+10. notary_profile - Perfil de notaría (datos del instrumento)
 """
 
 from app.api.endpoints.clients import router as clients_router
@@ -23,6 +24,7 @@ from app.api.endpoints.health import router as health_router
 from app.api.endpoints.models import router as models_router
 from app.api.endpoints.cancelaciones import router as cancelaciones_router
 from app.api.endpoints.auth import router as auth_router
+from app.api.endpoints.notary_profile import router as notary_profile_router
 
 
 __all__ = [
@@ -35,4 +37,5 @@ __all__ = [
     "models_router",
     "cancelaciones_router",
     "auth_router",
+    "notary_profile_router",
 ]

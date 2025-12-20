@@ -3,10 +3,11 @@
  * Group of related form fields with label, input, and validation
  */
 
-import { HelpCircle } from 'lucide-react';
+import { HelpCircle, Info } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
@@ -15,6 +16,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
 interface FieldGroupProps {
@@ -27,6 +34,10 @@ interface FieldGroupProps {
   required?: boolean;
   placeholder?: string;
   error?: string;
+  /** Campo opcional - no se muestra como error si no se encuentra */
+  optional?: boolean;
+  /** Fuente del dato opcional */
+  source?: string | null;
 }
 
 export function FieldGroup({
@@ -39,16 +50,42 @@ export function FieldGroup({
   required = false,
   placeholder,
   error,
+  optional = false,
+  source,
 }: FieldGroupProps) {
   const displayValue = value?.toString() || '';
+
+  // Mensaje para campos opcionales
+  const optionalTooltip = source === 'boleta_rpp'
+    ? 'Este campo es opcional - solo disponible si se incluye la Boleta del RPP'
+    : 'Este campo es opcional - no es obligatorio completarlo';
 
   return (
     <div className="space-y-2">
       {/* Label with help */}
       <div className="flex items-center justify-between">
-        <Label htmlFor={fieldName} className={cn(required && 'after:content-["*"] after:ml-0.5 after:text-destructive')}>
-          {label}
-        </Label>
+        <div className="flex items-center gap-2">
+          <Label htmlFor={fieldName} className={cn(required && 'after:content-["*"] after:ml-0.5 after:text-destructive')}>
+            {label}
+          </Label>
+
+          {/* Indicador de campo opcional */}
+          {optional && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="outline" className="text-xs px-1.5 py-0 h-5 gap-1 text-muted-foreground border-muted-foreground/30">
+                    <Info className="w-3 h-3" />
+                    Opcional
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className="text-sm">{optionalTooltip}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
 
         {description && (
           <Dialog>

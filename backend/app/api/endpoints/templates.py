@@ -5,7 +5,7 @@ Endpoints para upload y procesamiento de templates Word
 Rutas:
 - POST   /api/templates/upload          - Subir template Word
 - GET    /api/templates/list            - Listar templates disponibles
-- POST   /api/templates/confirm         - Confirmar template y tipo
+- POST   /api/templates/confirm         - [DEPRECATED] No usado - frontend maneja estado localmente
 - GET    /api/types                     - Listar tipos de documento
 """
 import time
@@ -340,15 +340,19 @@ async def list_templates(
         )
 
 
-@router.post("/confirm", response_model=SuccessResponse)
+@router.post("/confirm", response_model=SuccessResponse, deprecated=True)
 async def confirm_template(
     request: TemplateConfirmRequest,
     session_manager: SessionManager = Depends(get_session_manager)
 ):
     """
-    Confirma el template y tipo de documento seleccionado
+    [DEPRECATED] Confirma el template y tipo de documento seleccionado
 
-    El usuario puede cambiar el tipo auto-detectado si es necesario
+    NOTA: Este endpoint ya no es usado por el frontend.
+    El estado del documento se maneja localmente en el cliente.
+    SessionManager es volatil (en memoria) y causa errores 404.
+
+    Mantenido temporalmente para compatibilidad con versiones antiguas.
     """
     logger.info(
         "Confirmando template",

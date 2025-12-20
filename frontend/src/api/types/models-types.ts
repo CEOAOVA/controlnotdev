@@ -44,6 +44,10 @@ export interface FieldMetadata {
   type: 'text' | 'textarea' | 'date' | 'number';
   required: boolean;
   help?: string;
+  /** Campo opcional - no se muestra como error si no se encuentra */
+  optional?: boolean;
+  /** Fuente del dato (ej: 'boleta_rpp') */
+  source?: string | null;
 }
 
 export interface DocumentFieldsResponse {

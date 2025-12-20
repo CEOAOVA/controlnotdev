@@ -85,21 +85,7 @@ export function useTemplates() {
     },
   });
 
-  // Mutation to confirm template selection
-  const confirmMutation = useMutation({
-    mutationFn: templatesApi.confirm,
-    onSuccess: (data) => {
-      if (data.document_type) {
-        setDocumentType(data.document_type);
-        setDetectedType(data.document_type);
-      }
-    },
-    onError: (error: any) => {
-      setError(error?.message || 'Error al confirmar template');
-    },
-  });
-
-  // Helper to select and confirm a template
+  // Helper to select a template (removed server-side confirm - state is managed locally)
   const selectTemplate = async (template: TemplateInfo) => {
     setSelectedTemplate(template);
 
@@ -114,22 +100,13 @@ export function useTemplates() {
     if (template.uploadedFile) {
       const result = await uploadMutation.mutateAsync(template.uploadedFile);
 
-      // Confirm with detected type
+      // Set detected type from upload response (no server-side confirm needed)
       if (result.detected_type) {
-        await confirmMutation.mutateAsync({
-          template_id: result.template_id,
-          document_type: result.detected_type,
-          confirmed: true,
-        });
+        setDocumentType(result.detected_type);
+        setDetectedType(result.detected_type);
       }
-    } else if (template.type) {
-      // Confirm existing template with its type
-      await confirmMutation.mutateAsync({
-        template_id: template.id,
-        document_type: template.type,
-        confirmed: true,
-      });
     }
+    // For existing templates, the type is already set above - no confirm needed
   };
 
   // Helper to upload a custom template
@@ -184,7 +161,6 @@ export function useTemplates() {
 
     // Mutations
     uploadMutation,
-    confirmMutation,
 
     // Helpers
     selectTemplate,
@@ -199,7 +175,6 @@ export function useTemplates() {
     // Loading states
     isLoadingTemplates: templatesQuery.isLoading,
     isUploading: uploadMutation.isPending,
-    isConfirming: confirmMutation.isPending,
     isLoading: templatesQuery.isLoading || uploadMutation.isPending,
 
     // Error

@@ -283,6 +283,11 @@ def get_fields_for_document_type(document_type: str) -> Dict:
         category = categorize_field(field_name)
         categories_set.add(category)
 
+        # Verificar si el campo es opcional (desde json_schema_extra)
+        extra = field_info.json_schema_extra or {}
+        is_optional_field = extra.get('optional_field', False)
+        field_source = extra.get('source', None)
+
         # Construir metadata del campo
         field_metadata = {
             "name": field_name,
@@ -291,6 +296,8 @@ def get_fields_for_document_type(document_type: str) -> Dict:
             "type": infer_field_type(field_name, field_info.annotation),
             "required": field_info.is_required() if hasattr(field_info, 'is_required') else False,
             "help": get_short_description(description),
+            "optional": is_optional_field,
+            "source": field_source,
         }
 
         fields.append(field_metadata)

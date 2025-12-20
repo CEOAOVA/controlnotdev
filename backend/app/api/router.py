@@ -25,7 +25,8 @@ from app.api.endpoints import (
     health_router,
     models_router,
     cancelaciones_router,
-    auth_router
+    auth_router,
+    notary_profile_router
 )
 
 logger = structlog.get_logger()
@@ -113,6 +114,14 @@ def include_all_routers():
         # tags: ["Auth"]
     )
     logger.debug("Router de auth incluido")
+
+    # 10. Notary Profile - Perfil de notaría (datos del instrumento)
+    api_router.include_router(
+        notary_profile_router,
+        # prefix: /notary-profile
+        # tags: ["Notary Profile"]
+    )
+    logger.debug("Router de notary-profile incluido")
 
     logger.info("Todos los routers incluidos exitosamente")
 

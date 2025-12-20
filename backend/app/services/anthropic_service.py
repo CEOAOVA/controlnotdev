@@ -136,6 +136,16 @@ class AnthropicExtractionService:
         Returns:
             str: System prompt formateado
         """
+        # Obtener fecha actual para cálculo de edad
+        from datetime import datetime
+        fecha_actual = datetime.now()
+        fecha_actual_str = fecha_actual.strftime('%d de %B de %Y').replace(
+            'January', 'enero').replace('February', 'febrero').replace('March', 'marzo'
+        ).replace('April', 'abril').replace('May', 'mayo').replace('June', 'junio'
+        ).replace('July', 'julio').replace('August', 'agosto').replace('September', 'septiembre'
+        ).replace('October', 'octubre').replace('November', 'noviembre').replace('December', 'diciembre')
+        ano_actual = fecha_actual.year
+
         return f"""Eres un asistente experto en extracción de datos de documentos notariales mexicanos.
 
 ESPECIALIZACIÓN: {document_type}
@@ -150,12 +160,28 @@ PRINCIPIOS:
 4. MARCADO: Usa "**[NO ENCONTRADO]**" para campos ausentes
 5. NO INVENTES: Nunca generes datos que no estén en el texto
 
+CÁLCULO DE EDAD (IMPORTANTE):
+Cuando extraigas campos de edad (Edad_Parte_*), DEBES calcularla así:
+1. Primero localiza la fecha de nacimiento en el Acta de Nacimiento, INE o CURP
+2. Usa la fecha actual: {fecha_actual_str} (año {ano_actual})
+3. Calcula: edad = {ano_actual} - año_de_nacimiento
+4. Si el cumpleaños de este año AÚN NO ha pasado, resta 1 a la edad
+5. Convierte el resultado a palabras en español
+
+CONVERSIÓN DE NÚMEROS A PALABRAS:
+- 30 = treinta años
+- 45 = cuarenta y cinco años
+- 61 = sesenta y un años
+- 78 = setenta y ocho años
+- 82 = ochenta y dos años
+
 FORMATOS REQUERIDOS:
 - Fechas: DD/MM/AAAA (ejemplo: 15/03/2024)
 - Dinero: $X,XXX.XX MXN (ejemplo: $1,500,000.00 MXN)
 - RFC: 13 caracteres (ejemplo: AAAA860101AAA)
 - CURP: 18 caracteres (ejemplo: AAAA860101HDFLLS05)
 - Nombres: Apellido paterno, materno y nombre(s) completo
+- Edades: número en palabras + "años" (ejemplo: sesenta y un años)
 
 IMPORTANTE:
 Tu respuesta DEBE ser JSON válido sin texto adicional.
@@ -378,6 +404,13 @@ RESPONDE SOLO CON JSON (sin markdown ni explicaciones):"""
         required_fields = set(model_class.model_fields.keys())
         extracted_fields = set(extracted_data.keys())
 
+        # Identificar campos opcionales desde metadata del modelo
+        optional_fields = set()
+        for field_name, field_info in model_class.model_fields.items():
+            extra = field_info.json_schema_extra or {}
+            if extra.get('optional_field', False):
+                optional_fields.add(field_name)
+
         # Campos encontrados
         found_fields = extracted_fields & required_fields
 
@@ -393,13 +426,23 @@ RESPONDE SOLO CON JSON (sin markdown ni explicaciones):"""
         # FIX: Restar campos con valor NO ENCONTRADO del conteo
         found_fields = found_fields - set(not_found_values)
 
-        completeness = len(found_fields) / len(required_fields) if required_fields else 0.0
+        # Separar campos opcionales faltantes de criticos faltantes
+        optional_missing = [f for f in not_found_values if f in optional_fields]
+        critical_missing = [f for f in not_found_values if f not in optional_fields]
+
+        # Calcular completitud excluyendo campos opcionales del denominador
+        required_for_validation = required_fields - optional_fields
+        found_required = found_fields - optional_fields
+        completeness = len(found_required) / len(required_for_validation) if required_for_validation else 0.0
 
         stats = {
             "total_fields": len(required_fields),
             "found_fields": len(found_fields),
             "missing_fields": list(missing_fields),
             "not_found_values": not_found_values,
+            "optional_missing": optional_missing,
+            "critical_missing": critical_missing,
+            "optional_fields_count": len(optional_fields),
             "completeness": completeness
         }
 
@@ -407,7 +450,9 @@ RESPONDE SOLO CON JSON (sin markdown ni explicaciones):"""
             "Validación de datos extraídos (Claude)",
             doc_type=document_type,
             completeness_percent=f"{completeness * 100:.1f}%",
-            **stats
+            optional_missing=optional_missing,
+            critical_missing_count=len(critical_missing),
+            **{k: v for k, v in stats.items() if k not in ['optional_missing', 'critical_missing']}
         )
 
         return stats

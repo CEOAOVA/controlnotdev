@@ -9,3 +9,4 @@ export * from './models-types';
 export * from './health-types';
 export * from './cases-types';
 export * from './documents-types';
+export * from './notary-profile-types';

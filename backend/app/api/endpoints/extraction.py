@@ -39,9 +39,84 @@ from app.core.dependencies import (
 )
 from app.repositories.uploaded_file_repository import uploaded_file_repository
 from app.repositories.session_repository import session_repository
+from app.database import get_current_tenant_id, supabase_admin
 from uuid import UUID
 
 logger = structlog.get_logger()
+
+
+async def inject_notary_profile_data(extracted_data: dict, tenant_id: str, document_type: str) -> dict:
+    """
+    Inyecta datos del perfil de notaría en campos de "Datos del Instrumento"
+    cuando estos no fueron encontrados en los documentos.
+
+    Los datos del instrumento (notario, número de notaría, lugar) vienen de la
+    configuración de la notaría, no de los documentos escaneados.
+    """
+    # Solo aplica para documentos notariales que tienen estos campos
+    notarial_types = ['compraventa', 'donacion', 'cancelacion_hipoteca', 'poder', 'testamento']
+    if document_type not in notarial_types:
+        return extracted_data
+
+    try:
+        # Obtener perfil de la notaría
+        result = supabase_admin.table('tenants').select('*').eq('id', tenant_id).single().execute()
+
+        if not result.data:
+            logger.warning("No se encontró perfil de notaría", tenant_id=tenant_id)
+            return extracted_data
+
+        profile = result.data
+
+        # Campos a inyectar si están vacíos o con **[NO ENCONTRADO]**
+        not_found_markers = ['**[NO ENCONTRADO]**', '', None]
+
+        # lugar_instrumento
+        if extracted_data.get('lugar_instrumento') in not_found_markers:
+            if profile.get('ciudad') and profile.get('estado'):
+                extracted_data['lugar_instrumento'] = f"{profile['ciudad']}, {profile['estado']}"
+                logger.debug("Inyectado lugar_instrumento desde perfil", value=extracted_data['lugar_instrumento'])
+
+        # notario_actuante
+        if extracted_data.get('notario_actuante') in not_found_markers:
+            if profile.get('notario_nombre'):
+                titulo = profile.get('notario_titulo', 'Licenciado')
+                extracted_data['notario_actuante'] = f"{titulo} {profile['notario_nombre']}"
+                logger.debug("Inyectado notario_actuante desde perfil", value=extracted_data['notario_actuante'])
+
+        # numero_notaria (en palabras)
+        if extracted_data.get('numero_notaria') in not_found_markers:
+            if profile.get('numero_notaria_palabras'):
+                extracted_data['numero_notaria'] = profile['numero_notaria_palabras'].upper()
+                logger.debug("Inyectado numero_notaria desde perfil", value=extracted_data['numero_notaria'])
+            elif profile.get('numero_notaria'):
+                # Fallback: usar número si no hay palabras
+                extracted_data['numero_notaria'] = str(profile['numero_notaria'])
+
+        # numero_instrumento - obtener siguiente número disponible (sin incrementar aún)
+        if extracted_data.get('numero_instrumento') in not_found_markers:
+            ultimo = profile.get('ultimo_numero_instrumento', 0) or 0
+            siguiente = ultimo + 1
+            # Convertir a palabras (función auxiliar)
+            extracted_data['numero_instrumento'] = f"[SIGUIENTE: {siguiente}]"
+            logger.debug("Sugerido numero_instrumento", siguiente=siguiente)
+
+        logger.info(
+            "Datos del instrumento inyectados desde perfil de notaría",
+            tenant_id=tenant_id,
+            document_type=document_type
+        )
+
+    except Exception as e:
+        logger.warning(
+            "Error al inyectar datos del perfil de notaría (no crítico)",
+            error=str(e),
+            tenant_id=tenant_id
+        )
+
+    return extracted_data
+
+
 router = APIRouter(prefix="/extraction", tags=["Extraction"])
 
 
@@ -206,7 +281,8 @@ async def process_ocr(
 async def extract_with_ai(
     request: AIExtractionRequest,
     anthropic_service: AnthropicExtractionService = Depends(get_anthropic_service),
-    session_manager: SessionManager = Depends(get_session_manager)
+    session_manager: SessionManager = Depends(get_session_manager),
+    tenant_id: str = Depends(get_current_tenant_id)
 ):
     """
     Extrae datos estructurados con IA (Anthropic Claude + Prompt Caching)
@@ -243,6 +319,13 @@ async def extract_with_ai(
         )
 
         processing_time = time.time() - start_time
+
+        # NUEVO: Inyectar datos del perfil de notaría para campos del instrumento
+        extracted_data = await inject_notary_profile_data(
+            extracted_data,
+            tenant_id,
+            request.document_type
+        )
 
         # Validar datos extraídos
         validation_stats = anthropic_service.validate_extracted_data(
@@ -437,7 +520,8 @@ async def get_extraction_results(
 async def extract_with_vision(
     request: VisionExtractionRequest,
     anthropic_service: AnthropicExtractionService = Depends(get_anthropic_service),
-    session_manager: SessionManager = Depends(get_session_manager)
+    session_manager: SessionManager = Depends(get_session_manager),
+    tenant_id: str = Depends(get_current_tenant_id)
 ):
     """
     Extrae datos enviando imagenes DIRECTAMENTE a Claude Vision
@@ -528,6 +612,13 @@ async def extract_with_vision(
         )
 
         processing_time = time.time() - start_time
+
+        # NUEVO: Inyectar datos del perfil de notaría para campos del instrumento
+        extracted_data = await inject_notary_profile_data(
+            extracted_data,
+            tenant_id,
+            request.document_type
+        )
 
         # Validar datos
         validation_stats = anthropic_service.validate_extracted_data(
