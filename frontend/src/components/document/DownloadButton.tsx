@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useProcessDocument } from '@/hooks';
 import { useDocumentStore, useTemplateStore } from '@/store';
 import { downloadBlob } from '@/lib/utils';
+import { documentsApi } from '@/api/endpoints/documents';
 
 interface DownloadButtonProps {
   onSuccess?: (filename: string) => void;
@@ -37,13 +38,15 @@ export function DownloadButton({ onSuccess }: DownloadButtonProps) {
       const templateId = selectedTemplate?.id || selectedTemplate?.name || 'default';
       const result = await generateDocument(templateId);
 
-      if (result) {
-        // Generate filename
-        const timestamp = new Date().toISOString().split('T')[0];
-        const filename = `documento_${documentType}_${timestamp}.docx`;
+      if (result?.success && result.document_id) {
+        // Download the blob using document_id
+        const blob = await documentsApi.download(result.document_id);
+
+        // Use filename from response or generate one
+        const filename = result.filename || `documento_${documentType}_${new Date().toISOString().split('T')[0]}.docx`;
 
         // Download the file
-        downloadBlob(result as any, filename);
+        downloadBlob(blob, filename);
 
         setDownloadStatus('success');
         if (onSuccess) {
@@ -52,6 +55,8 @@ export function DownloadButton({ onSuccess }: DownloadButtonProps) {
 
         // Reset status after 3 seconds
         setTimeout(() => setDownloadStatus('idle'), 3000);
+      } else if (result && !result.success) {
+        throw new Error(result.message || 'Error al generar documento');
       }
     } catch (error: any) {
       console.error('Error generating document:', error);
