@@ -53,6 +53,31 @@ export const extractionApi = {
   },
 
   /**
+   * POST /api/extraction/vision
+   * Extract data directly from images using Claude Vision
+   * Better for photos of documents (INE, credentials, etc.)
+   * Bypasses OCR step for improved accuracy with low-quality images
+   */
+  extractWithVision: async (
+    sessionId: string,
+    documentType: string
+  ): Promise<AIExtractionResponse> => {
+    const { data } = await apiClient.post<AIExtractionResponse>(
+      '/extraction/vision',
+      {
+        session_id: sessionId,
+        document_type: documentType,
+      },
+      {
+        // Vision extraction can take longer with many images
+        timeout: 300000, // 5 minutes
+      }
+    );
+
+    return data;
+  },
+
+  /**
    * POST /api/extraction/edit
    * Save edited data
    */

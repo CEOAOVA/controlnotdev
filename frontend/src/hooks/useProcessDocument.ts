@@ -1,11 +1,12 @@
 /**
  * useProcessDocument - Main hook for orchestrating document processing workflow
- * Handles: Upload → OCR → AI Extraction → Edit → Generate
+ * Handles: Upload → Vision Extraction → Edit → Generate
  *
- * CORRECT FLOW:
+ * UPDATED FLOW (Vision Direct - better for photos/credentials):
  * 1. Upload files via /documents/upload → get session_id
- * 2. Process OCR via /extraction/ocr?session_id=xxx
- * 3. Extract with AI via /extraction/ai {session_id, text, document_type}
+ * 2. Extract with Claude Vision via /extraction/vision {session_id, document_type}
+ *
+ * This bypasses OCR for improved accuracy with low-quality images (WhatsApp photos, INEs, etc.)
  */
 
 import { useMutation } from '@tanstack/react-query';
@@ -30,7 +31,7 @@ export function useProcessDocument() {
   } = useDocumentStore();
 
   const { files } = useCategoryStore();
-  const { selectedTemplate, placeholders } = useTemplateStore();
+  const { selectedTemplate } = useTemplateStore();
 
   // Step 1: Upload categorized documents
   const uploadMutation = useMutation({
@@ -95,7 +96,7 @@ export function useProcessDocument() {
     },
   });
 
-  // Step 3: AI Extraction
+  // Step 3: AI Extraction (legacy - kept for backward compatibility)
   const aiMutation = useMutation({
     mutationFn: async (request: AIExtractionRequest) => {
       setProcessing(true, 'ai');
@@ -111,6 +112,27 @@ export function useProcessDocument() {
     },
     onError: (error: any) => {
       const message = error?.response?.data?.detail || error?.message || 'Error durante la extracción con IA';
+      setError(message);
+      setProcessing(false, 'idle');
+    },
+  });
+
+  // Vision Extraction (preferred - better for photos/credentials)
+  const visionMutation = useMutation({
+    mutationFn: async ({ sessionId, docType }: { sessionId: string; docType: string }) => {
+      setProcessing(true, 'ai');
+      setError(null);
+      return extractionApi.extractWithVision(sessionId, docType);
+    },
+    onSuccess: (data) => {
+      setExtractedData(data.extracted_data);
+      if (data.completeness_percent !== undefined) {
+        setConfidence(data.completeness_percent / 100);
+      }
+      setProcessing(false, 'complete');
+    },
+    onError: (error: any) => {
+      const message = error?.response?.data?.detail || error?.message || 'Error durante la extracción con Vision';
       setError(message);
       setProcessing(false, 'idle');
     },
@@ -139,12 +161,16 @@ export function useProcessDocument() {
   });
 
   /**
-   * Process full OCR + AI workflow
+   * Process document extraction using Claude Vision
    *
-   * CORRECT FLOW:
+   * UPDATED FLOW (Vision Direct):
    * 1. Upload files to /documents/upload → get session_id
-   * 2. Process OCR with /extraction/ocr?session_id=xxx
-   * 3. Extract with AI using session_id + extracted_text
+   * 2. Extract with Claude Vision (sends images directly to Claude)
+   *
+   * This is better for:
+   * - Photos of documents (WhatsApp, camera photos)
+   * - Credentials (INE, passports, licenses)
+   * - Low-quality or rotated images
    */
   const processFullWorkflow = async () => {
     if (!documentType) {
@@ -171,22 +197,13 @@ export function useProcessDocument() {
       const sessionId = uploadResult.session_id;
       console.log('[ProcessDocument] Upload complete, session_id:', sessionId);
 
-      // Step 2: Process OCR with session_id
-      console.log('[ProcessDocument] Step 2: Processing OCR...');
-      const ocrResult = await ocrMutation.mutateAsync(sessionId);
-      console.log('[ProcessDocument] OCR complete, extracted_text length:', ocrResult.extracted_text?.length);
-
-      // Step 3: AI Extraction with session_id + text
-      console.log('[ProcessDocument] Step 3: Extracting with AI...');
-      const aiRequest: AIExtractionRequest = {
-        session_id: sessionId,
-        text: ocrResult.extracted_text,
-        document_type: documentType,
-        template_placeholders: placeholders.length > 0 ? placeholders : undefined,
-      };
-
-      await aiMutation.mutateAsync(aiRequest);
-      console.log('[ProcessDocument] AI extraction complete');
+      // Step 2: Extract directly with Claude Vision (bypasses OCR)
+      console.log('[ProcessDocument] Step 2: Extracting with Claude Vision...');
+      await visionMutation.mutateAsync({
+        sessionId,
+        docType: documentType,
+      });
+      console.log('[ProcessDocument] Vision extraction complete');
 
     } catch (error: any) {
       console.error('[ProcessDocument] Workflow failed:', error);
@@ -227,6 +244,7 @@ export function useProcessDocument() {
     uploadMutation,
     ocrMutation,
     aiMutation,
+    visionMutation,
     generateMutation,
     emailMutation,
 
@@ -238,10 +256,11 @@ export function useProcessDocument() {
     isUploading: uploadMutation.isPending,
     isProcessingOCR: ocrMutation.isPending,
     isProcessingAI: aiMutation.isPending,
+    isProcessingVision: visionMutation.isPending,
     isGenerating: generateMutation.isPending,
     isSendingEmail: emailMutation.isPending,
 
-    // Overall loading
-    isProcessing: uploadMutation.isPending || ocrMutation.isPending || aiMutation.isPending,
+    // Overall loading (includes Vision)
+    isProcessing: uploadMutation.isPending || ocrMutation.isPending || aiMutation.isPending || visionMutation.isPending,
   };
 }

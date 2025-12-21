@@ -65,6 +65,14 @@ export function DataEditor() {
     return filtered;
   }, [fieldsByCategory, searchQuery]);
 
+  // Helper function to check if a field value is actually filled
+  // Excludes null, undefined, empty strings, and "NO ENCONTRADO" markers
+  const isFieldFilled = (value: unknown): boolean => {
+    if (value === null || value === undefined || value === '') return false;
+    if (typeof value === 'string' && value.toUpperCase().includes('NO ENCONTRADO')) return false;
+    return true;
+  };
+
   // Calculate statistics
   const stats = useMemo(() => {
     if (!editedData || !fieldMetadata) return { total: 0, filled: 0, empty: 0, percentage: 0 };
@@ -72,7 +80,7 @@ export function DataEditor() {
     const total = fieldMetadata.length;
     const filled = fieldMetadata.filter((field) => {
       const value = editedData[field.name];
-      return value !== null && value !== undefined && value !== '';
+      return isFieldFilled(value);
     }).length;
     const empty = total - filled;
 
@@ -199,7 +207,7 @@ export function DataEditor() {
         {Object.entries(filteredCategories).map(([category, fields]) => {
           const categoryFilledCount = fields.filter((field) => {
             const value = editedData[field.name];
-            return value !== null && value !== undefined && value !== '';
+            return isFieldFilled(value);
           }).length;
 
           return (
