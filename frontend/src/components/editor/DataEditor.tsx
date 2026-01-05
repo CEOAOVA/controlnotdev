@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { Search, RotateCcw, Save, Loader2 } from 'lucide-react';
+import { Search, RotateCcw, Save, Loader2, Shield, AlertTriangle, XCircle, CheckCircle2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -19,8 +19,16 @@ import { MetricsDashboard } from '@/components/generation/MetricsDashboard';
 import type { FieldMetadata } from '@/api/types';
 
 export function DataEditor() {
-  const { extractedData, editedData, updateField, setEditedData, documentType } =
-    useDocumentStore();
+  const {
+    extractedData,
+    editedData,
+    updateField,
+    setEditedData,
+    documentType,
+    validationReport,
+    perFieldConfidence,
+    perFieldValidation,
+  } = useDocumentStore();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [hasChanges, setHasChanges] = useState(false);
@@ -172,6 +180,49 @@ export function DataEditor() {
         completionRate={stats.percentage}
       />
 
+      {/* OCR Robusto 2025: Validation Summary */}
+      {validationReport && (
+        <div className="bg-muted/50 rounded-lg p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-medium flex items-center gap-2">
+              <Shield className="w-4 h-4" />
+              Validación de Datos
+            </h3>
+            <Badge variant={validationReport.overall_confidence >= 0.8 ? 'default' : 'secondary'}>
+              {Math.round(validationReport.overall_confidence * 100)}% confianza general
+            </Badge>
+          </div>
+          <div className="grid grid-cols-1 xs:grid-cols-3 gap-2 sm:gap-3">
+            <div className="flex items-center gap-2 p-2 bg-background rounded border">
+              <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0" />
+              <div>
+                <p className="text-lg font-semibold">{validationReport.valid_fields}</p>
+                <p className="text-xs text-muted-foreground">Válidos</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 p-2 bg-background rounded border">
+              <AlertTriangle className="w-5 h-5 text-yellow-600 flex-shrink-0" />
+              <div>
+                <p className="text-lg font-semibold">{validationReport.suspicious_fields}</p>
+                <p className="text-xs text-muted-foreground">Sospechosos</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 p-2 bg-background rounded border">
+              <XCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+              <div>
+                <p className="text-lg font-semibold">{validationReport.invalid_fields}</p>
+                <p className="text-xs text-muted-foreground">Inválidos</p>
+              </div>
+            </div>
+          </div>
+          {(validationReport.suspicious_fields > 0 || validationReport.invalid_fields > 0) && (
+            <p className="text-sm text-muted-foreground mt-3">
+              Revisa los campos marcados en amarillo/rojo antes de generar el documento.
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Save Changes Indicator */}
       {hasChanges && (
         <div className="flex items-center justify-end gap-4">
@@ -225,6 +276,10 @@ export function DataEditor() {
                 // Map 'date' type to 'text' (dates are in words in notarial docs)
                 const inputType = field.type === 'date' ? 'text' : field.type;
 
+                // OCR Robusto 2025: Get per-field confidence and validation
+                const fieldConfidence = perFieldConfidence[field.name];
+                const fieldValidation = perFieldValidation[field.name];
+
                 return (
                   <FieldGroup
                     key={field.name}
@@ -237,6 +292,9 @@ export function DataEditor() {
                     required={field.required}
                     optional={field.optional}
                     source={field.source}
+                    confidence={fieldConfidence}
+                    validationStatus={fieldValidation?.status}
+                    validationIssues={fieldValidation?.issues}
                   />
                 );
               })}

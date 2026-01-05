@@ -70,18 +70,18 @@ export function PreviewModal({ onEdit, onApprove, showApproveButton = false }: P
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="max-w-4xl max-h-[80vh]">
+      <DialogContent className="w-full h-[100dvh] sm:w-auto sm:h-auto sm:max-w-4xl sm:max-h-[80vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-3">
+          <DialogTitle className="flex items-center gap-2 sm:gap-3 text-base sm:text-lg">
             Vista Previa del Documento
             <TypeBadge type={documentType} size="sm" />
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="text-xs sm:text-sm">
             Revisa los datos que se incluirán en el documento final
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="h-[500px] pr-4">
+        <ScrollArea className="flex-1 h-[70vh] sm:h-[500px] pr-4">
           <div className="space-y-6">
             {Object.entries(categories).map(([category, fields]) => {
               // Filter only fields that have values

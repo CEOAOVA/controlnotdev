@@ -152,11 +152,14 @@ class Settings(BaseSettings):
 
     # ==========================================
     # CLAUDE VISION (Extracción directa de imágenes)
+    # Specs oficiales: https://docs.anthropic.com/en/docs/build-with-claude/vision
     # ==========================================
-    MAX_IMAGE_DIMENSION: int = 1568  # Máximo recomendado por Anthropic
-    MAX_IMAGE_SIZE_MB: int = 5  # Límite de Anthropic por imagen
-    MAX_IMAGES_PER_REQUEST: int = 20  # Límite de Anthropic por request
-    VISION_TEMPERATURE: float = 0.1  # Más determinístico para datos exactos
+    MAX_IMAGE_DIMENSION: int = 1568  # Oficial Anthropic: ≤1568px óptimo
+    MIN_IMAGE_DIMENSION: int = 200   # Oficial Anthropic: >200px mínimo efectivo
+    MAX_MEGAPIXELS: float = 1.15     # Oficial Anthropic: ≤1.15 MP óptimo
+    MAX_IMAGE_SIZE_MB: int = 5       # Oficial Anthropic: 5MB límite API
+    MAX_IMAGES_PER_REQUEST: int = 20 # Oficial Anthropic: 20 en claude.ai, 100 API
+    VISION_TEMPERATURE: float = 0.0  # OpenAI best practice: 0 para extracción
 
     # ==========================================
     # AI PROVIDER STRATEGY

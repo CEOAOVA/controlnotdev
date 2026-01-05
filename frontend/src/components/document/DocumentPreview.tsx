@@ -179,7 +179,7 @@ export function DocumentPreview({
           <CardTitle className="text-lg">Documento</CardTitle>
         </CardHeader>
         <CardContent>
-          <ScrollArea className="h-[400px] w-full rounded-md border p-4 bg-white">
+          <ScrollArea className="h-[60vh] sm:h-[400px] w-full rounded-md border p-2 sm:p-4 bg-white">
             <div
               className="prose prose-sm max-w-none"
               dangerouslySetInnerHTML={{ __html: preview.html_content }}

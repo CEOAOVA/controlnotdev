@@ -12,3 +12,5 @@ export { useTemplateStore } from './templateStore';
 export type { TemplateInfo } from './templateStore';
 
 export { useAuthStore } from './useAuthStore';
+
+export { useSidebarStore } from './useSidebarStore';

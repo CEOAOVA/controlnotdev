@@ -4,10 +4,11 @@
  */
 
 import { useLocation, Link } from 'react-router-dom';
-import { ChevronRight, Bell, Search } from 'lucide-react';
+import { ChevronRight, Bell, Search, Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import { useSidebarStore } from '@/store';
 
 interface BreadcrumbItem {
   label: string;
@@ -24,6 +25,7 @@ const routeMap: Record<string, string> = {
 
 export function Topbar() {
   const location = useLocation();
+  const { toggle } = useSidebarStore();
 
   // Generate breadcrumbs from current path
   const breadcrumbs: BreadcrumbItem[] = [
@@ -39,8 +41,18 @@ export function Topbar() {
   return (
     <header className="sticky top-0 z-30 bg-white border-b border-neutral-200">
       <div className="flex items-center justify-between px-6 py-4">
-        {/* Left: Breadcrumbs */}
+        {/* Left: Hamburger + Breadcrumbs */}
         <div className="flex items-center gap-2">
+          {/* Mobile hamburger menu */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggle}
+            className="md:hidden"
+            aria-label="Abrir menú"
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
           <nav className="flex items-center gap-2">
             {breadcrumbs.map((crumb, index) => (
               <div key={index} className="flex items-center gap-2">

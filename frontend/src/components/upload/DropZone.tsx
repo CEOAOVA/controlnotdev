@@ -46,7 +46,7 @@ export function DropZone({
     <div
       {...getRootProps()}
       className={cn(
-        'border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-all',
+        'border-2 border-dashed rounded-lg p-4 sm:p-8 text-center cursor-pointer transition-all',
         'hover:border-primary hover:bg-accent/50',
         isDragActive && 'border-primary bg-accent',
         isDragReject && 'border-destructive bg-destructive/10',
@@ -55,25 +55,25 @@ export function DropZone({
     >
       <input {...getInputProps()} />
 
-      <div className="flex flex-col items-center justify-center gap-4">
+      <div className="flex flex-col items-center justify-center gap-2 sm:gap-4">
         {isDragActive ? (
           <>
-            <Upload className="w-12 h-12 text-primary animate-bounce" />
-            <p className="text-lg font-medium text-primary">
+            <Upload className="h-8 w-8 sm:h-12 sm:w-12 text-primary animate-bounce" />
+            <p className="text-sm sm:text-lg font-medium text-primary">
               Suelta los archivos aquí...
             </p>
           </>
         ) : (
           <>
-            <FileImage className="w-12 h-12 text-muted-foreground" />
-            <div className="space-y-2">
-              <p className="text-lg font-medium">
-                Arrastra archivos aquí o haz click para seleccionar
+            <FileImage className="h-8 w-8 sm:h-12 sm:w-12 text-muted-foreground" />
+            <div className="space-y-1 sm:space-y-2">
+              <p className="text-sm sm:text-lg font-medium">
+                Arrastra archivos aquí o haz click
               </p>
-              <p className="text-sm text-muted-foreground">
-                Formatos: JPG, PNG, PDF (máx. {maxSizeMB}MB cada uno)
+              <p className="text-xs sm:text-sm text-muted-foreground">
+                JPG, PNG, PDF (máx. {maxSizeMB}MB)
               </p>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-muted-foreground hidden sm:block">
                 Máximo {maxFiles} archivos
               </p>
             </div>

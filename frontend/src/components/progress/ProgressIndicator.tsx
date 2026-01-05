@@ -106,8 +106,8 @@ export function ProgressIndicator({
                 <Icon className="w-5 h-5" />
               </button>
 
-              {/* Label */}
-              <div className="mt-3 text-center max-w-[120px]">
+              {/* Label - hidden on mobile, visible on sm+ */}
+              <div className="mt-3 text-center max-w-[120px] hidden sm:block">
                 <p
                   className={cn(
                     'text-sm font-medium transition-colors',
@@ -117,9 +117,10 @@ export function ProgressIndicator({
                 >
                   {step.label}
                 </p>
+                {/* Description - only visible on md+ */}
                 <p
                   className={cn(
-                    'text-xs mt-0.5 transition-colors',
+                    'text-xs mt-0.5 transition-colors hidden md:block',
                     isCurrent && 'text-foreground',
                     !isCurrent && 'text-muted-foreground'
                   )}

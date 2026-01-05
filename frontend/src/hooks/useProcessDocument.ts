@@ -16,6 +16,7 @@ import type {
   AIExtractionRequest,
   DocumentGenerationRequest,
   SendEmailRequest,
+  QualityLevel,
 } from '@/api/types';
 import type { Category } from '@/types';
 
@@ -26,6 +27,8 @@ export function useProcessDocument() {
     setExtractedData,
     setConfidence,
     setError,
+    setQualityReport,
+    setValidationReport,
     documentType,
     editedData,
   } = useDocumentStore();
@@ -119,15 +122,38 @@ export function useProcessDocument() {
 
   // Vision Extraction (preferred - better for photos/credentials)
   const visionMutation = useMutation({
-    mutationFn: async ({ sessionId, docType }: { sessionId: string; docType: string }) => {
+    mutationFn: async ({
+      sessionId,
+      docType,
+      qualityLevel,
+      documentHints,
+      enableValidation = true,
+    }: {
+      sessionId: string;
+      docType: string;
+      qualityLevel?: QualityLevel;
+      documentHints?: string[];
+      enableValidation?: boolean;
+    }) => {
       setProcessing(true, 'ai');
       setError(null);
-      return extractionApi.extractWithVision(sessionId, docType);
+      return extractionApi.extractWithVision(sessionId, docType, {
+        qualityLevel,
+        documentHints,
+        enableValidation,
+      });
     },
     onSuccess: (data) => {
       setExtractedData(data.extracted_data);
       if (data.completeness_percent !== undefined) {
         setConfidence(data.completeness_percent / 100);
+      }
+      // OCR Robusto 2025: guardar reports de calidad y validación
+      if (data.quality_report) {
+        setQualityReport(data.quality_report);
+      }
+      if (data.validation_report) {
+        setValidationReport(data.validation_report);
       }
       setProcessing(false, 'complete');
     },

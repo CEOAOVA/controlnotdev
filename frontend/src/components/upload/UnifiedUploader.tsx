@@ -283,13 +283,17 @@ export function UnifiedUploader({ onTemplateSelected, onFilesChange }: UnifiedUp
                 </Alert>
               ) : (
                 <Tabs defaultValue={categories[0]?.name} className="w-full">
-                  <TabsList className="grid w-full grid-cols-3">
+                  <TabsList className="flex w-full overflow-x-auto scrollbar-hide gap-1">
                     {categories.map((category) => {
                       const count = files[category.name]?.length || 0;
                       return (
-                        <TabsTrigger key={category.name} value={category.name} className="gap-2">
+                        <TabsTrigger
+                          key={category.name}
+                          value={category.name}
+                          className="gap-2 flex-shrink-0 min-w-fit"
+                        >
                           <span>{category.icon}</span>
-                          <span>{category.name}</span>
+                          <span className="hidden xs:inline">{category.name}</span>
                           {count > 0 && (
                             <Badge variant="secondary" className="ml-1 px-1.5 py-0.5 text-xs">
                               {count}

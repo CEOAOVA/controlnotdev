@@ -1,11 +1,18 @@
 """
 ControlNot v2 - AI Service
 Extracción de datos estructurados con LLMs (OpenRouter + OpenAI)
-MEJORA CRÍTICA: Soporte multi-provider con OpenRouter + Cache de extracciones
 
-Migrado de por_partes.py líneas 1745-1789, 1418-1422
-Original: Solo OpenAI GPT-4o
-Mejorado: OpenRouter (GPT-4o, Claude, Gemini, Llama) + OpenAI fallback + Cache
+=== BEST PRACTICES OPENAI COOKBOOK ===
+https://cookbook.openai.com/examples/data_extraction_transformation
+
+| Configuración           | Valor Recomendado              |
+|-------------------------|--------------------------------|
+| temperature             | 0.0 (determinista)             |
+| response_format         | {"type": "json_object"}        |
+| Prompt: interpolación   | "Don't interpolate or make up" |
+| Prompt: campos vacíos   | "Include blank as null"        |
+
+MEJORA CRÍTICA: Soporte multi-provider con OpenRouter + Cache de extracciones
 """
 import json
 import hashlib
@@ -116,28 +123,36 @@ class AIExtractionService:
         else:
             placeholders_section = ""
 
-        prompt = f"""Eres un asistente experto en extracción de datos notariales.
+        # Prompt basado en OpenAI Cookbook best practices:
+        # https://cookbook.openai.com/examples/data_extraction_transformation
+        prompt = f"""Eres una herramienta de extracción de datos notariales mexicanos.
 
-TAREA: Extrae información estructurada del siguiente texto de documentos notariales.
+=== INSTRUCCIONES CRÍTICAS (OpenAI Best Practices) ===
+1. **NO INTERPOLES NI INVENTES DATOS** - Extrae SOLO información explícitamente presente
+2. Para campos no encontrados, usa: null (no inventes valores)
+3. NO asumas, NO deduzcas, NO completes información faltante
+4. Para tablas, incluye TODAS las filas y columnas
+5. Preserva el idioma y formato original del documento
 
 TIPO DE DOCUMENTO: {document_type}
 
-CAMPOS A EXTRAER:
+CAMPOS A EXTRAER (JSON keys exactas):
 {fields_list}{placeholders_section}
 
-INSTRUCCIONES:
-1. Extrae SOLO información que esté explícitamente presente en el texto
-2. Para campos no encontrados, usa: "**[NO ENCONTRADO]**"
-3. Mantén el formato exacto de nombres, fechas y números
-4. Para fechas, usa formato: DD/MM/AAAA
-5. Para dinero, incluye símbolo de moneda: $X,XXX.XX MXN
-6. Los nombres deben incluir apellidos completos
-7. Sé preciso y no inventes información
+REGLAS DE FORMATO:
+- Fechas: DD/MM/AAAA (ej: 15/03/2024)
+- Dinero: $X,XXX.XX MXN (ej: $150,000.00 MXN)
+- CURP: 18 caracteres exactos
+- RFC: 12-13 caracteres
+- Nombres: Incluir apellidos completos como aparecen
+- Direcciones: Copiar textualmente del documento
 
 TEXTO A PROCESAR:
+---
 {text}
+---
 
-RESPONDE EN FORMATO JSON con las claves exactas de los campos solicitados.
+Responde SOLO con JSON válido. Para campos no encontrados usa null.
 """
 
         return prompt
@@ -147,14 +162,18 @@ RESPONDE EN FORMATO JSON con las claves exactas de los campos solicitados.
         text: str,
         document_type: str,
         placeholders: Optional[List[str]] = None,
-        temperature: float = 0.3,
+        temperature: float = 0.0,  # OpenAI Cookbook: "0 is best for factual extraction"
         max_tokens: int = 3000
     ) -> Dict[str, str]:
         """
         Procesa texto con Structured Outputs (OpenAI beta - 0 errores JSON)
 
-        SEMANA 1 - QUICK WINS:
-        Usa openai.beta.chat.completions.parse() para garantizar:
+        === OPENAI COOKBOOK BEST PRACTICES ===
+        - temperature=0: Determinista para extracción de datos
+        - response_format=Pydantic: Garantiza schema válido
+        - "Don't interpolate or make up data"
+
+        Garantiza:
         - 0 errores JSON (schema enforcement)
         - Respuesta siempre válida según Pydantic model
         - Sin necesidad de json.loads() manual
@@ -164,7 +183,7 @@ RESPONDE EN FORMATO JSON con las claves exactas de los campos solicitados.
             text: Texto del cual extraer información
             document_type: Tipo de documento
             placeholders: Lista opcional de placeholders
-            temperature: Temperatura del modelo
+            temperature: 0.0 recomendado para extracción (OpenAI)
             max_tokens: Máximo de tokens
 
         Returns:
@@ -253,11 +272,16 @@ RESPONDE EN FORMATO JSON con las claves exactas de los campos solicitados.
         text: str,
         document_type: str,
         placeholders: Optional[List[str]] = None,
-        temperature: float = 0.3,
+        temperature: float = 0.0,  # OpenAI Cookbook: "0 is best for factual extraction"
         max_tokens: int = 3000
     ) -> Dict[str, str]:
         """
         Procesa texto con LLM para extraer datos estructurados
+
+        === OPENAI COOKBOOK BEST PRACTICES ===
+        - temperature=0.0: Determinista para extracción factual
+        - response_format=json_object: Garantiza JSON válido
+        - "Don't interpolate or make up data"
 
         FUNCIÓN PRINCIPAL del servicio
 
@@ -265,7 +289,7 @@ RESPONDE EN FORMATO JSON con las claves exactas de los campos solicitados.
             text: Texto del cual extraer información
             document_type: Tipo de documento ('compraventa', 'donacion', etc.)
             placeholders: Lista opcional de placeholders del template
-            temperature: Temperatura del modelo (0.0-1.0)
+            temperature: 0.0 recomendado para extracción (OpenAI)
             max_tokens: Máximo de tokens en la respuesta
 
         Returns:

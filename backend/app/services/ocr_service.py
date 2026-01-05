@@ -1,7 +1,12 @@
 """
 ControlNot v2 - OCR Service
 Extracción de texto de imágenes con Google Cloud Vision API
-MEJORA CRÍTICA: Procesamiento paralelo asíncrono (5-10x más rápido)
+
+MEJORAS 2025:
+- Procesamiento paralelo asíncrono (5-10x más rápido)
+- Confidence scores para evaluación de calidad
+- Retry progresivo con preprocesamiento adaptativo
+- Integración con DocumentQualityService
 
 Migrado de por_partes.py líneas 1856-1866, 2293-2335
 Original: ~60 segundos para 10 imágenes (secuencial)
@@ -9,6 +14,7 @@ Mejorado: ~6-8 segundos para 10 imágenes (paralelo async)
 """
 import asyncio
 from typing import List, Dict, Tuple, Optional
+from dataclasses import dataclass, field
 from concurrent.futures import ThreadPoolExecutor
 import structlog
 
@@ -18,6 +24,29 @@ from google.oauth2 import service_account
 from app.core.config import settings
 
 logger = structlog.get_logger()
+
+
+@dataclass
+class OCRResult:
+    """Resultado de OCR con métricas de confianza"""
+    text: str = ""
+    confidence: float = 0.0  # 0.0 - 1.0
+    block_confidences: List[float] = field(default_factory=list)
+    word_count: int = 0
+    success: bool = True
+    error: Optional[str] = None
+    preprocessing_applied: str = "none"  # high, medium, low
+
+    def to_dict(self) -> dict:
+        return {
+            "text": self.text,
+            "confidence": round(self.confidence, 3),
+            "block_confidences": [round(c, 3) for c in self.block_confidences],
+            "word_count": self.word_count,
+            "success": self.success,
+            "error": self.error,
+            "preprocessing_applied": self.preprocessing_applied
+        }
 
 
 class OCRService:
@@ -98,6 +127,179 @@ class OCRService:
                 error_type=type(e).__name__
             )
             raise
+
+    def detect_text_with_confidence_sync(self, image_content: bytes) -> OCRResult:
+        """
+        Extrae texto con métricas de confianza (versión sincrónica)
+
+        Habilita confidence scores en Google Vision para evaluar calidad del OCR.
+
+        Args:
+            image_content: Contenido de la imagen en bytes
+
+        Returns:
+            OCRResult: Resultado con texto, confianza y métricas
+        """
+        try:
+            # Crear objeto Image para Vision API
+            image = vision.Image(content=image_content)
+
+            # Configurar para obtener confidence scores
+            # Usar DOCUMENT_TEXT_DETECTION que incluye confidence por defecto
+            response = self.vision_client.document_text_detection(image=image)
+
+            # Verificar errores
+            if response.error.message:
+                logger.error(
+                    "Error en Vision API",
+                    error_message=response.error.message
+                )
+                return OCRResult(
+                    success=False,
+                    error=response.error.message
+                )
+
+            # Extraer texto y confianza
+            result = OCRResult()
+
+            if response.full_text_annotation:
+                result.text = response.full_text_annotation.text
+
+                # Extraer confidence por bloque
+                for page in response.full_text_annotation.pages:
+                    for block in page.blocks:
+                        if hasattr(block, 'confidence'):
+                            result.block_confidences.append(block.confidence)
+
+                        # Contar palabras
+                        for paragraph in block.paragraphs:
+                            result.word_count += len(paragraph.words)
+
+                # Calcular confidence promedio
+                if result.block_confidences:
+                    result.confidence = sum(result.block_confidences) / len(result.block_confidences)
+                else:
+                    # Si no hay confidence en bloques, estimar basado en texto
+                    result.confidence = 0.8 if result.text else 0.0
+
+                logger.debug(
+                    "OCR con confidence completado",
+                    text_length=len(result.text),
+                    confidence=round(result.confidence, 3),
+                    blocks=len(result.block_confidences),
+                    words=result.word_count
+                )
+
+            elif response.text_annotations:
+                # Fallback a text_annotations si full_text_annotation no está disponible
+                result.text = response.text_annotations[0].description
+                result.confidence = 0.75  # Estimación cuando no hay confidence disponible
+                result.word_count = len(result.text.split())
+
+            else:
+                logger.warning("No se detectó texto en la imagen")
+                result.confidence = 0.0
+
+            return result
+
+        except Exception as e:
+            logger.error(
+                "Error al detectar texto con confidence",
+                error=str(e),
+                error_type=type(e).__name__
+            )
+            return OCRResult(
+                success=False,
+                error=str(e)
+            )
+
+    async def detect_text_with_confidence_async(self, image_content: bytes) -> OCRResult:
+        """
+        Extrae texto con confianza (versión asíncrona)
+        """
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            self.executor,
+            self.detect_text_with_confidence_sync,
+            image_content
+        )
+
+    async def extract_with_retry(
+        self,
+        image_content: bytes,
+        max_attempts: int = 3,
+        confidence_threshold: float = 0.70,
+        preprocessing_service=None
+    ) -> OCRResult:
+        """
+        Extrae texto con retry progresivo y preprocesamiento.
+
+        Si la confianza es baja, reintenta con preprocesamiento más agresivo.
+
+        Args:
+            image_content: Imagen en bytes
+            max_attempts: Máximo número de intentos (1-3)
+            confidence_threshold: Umbral mínimo de confianza (0.0-1.0)
+            preprocessing_service: Servicio de preprocesamiento (opcional)
+
+        Returns:
+            OCRResult: Mejor resultado obtenido
+        """
+        # Niveles de preprocesamiento
+        preprocessing_levels = ["high", "medium", "low"]
+
+        best_result = None
+
+        for attempt in range(min(max_attempts, 3)):
+            level = preprocessing_levels[attempt]
+
+            # Aplicar preprocesamiento si está disponible
+            if preprocessing_service and attempt > 0:
+                try:
+                    processed_image, _ = preprocessing_service.preprocess_for_quality(
+                        image_content,
+                        quality_level=level
+                    )
+                except Exception as e:
+                    logger.warning(f"Error en preprocesamiento {level}: {e}")
+                    processed_image = image_content
+            else:
+                processed_image = image_content
+
+            # Ejecutar OCR
+            result = await self.detect_text_with_confidence_async(processed_image)
+            result.preprocessing_applied = level if attempt > 0 else "none"
+
+            logger.debug(
+                "Intento de OCR",
+                attempt=attempt + 1,
+                preprocessing=result.preprocessing_applied,
+                confidence=result.confidence,
+                threshold=confidence_threshold
+            )
+
+            # Si alcanzamos el umbral, retornar
+            if result.confidence >= confidence_threshold:
+                logger.info(
+                    "OCR exitoso en intento",
+                    attempt=attempt + 1,
+                    confidence=result.confidence
+                )
+                return result
+
+            # Guardar mejor resultado
+            if best_result is None or result.confidence > best_result.confidence:
+                best_result = result
+
+        # Retornar el mejor resultado obtenido
+        logger.warning(
+            "OCR completado sin alcanzar umbral de confianza",
+            best_confidence=best_result.confidence if best_result else 0,
+            threshold=confidence_threshold,
+            attempts=max_attempts
+        )
+
+        return best_result if best_result else OCRResult(success=False, error="No results")
 
     async def detect_text_async(self, image_content: bytes) -> str:
         """

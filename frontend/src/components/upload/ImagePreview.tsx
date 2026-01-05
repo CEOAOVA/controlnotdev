@@ -65,18 +65,18 @@ export function ImagePreview({
           </p>
         </div>
 
-        {/* Remove button */}
+        {/* Remove button - larger touch target on mobile, visible always on mobile */}
         {showRemove && (
           <Button
             variant="destructive"
             size="icon"
-            className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+            className="absolute top-1 right-1 sm:top-2 sm:right-2 h-10 w-10 sm:h-6 sm:w-6 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
             onClick={(e) => {
               e.stopPropagation();
               onRemove();
             }}
           >
-            <X className="h-3 w-3" />
+            <X className="h-4 w-4 sm:h-3 sm:w-3" />
           </Button>
         )}
       </div>

@@ -1,12 +1,24 @@
 """
 ControlNot v2 - Anthropic AI Service
-Extracción de datos con Claude 3.5 Sonnet + Prompt Caching
+Extracción de datos con Claude Vision + Prompt Caching
 
-SEMANA 1 - QUICK WINS:
-- Usa Anthropic Claude 3.5 Sonnet (mejor razonamiento)
-- Implementa Prompt Caching para -40-60% costos
-- Cache de 5 minutos para prompts repetidos
-- Fallback automático a OpenAI si falla
+=== CLAUDE VISION DOCS (docs.anthropic.com) ===
+https://docs.anthropic.com/en/docs/build-with-claude/vision
+
+Best Practices Oficiales:
+- "Resize images to no more than 1.15 megapixels"
+- "Images placed after text still perform well, but image-then-text is better"
+- "Introduce each image with Image 1:, Image 2:"
+- "Claude may hallucinate on low-quality, rotated, or very small images"
+- Tokens: (width * height) / 750
+
+| Especificación          | Valor Oficial               |
+|-------------------------|------------------------------|
+| Tamaño óptimo           | ≤1568px en ambas dims       |
+| Megapíxeles óptimos     | ≤1.15 MP                    |
+| Tamaño mínimo efectivo  | >200px                      |
+| Límite por request      | 100 imágenes API            |
+| Peso máximo             | 5MB por imagen              |
 
 Beneficios vs OpenAI GPT-4o:
 - Costo: $0.003/1K tokens input (con cache) vs $0.005 OpenAI (-40%)
@@ -34,6 +46,119 @@ from app.models.pasaporte import PasaporteMexicano
 from app.models.curp_constancia import ConstanciaCURP
 
 logger = structlog.get_logger()
+
+
+# =========================================
+# PROMPTS ESPECIALIZADOS POR TIPO DE DOCUMENTO
+# Best Practices 2025 para reducir alucinaciones
+# =========================================
+
+DOCUMENT_SPECIFIC_PROMPTS = {
+    "escritura_antigua": """
+TIPO DE DOCUMENTO: Escritura Notarial Antigua (posiblemente mecanografiada)
+
+CONSIDERACIONES ESPECIALES:
+- El documento puede tener sellos o firmas que cubren parcialmente el texto
+- El texto puede estar desvanecido en algunas partes debido a la antiguedad
+- Puede haber manchas, dobleces o deterioro del papel
+- La tipografia mecanografiada puede tener caracteres dificiles de distinguir
+
+INSTRUCCIONES:
+- Si un campo es parcialmente ilegible, indica el texto visible seguido de "[parcial]"
+- NO inventes informacion que no puedas ver claramente
+- Prioriza extraer: partes involucradas, fecha, notario, numero de escritura
+- Si hay sellos sobre texto importante, intenta leer lo que sea visible
+- Indica "[ilegible por sello]" si un sello cubre completamente informacion critica
+""",
+
+    "ine_fotocopia": """
+TIPO DE DOCUMENTO: INE/IFE (posiblemente fotocopia o foto de WhatsApp)
+
+CONSIDERACIONES ESPECIALES:
+- La calidad puede ser baja por compresion de imagen
+- Algunos datos pueden ser dificiles de leer por la resolucion
+- El documento puede estar ligeramente inclinado o con reflejos
+- Las fotos de WhatsApp tienen compresion agresiva
+
+INSTRUCCIONES:
+- Busca: nombre completo, CURP, clave de elector, seccion, vigencia
+- Si un dato es ilegible, indica "ilegible" en lugar de adivinar
+- La direccion puede estar cortada o parcial
+- Verifica que el CURP tenga 18 caracteres
+- La clave de elector tiene formato especifico: 6 letras + 8 numeros + H/M + 3 numeros
+""",
+
+    "curp_constancia": """
+TIPO DE DOCUMENTO: Constancia de CURP
+
+CONSIDERACIONES ESPECIALES:
+- Documento digital generalmente nitido
+- El CURP es el dato mas importante y debe ser exacto
+- Contiene datos biometricos y de registro civil
+
+INSTRUCCIONES:
+- El CURP debe tener exactamente 18 caracteres
+- Verifica: 4 letras + 6 numeros + H/M + 5 letras + 2 caracteres
+- Extrae fecha de nacimiento, entidad de registro, sexo
+- El nombre debe coincidir exactamente con el CURP
+""",
+
+    "avaluo": """
+TIPO DE DOCUMENTO: Avaluo o Documento de Valuacion
+
+CONSIDERACIONES ESPECIALES:
+- Contiene muchos datos numericos que deben ser exactos
+- Puede tener tablas, graficos o planos
+- Los valores monetarios son criticos
+
+INSTRUCCIONES:
+- Extrae con precision: valor total, superficie, ubicacion, fecha
+- Los numeros son criticos - NO redondees ni aproximes
+- Mantén el formato de moneda: $X,XXX,XXX.XX
+- Las superficies deben incluir unidad (m2, hectareas, etc.)
+- Busca el valor catastral y valor comercial por separado
+""",
+
+    "acta_nacimiento": """
+TIPO DE DOCUMENTO: Acta de Nacimiento
+
+CONSIDERACIONES ESPECIALES:
+- Documento oficial con formato estandar del Registro Civil
+- Puede ser copia certificada reciente o documento antiguo
+- Contiene informacion genealogica importante
+
+INSTRUCCIONES:
+- Extrae: nombre completo, fecha de nacimiento, lugar, padres
+- La fecha de nacimiento es CRITICA para calcular edad
+- Los nombres de los padres incluyen apellidos completos
+- Busca el numero de acta y tomo si estan visibles
+- CURP puede aparecer en actas recientes
+""",
+
+    "recibo_cfe": """
+TIPO DE DOCUMENTO: Recibo CFE (Comision Federal de Electricidad)
+
+CONSIDERACIONES ESPECIALES:
+- Documento con formato estandar de CFE
+- Contiene direccion del predio que es importante para notaria
+
+INSTRUCCIONES:
+- Prioriza: direccion completa, numero de servicio
+- La direccion es la informacion mas importante
+- Extrae colonia, municipio, codigo postal
+- El numero de servicio tiene formato especifico de CFE
+""",
+
+    "default": """
+TIPO DE DOCUMENTO: Documento General
+
+INSTRUCCIONES:
+- Analiza el documento visualmente para identificar su tipo
+- Extrae todos los campos solicitados con precision
+- Si un dato no es visible, usa "**[NO ENCONTRADO]**"
+- Mantén formatos exactos de fechas, numeros y nombres
+"""
+}
 
 
 class AnthropicExtractionService:
@@ -122,6 +247,43 @@ class AnthropicExtractionService:
             model_class = BaseKeys
 
         return model_class
+
+    def _get_specialized_prompt(self, document_hint: str) -> str:
+        """
+        Obtiene prompt especializado para tipo de documento o caracteristica.
+
+        Args:
+            document_hint: Tipo de documento o caracteristica especial
+                          Ejemplos: "escritura_antigua", "ine_fotocopia", "avaluo"
+
+        Returns:
+            str: Prompt especializado o default
+        """
+        # Buscar coincidencia exacta
+        if document_hint in DOCUMENT_SPECIFIC_PROMPTS:
+            return DOCUMENT_SPECIFIC_PROMPTS[document_hint]
+
+        # Buscar coincidencia parcial
+        hint_lower = document_hint.lower()
+        for key, prompt in DOCUMENT_SPECIFIC_PROMPTS.items():
+            if key in hint_lower or hint_lower in key:
+                return prompt
+
+        # Detectar por nombre de archivo
+        if any(x in hint_lower for x in ['ine', 'ife', 'credencial']):
+            return DOCUMENT_SPECIFIC_PROMPTS.get("ine_fotocopia", "")
+        if any(x in hint_lower for x in ['curp', 'constancia']):
+            return DOCUMENT_SPECIFIC_PROMPTS.get("curp_constancia", "")
+        if any(x in hint_lower for x in ['avaluo', 'valuacion']):
+            return DOCUMENT_SPECIFIC_PROMPTS.get("avaluo", "")
+        if any(x in hint_lower for x in ['acta', 'nacimiento']):
+            return DOCUMENT_SPECIFIC_PROMPTS.get("acta_nacimiento", "")
+        if any(x in hint_lower for x in ['cfe', 'luz', 'recibo']):
+            return DOCUMENT_SPECIFIC_PROMPTS.get("recibo_cfe", "")
+        if any(x in hint_lower for x in ['escritura', 'antecedente']):
+            return DOCUMENT_SPECIFIC_PROMPTS.get("escritura_antigua", "")
+
+        return DOCUMENT_SPECIFIC_PROMPTS.get("default", "")
 
     def _build_system_prompt(self, document_type: str) -> str:
         """
@@ -236,11 +398,15 @@ Solo el objeto JSON con los campos solicitados."""
         text: str,
         document_type: str,
         placeholders: Optional[List[str]] = None,
-        temperature: float = 0.3,
+        temperature: float = 0.0,  # Best practice: 0 para extracción determinista
         max_tokens: int = 4096
     ) -> Dict[str, str]:
         """
         Extrae datos usando Claude con Prompt Caching
+
+        === BEST PRACTICES ===
+        - temperature=0.0: Determinista para extracción factual
+        - Prompt Caching: -40-60% costos reutilizando prompts
 
         ARQUITECTURA DE CACHE:
         - System prompt: Cache por 5 min (reutilizable)
@@ -255,7 +421,7 @@ Solo el objeto JSON con los campos solicitados."""
             text: Texto del documento
             document_type: Tipo de documento
             placeholders: Placeholders opcionales
-            temperature: Temperatura del modelo (0.0-1.0)
+            temperature: 0.0 recomendado para extracción
             max_tokens: Máximo de tokens en respuesta
 
         Returns:
@@ -512,14 +678,19 @@ RESPONDE SOLO CON JSON (sin markdown ni explicaciones):"""
         images: List[Dict],
         document_type: str,
         placeholders: Optional[List[str]] = None,
-        temperature: float = 0.2,
-        max_tokens: int = 4096
+        temperature: float = 0.0,  # OpenAI/Anthropic best practice: 0 para extracción
+        max_tokens: int = 4096,
+        quality_level: str = "high",
+        document_hints: Optional[List[str]] = None
     ) -> Dict[str, str]:
         """
         Extrae datos enviando imágenes DIRECTAMENTE a Claude Vision
 
-        En lugar de: OCR → texto → Claude extrae datos
-        Hace: Imagen → Claude "ve" y extrae directamente
+        === CLAUDE VISION BEST PRACTICES (docs.anthropic.com) ===
+        - "Images placed after text still perform well, but image-then-text is better"
+        - "Introduce each image with Image 1:, Image 2:"
+        - temperature=0 para extracción determinista
+        - Resize a ≤1568px y ≤1.15MP antes de enviar
 
         VENTAJAS:
         - NO importa la rotación - Claude entiende el contexto visual
@@ -532,16 +703,20 @@ RESPONDE SOLO CON JSON (sin markdown ni explicaciones):"""
                 [{'name': str, 'content': bytes, 'category': str}, ...]
             document_type: Tipo de documento ('donacion', 'compraventa', etc.)
             placeholders: Placeholders opcionales del template
-            temperature: Temperatura del modelo (0.0-1.0)
+            temperature: 0.0 recomendado para extracción (best practice)
             max_tokens: Máximo de tokens en respuesta
+            quality_level: Nivel de calidad de imágenes ('high', 'medium', 'low')
+                           Ajusta instrucciones para documentos difíciles
+            document_hints: Hints de tipos de documento para prompts especializados
+                           Ejemplo: ['escritura_antigua', 'ine_fotocopia']
 
         Returns:
             Dict[str, str]: Datos extraídos
 
-        Limits:
-            - Máximo 20 imágenes por request (límite Anthropic)
+        Limits (docs.anthropic.com):
+            - Máximo 100 imágenes por request API (20 en claude.ai)
             - 5MB máximo por imagen
-            - ~1000 tokens por imagen
+            - tokens = (width * height) / 750 por imagen
 
         Example:
             >>> images = [
@@ -556,22 +731,28 @@ RESPONDE SOLO CON JSON (sin markdown ni explicaciones):"""
             "Extrayendo datos con Claude Vision (imágenes directas)",
             doc_type=document_type,
             num_images=len(images),
-            model=self.model
+            model=self.model,
+            quality_level=quality_level,
+            document_hints=document_hints
         )
 
-        # Validar límite de imágenes
-        if len(images) > 20:
+        # Validar límite de imágenes (100 en API, 20 en claude.ai)
+        if len(images) > 100:
             logger.warning(
-                "Demasiadas imágenes, truncando a 20",
+                "Demasiadas imágenes, truncando a 100 (límite API)",
                 original_count=len(images)
             )
-            images = images[:20]
+            images = images[:100]
 
         try:
-            # Construir contenido con imágenes
+            # =====================================================
+            # ESTRUCTURA: IMAGE-THEN-TEXT (Claude Vision Best Practice)
+            # Docs: "Introduce each image with Image 1:, Image 2:"
+            # =====================================================
             content = []
+            image_count = 0
 
-            for img in images:
+            for i, img in enumerate(images, 1):
                 img_name = img.get('name', 'documento')
                 img_content = img.get('content', b'')
                 img_category = img.get('category', 'otros')
@@ -579,6 +760,8 @@ RESPONDE SOLO CON JSON (sin markdown ni explicaciones):"""
                 if not img_content:
                     logger.warning(f"Imagen vacía: {img_name}")
                     continue
+
+                image_count += 1
 
                 # Codificar a base64
                 img_b64 = base64.b64encode(img_content).decode('utf-8')
@@ -594,13 +777,14 @@ RESPONDE SOLO CON JSON (sin markdown ni explicaciones):"""
                 else:
                     media_type = "image/jpeg"  # Default para jpg, jpeg y otros
 
-                # Agregar contexto del archivo
+                # === CLAUDE VISION BEST PRACTICE ===
+                # "Introduce each image with Image 1:, Image 2:"
                 content.append({
                     "type": "text",
-                    "text": f"=== DOCUMENTO: {img_name} (Categoría: {img_category}) ==="
+                    "text": f"Image {image_count}: {img_name} (Categoría: {img_category})"
                 })
 
-                # Agregar imagen
+                # Agregar imagen DESPUÉS del label (image-then-text)
                 content.append({
                     "type": "image",
                     "source": {
@@ -616,6 +800,52 @@ RESPONDE SOLO CON JSON (sin markdown ni explicaciones):"""
             # Agregar instrucciones de extracción
             fields_context = self._build_fields_context(document_type, placeholders)
 
+            # ===== PROMPTS ESPECIALIZADOS (Best Practices 2025) =====
+            specialized_prompts = []
+
+            # 1. Prompts basados en document_hints
+            if document_hints:
+                for hint in document_hints:
+                    prompt = self._get_specialized_prompt(hint)
+                    if prompt and prompt not in specialized_prompts:
+                        specialized_prompts.append(prompt)
+
+            # 2. Detección automática por nombre de imagen
+            for img in images:
+                img_name = img.get('name', '').lower()
+                detected_prompt = self._get_specialized_prompt(img_name)
+                if detected_prompt and detected_prompt not in specialized_prompts:
+                    specialized_prompts.append(detected_prompt)
+
+            # 3. Instrucciones adicionales para documentos de baja calidad
+            quality_instructions = ""
+            if quality_level == "low":
+                quality_instructions = """
+ADVERTENCIA - DOCUMENTOS DE BAJA CALIDAD DETECTADOS:
+- Las imágenes pueden estar borrosas, desvanecidas o con bajo contraste
+- PRESTA ATENCION ESPECIAL a caracteres que pueden confundirse (0/O, 1/l/I, 5/S, 8/B)
+- Si un dato es parcialmente legible, indica lo visible seguido de "[parcial]"
+- NO adivines datos ilegibles - mejor indicar "[ilegible]"
+- Valida CURP (18 chars) y RFC (13 chars) aunque estén borrosos
+"""
+            elif quality_level == "medium":
+                quality_instructions = """
+NOTA - CALIDAD MEDIA DE IMAGENES:
+- Algunas secciones pueden requerir atención extra
+- Verifica formatos de CURP/RFC antes de extraer
+- Si hay ambigüedad, indica "[verificar]" junto al valor
+"""
+
+            # Construir sección de prompts especializados
+            specialized_section = ""
+            if specialized_prompts:
+                specialized_section = "\n\n".join(specialized_prompts)
+                specialized_section = f"""
+=== CONSIDERACIONES ESPECIALIZADAS POR TIPO DE DOCUMENTO ===
+{specialized_section}
+=== FIN CONSIDERACIONES ESPECIALIZADAS ===
+"""
+
             content.append({
                 "type": "text",
                 "text": f"""
@@ -628,7 +858,8 @@ INSTRUCCIONES IMPORTANTES:
 4. Extrae los datos según las instrucciones específicas de cada campo
 5. Si un campo no está visible en ningún documento, usa "**[NO ENCONTRADO]**"
 6. Mantén el formato exacto: nombres en MAYÚSCULAS cuando se indique, fechas completas, etc.
-
+{quality_instructions}
+{specialized_section}
 {fields_context}
 
 RESPONDE SOLO CON JSON VÁLIDO (sin markdown, sin explicaciones, sin ```):

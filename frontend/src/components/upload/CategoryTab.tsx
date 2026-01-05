@@ -94,7 +94,7 @@ export function CategoryTab({
             </h4>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
             {files.map((uploadedFile) => (
               <ImagePreview
                 key={uploadedFile.id}

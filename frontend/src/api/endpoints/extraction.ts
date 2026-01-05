@@ -10,6 +10,7 @@ import type {
   AIExtractionResponse,
   DataEditRequest,
   DataEditResponse,
+  QualityLevel,
 } from '../types';
 
 export const extractionApi = {
@@ -57,16 +58,29 @@ export const extractionApi = {
    * Extract data directly from images using Claude Vision
    * Better for photos of documents (INE, credentials, etc.)
    * Bypasses OCR step for improved accuracy with low-quality images
+   *
+   * OCR Robusto 2025:
+   * - quality_level: Informs Claude about image quality for specialized prompts
+   * - document_hints: List of document type hints for specialized extraction
    */
   extractWithVision: async (
     sessionId: string,
-    documentType: string
+    documentType: string,
+    options?: {
+      qualityLevel?: QualityLevel;
+      documentHints?: string[];
+      enableValidation?: boolean;
+    }
   ): Promise<AIExtractionResponse> => {
     const { data } = await apiClient.post<AIExtractionResponse>(
       '/extraction/vision',
       {
         session_id: sessionId,
         document_type: documentType,
+        // OCR Robusto 2025 parameters
+        quality_level: options?.qualityLevel || 'high',
+        document_hints: options?.documentHints,
+        enable_validation: options?.enableValidation ?? true,
       },
       {
         // Vision extraction can take longer with many images
