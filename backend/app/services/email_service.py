@@ -58,9 +58,9 @@ class EmailService:
         """
         self.smtp_server = smtp_server or settings.SMTP_SERVER
         self.smtp_port = smtp_port or settings.SMTP_PORT
-        self.smtp_user = smtp_user or settings.SMTP_USER
+        self.smtp_user = smtp_user or settings.SMTP_EMAIL
         self.smtp_password = smtp_password or settings.SMTP_PASSWORD
-        self.from_email = from_email or settings.FROM_EMAIL
+        self.from_email = from_email or settings.SMTP_EMAIL
 
         logger.debug(
             "EmailService inicializado",

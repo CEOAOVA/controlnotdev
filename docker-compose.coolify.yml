@@ -14,8 +14,6 @@ services:
         VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
     ports:
       - "80"
-    depends_on:
-      - backend
     restart: unless-stopped
     labels:
       - "coolify.managed=true"
@@ -33,24 +31,18 @@ services:
       - "traefik.http.middlewares.controlnot-redirect-https.redirectscheme.permanent=true"
       # Service
       - "traefik.http.services.controlnot-frontend.loadbalancer.server.port=80"
-      # Security headers
-      - "traefik.http.middlewares.controlnot-headers.headers.forcestsheader=true"
-      - "traefik.http.middlewares.controlnot-headers.headers.stsincludesubdomains=true"
-      - "traefik.http.middlewares.controlnot-headers.headers.stsseconds=31536000"
-      - "traefik.http.routers.controlnot-frontend.middlewares=controlnot-headers"
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1/health"]
-      interval: 30s
-      timeout: 10s
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 5s
       retries: 3
-      start_period: 40s
+      start_period: 5s
     deploy:
       resources:
         limits:
-          memory: 256M
-          cpus: '0.25'
+          memory: 512M
+          cpus: '0.5'
     networks:
-      - controlnot-internal
       - coolify
 
   # ===================
@@ -63,7 +55,8 @@ services:
     ports:
       - "8000"
     depends_on:
-      - redis
+      redis:
+        condition: service_started
     restart: unless-stopped
     labels:
       - "coolify.managed=true"
@@ -109,13 +102,11 @@ services:
       # App
       - APP_URL=https://pruebas.aurinot.com
     healthcheck:
-      # Usar /ping que es más ligero que /health (no verifica dependencias)
-      test: ["CMD", "curl", "-f", "http://localhost:8000/ping"]
-      interval: 30s
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/ping"]
+      interval: 10s
       timeout: 5s
       retries: 5
-      # Aumentar start_period para dar tiempo al startup con Gunicorn
-      start_period: 60s
+      start_period: 120s
     deploy:
       resources:
         limits:
@@ -124,7 +115,6 @@ services:
         reservations:
           memory: 512M
     networks:
-      - controlnot-internal
       - coolify
 
   # ===================
@@ -147,7 +137,7 @@ services:
           memory: 128M
           cpus: '0.25'
     networks:
-      - controlnot-internal
+      - coolify
 
 # ===================
 # VOLUMES
@@ -159,8 +149,6 @@ volumes:
 # NETWORKS
 # ===================
 networks:
-  controlnot-internal:
-    driver: bridge
   coolify:
     external: true
     name: coolify

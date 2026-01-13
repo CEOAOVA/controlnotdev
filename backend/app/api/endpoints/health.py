@@ -49,7 +49,7 @@ async def health_check():
 
     # 2. Google Cloud Vision
     try:
-        if hasattr(settings, 'GOOGLE_CREDENTIALS_PATH'):
+        if hasattr(settings, 'GOOGLE_CREDENTIALS_JSON') and settings.GOOGLE_CREDENTIALS_JSON:
             services_status['google_vision'] = 'ok'
         else:
             services_status['google_vision'] = 'not_configured'
@@ -59,7 +59,7 @@ async def health_check():
 
     # 3. Google Drive (opcional)
     try:
-        if hasattr(settings, 'GOOGLE_CREDENTIALS_PATH'):
+        if hasattr(settings, 'GOOGLE_DRIVE_FOLDER_ID') and settings.GOOGLE_DRIVE_FOLDER_ID:
             services_status['google_drive'] = 'ok'
         else:
             services_status['google_drive'] = 'not_configured'
@@ -68,7 +68,7 @@ async def health_check():
 
     # 4. SMTP
     try:
-        if settings.SMTP_SERVER and settings.SMTP_USER:
+        if settings.SMTP_SERVER and settings.SMTP_EMAIL:
             services_status['smtp'] = 'ok'
         else:
             services_status['smtp'] = 'not_configured'
