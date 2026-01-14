@@ -3,13 +3,15 @@
  * Handles: Loading templates, uploading, detecting document type
  */
 
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { templatesApi } from '@/api/endpoints';
 import { useTemplateStore, useDocumentStore } from '@/store';
 import type { TemplateInfo } from '@/store';
 
 export function useTemplates() {
+  const queryClient = useQueryClient();
+
   const {
     setAvailableTemplates,
     setSelectedTemplate,
@@ -140,10 +142,10 @@ export function useTemplates() {
     return result;
   };
 
-  const deleteTemplate = async (_templateId: string) => {
-    // TODO: Implement delete API call when backend supports it
-    console.warn('Delete template not implemented in backend yet');
-    throw new Error('Funcionalidad de eliminar no disponible aún');
+  const deleteTemplate = async (templateId: string) => {
+    await templatesApi.delete(templateId);
+    // Invalidar query para refrescar lista
+    await queryClient.invalidateQueries({ queryKey: ['templates'] });
   };
 
   const updateTemplateName = async (_templateId: string, _newName: string) => {

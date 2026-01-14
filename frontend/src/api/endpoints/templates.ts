@@ -76,4 +76,12 @@ export const templatesApi = {
 
     return data;
   },
+
+  /**
+   * DELETE /templates/{templateId}
+   * Delete a template
+   */
+  delete: async (templateId: string): Promise<void> => {
+    await apiClient.delete(`/templates/${templateId}`);
+  },
 };

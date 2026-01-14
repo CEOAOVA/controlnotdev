@@ -511,3 +511,153 @@ async def get_template_info(
         "placeholders_count": len(session['placeholders']),
         "confirmed": session.get('confirmed', False)
     }
+
+
+@router.delete("/{template_id}")
+async def delete_template(
+    template_id: str,
+    tenant_id: str = Depends(get_user_tenant_id),
+    supabase_storage: SupabaseStorageService = Depends(get_supabase_storage)
+):
+    """
+    Elimina un template del tenant
+
+    Proceso:
+    1. Verifica que el template existe y pertenece al tenant
+    2. Elimina versiones del template
+    3. Elimina archivo de Supabase Storage
+    4. Elimina registro de BD
+
+    Args:
+        template_id: UUID del template a eliminar
+        tenant_id: UUID del tenant (obtenido del token)
+
+    Returns:
+        Confirmación de eliminación
+    """
+    logger.info(
+        "delete_template_starting",
+        template_id=template_id,
+        tenant_id=tenant_id
+    )
+
+    try:
+        # 1. Verificar que el template existe y pertenece al tenant
+        template_result = supabase_admin.table('templates').select(
+            'id, nombre, storage_path, tenant_id'
+        ).eq('id', template_id).eq('tenant_id', tenant_id).single().execute()
+
+        if not template_result.data:
+            logger.warning(
+                "delete_template_not_found",
+                template_id=template_id,
+                tenant_id=tenant_id
+            )
+            raise HTTPException(
+                status_code=404,
+                detail="Template no encontrado o no tienes permisos para eliminarlo"
+            )
+
+        template = template_result.data
+        storage_path = template.get('storage_path')
+        template_name = template.get('nombre')
+
+        logger.info(
+            "delete_template_found",
+            template_id=template_id,
+            template_name=template_name,
+            storage_path=storage_path
+        )
+
+        # 2. Eliminar versiones del template (si existen)
+        try:
+            versions_result = supabase_admin.table('template_versions').select(
+                'id, storage_path'
+            ).eq('template_id', template_id).execute()
+
+            if versions_result.data:
+                version_count = len(versions_result.data)
+                logger.info(
+                    "delete_template_versions",
+                    template_id=template_id,
+                    version_count=version_count
+                )
+
+                # Eliminar archivos de versiones en Storage
+                for version in versions_result.data:
+                    version_path = version.get('storage_path')
+                    if version_path:
+                        try:
+                            supabase_storage.delete_file('templates', version_path)
+                        except Exception as storage_err:
+                            logger.warning(
+                                "delete_version_storage_failed",
+                                version_path=version_path,
+                                error=str(storage_err)
+                            )
+
+                # Eliminar registros de versiones
+                supabase_admin.table('template_versions').delete().eq(
+                    'template_id', template_id
+                ).execute()
+
+                logger.info(
+                    "delete_template_versions_complete",
+                    template_id=template_id,
+                    deleted_count=version_count
+                )
+        except Exception as version_err:
+            logger.warning(
+                "delete_template_versions_error",
+                template_id=template_id,
+                error=str(version_err)
+            )
+
+        # 3. Eliminar archivo principal de Storage (si existe)
+        if storage_path:
+            try:
+                supabase_storage.delete_file('templates', storage_path)
+                logger.info(
+                    "delete_template_storage_complete",
+                    storage_path=storage_path
+                )
+            except Exception as storage_err:
+                logger.warning(
+                    "delete_template_storage_failed",
+                    storage_path=storage_path,
+                    error=str(storage_err)
+                )
+
+        # 4. Eliminar registro de BD
+        supabase_admin.table('templates').delete().eq('id', template_id).execute()
+
+        logger.info(
+            "delete_template_complete",
+            template_id=template_id,
+            template_name=template_name,
+            tenant_id=tenant_id
+        )
+
+        return SuccessResponse(
+            message=f"Template '{template_name}' eliminado correctamente",
+            data={
+                "template_id": template_id,
+                "template_name": template_name,
+                "deleted": True
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            "delete_template_failed",
+            template_id=template_id,
+            tenant_id=tenant_id,
+            error=str(e),
+            error_type=type(e).__name__
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al eliminar template: {str(e)}"
+        )
