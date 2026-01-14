@@ -52,7 +52,7 @@ from app.services import (
 )
 from app.services.email_service import EmailService
 from app.services.supabase_storage_service import SupabaseStorageService
-from app.core.dependencies import get_email_service, get_supabase_storage, get_user_tenant_id
+from app.core.dependencies import get_email_service, get_supabase_storage, get_user_tenant_id, get_authenticated_user
 from app.database import supabase_admin
 from app.core.config import get_settings
 from app.repositories.session_repository import session_repository
@@ -511,6 +511,7 @@ async def generate_document(
     request: DocumentGenerationRequest,
     session_manager: SessionManager = Depends(get_session_manager),
     tenant_id: str = Depends(get_user_tenant_id),
+    user: dict = Depends(get_authenticated_user),
     supabase_storage: SupabaseStorageService = Depends(get_supabase_storage)
 ):
     """
@@ -560,13 +561,38 @@ async def generate_document(
             template_size_bytes=len(template_content),
             tipo_documento=template_session.get('tipo_documento', 'unknown'))
 
+        # === Case-insensitive matching para responses ===
+        # Normaliza las claves para mapear placeholders del template con responses
+        def normalize_key(key: str) -> str:
+            """Normaliza una clave para matching case-insensitive"""
+            return key.lower().replace(" ", "_").replace("-", "_")
+
+        # Crear diccionario de responses ampliado con claves normalizadas
+        # Esto permite que {{Placeholder}} encuentre valores de "placeholder"
+        normalized_responses = dict(request.responses)  # Copia original
+        for key, value in request.responses.items():
+            normalized = normalize_key(key)
+            # Agregar versiones normalizadas si no existen
+            if normalized not in normalized_responses:
+                normalized_responses[normalized] = value
+
+        # También agregar mappings inversos: si el placeholder es "ABC" y tenemos "abc", agregar "ABC"
+        for placeholder in request.placeholders:
+            normalized_ph = normalize_key(placeholder)
+            if placeholder not in normalized_responses and normalized_ph in normalized_responses:
+                normalized_responses[placeholder] = normalized_responses[normalized_ph]
+
+        logger.debug("responses_normalized",
+            original_count=len(request.responses),
+            normalized_count=len(normalized_responses))
+
         # Generar documento
         gen_start = time.time()
         generator = DocumentGenerator()
 
         document_content, stats = generator.generate_document(
             template_content=template_content,
-            responses=request.responses,
+            responses=normalized_responses,
             placeholders=request.placeholders,
             output_filename=request.output_filename
         )
@@ -653,7 +679,8 @@ async def generate_document(
 
             await document_repository.create({
                 'tenant_id': tenant_id,
-                'template_id': UUID(request.template_id),
+                'user_id': user.get('id'),  # ID del usuario autenticado
+                'template_id': str(UUID(request.template_id)),
                 'tipo_documento': template_session.get('tipo_documento', 'desconocido'),
                 'nombre_documento': f"{request.output_filename}.docx",
                 'estado': 'completado',
@@ -679,17 +706,23 @@ async def generate_document(
             )
 
         except Exception as persist_error:
-            # Log del error pero no fallar la generación
-            # El documento sigue disponible en SessionManager temporalmente
-            logger.warning(
-                "persist_error_non_blocking",
+            # CRÍTICO: No silenciar errores de persistencia
+            # Sin persistencia el documento no aparecerá en historial
+            logger.error(
+                "persist_failed_critical",
                 error=str(persist_error),
                 error_type=type(persist_error).__name__,
                 doc_id=doc_id,
                 tenant_id=tenant_id,
+                user_id=user.get('id'),
                 storage_uploaded=storage_path is not None,
                 storage_ms=round(storage_duration, 2) if storage_duration else 0,
                 db_ms=round(db_duration, 2) if db_duration else 0
+            )
+            # Re-lanzar para que el usuario sepa que hubo un problema
+            raise HTTPException(
+                status_code=500,
+                detail=f"Documento generado pero error al guardar: {str(persist_error)}"
             )
 
         # Calcular lista de placeholders faltantes
@@ -931,8 +964,28 @@ async def preview_document(
         missing_placeholders = []
         warnings = []
 
+        # === Case-insensitive matching para placeholders ===
+        # Normaliza las claves para evitar problemas de mayúsculas/minúsculas
+        def normalize_key(key: str) -> str:
+            """Normaliza una clave para matching case-insensitive"""
+            return key.lower().replace(" ", "_").replace("-", "_")
+
+        # Crear diccionario normalizado de los datos
+        normalized_data = {normalize_key(k): v for k, v in request.data.items()}
+        # También mantener mapeo de clave normalizada -> clave original
+        key_mapping = {normalize_key(k): k for k in request.data.keys()}
+
+        def get_value_for_placeholder(placeholder: str) -> str:
+            """Busca el valor para un placeholder, usando matching case-insensitive"""
+            # Primero intenta match exacto
+            if placeholder in request.data:
+                return request.data[placeholder]
+            # Luego intenta match normalizado
+            normalized = normalize_key(placeholder)
+            return normalized_data.get(normalized, "")
+
         for placeholder in all_placeholders:
-            value = request.data.get(placeholder, "")
+            value = get_value_for_placeholder(placeholder)
             if value and value != "No encontrado" and "NO LOCALIZADO" not in value.upper():
                 filled_placeholders += 1
                 # Validaciones de formato
@@ -948,10 +1001,10 @@ async def preview_document(
         # 4. Generar HTML con datos reemplazados
         full_text = "\n".join(full_text_parts)
 
-        # Reemplazar placeholders con valores
+        # Reemplazar placeholders con valores (usando matching case-insensitive)
         def replace_placeholder(match):
             key = match.group(1)
-            value = request.data.get(key, "")
+            value = get_value_for_placeholder(key)
             if value and value != "No encontrado" and "NO LOCALIZADO" not in value.upper():
                 return f'<span class="filled-value">{escape(value)}</span>'
             else:

@@ -157,17 +157,20 @@ async def get_categories_for_document(document_type: str):
             {
                 "name": "parte_a",
                 "description": categories_data.get('parte_a', {}).get('nombre', 'Parte A'),
-                "icon": categories_data.get('parte_a', {}).get('icono', '📄')
+                "icon": categories_data.get('parte_a', {}).get('icono', '📄'),
+                "required": categories_data.get('parte_a', {}).get('required', True)
             },
             {
                 "name": "parte_b",
                 "description": categories_data.get('parte_b', {}).get('nombre', 'Parte B'),
-                "icon": categories_data.get('parte_b', {}).get('icono', '📄')
+                "icon": categories_data.get('parte_b', {}).get('icono', '📄'),
+                "required": categories_data.get('parte_b', {}).get('required', True)
             },
             {
                 "name": "otros",
                 "description": categories_data.get('otros', {}).get('nombre', 'Otros'),
-                "icon": categories_data.get('otros', {}).get('icono', '📋')
+                "icon": categories_data.get('otros', {}).get('icono', '📋'),
+                "required": categories_data.get('otros', {}).get('required', True)
             }
         ]
 

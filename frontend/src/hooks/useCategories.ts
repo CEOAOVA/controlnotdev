@@ -23,11 +23,12 @@ export function useCategories() {
 
       const response = await modelsApi.getCategories(documentType);
 
-      // Transform to category format
+      // Transform to category format (including required field)
       const categories = response.categories.map((cat) => ({
         name: cat.name as CategoryName,
         description: cat.description,
         icon: cat.icon,
+        required: cat.required !== false, // Default to true if not specified
       }));
 
       setAvailableCategories(categories);
@@ -81,10 +82,14 @@ export function useCategories() {
     return getFilesCount(category) > 0;
   };
 
-  // Helper to check if all required categories have files
+  // Helper to check if all REQUIRED categories have files
+  // Categories with required=false can be skipped
   const areAllCategoriesPopulated = (): boolean => {
     const categories = categoriesQuery.data || [];
-    return categories.every((cat) => hasFiles(cat.name));
+    // Only check categories where required !== false
+    return categories
+      .filter((cat) => cat.required !== false)
+      .every((cat) => hasFiles(cat.name));
   };
 
   // Helper to get total files across all categories

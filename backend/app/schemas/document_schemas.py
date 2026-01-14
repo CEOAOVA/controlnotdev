@@ -36,6 +36,7 @@ class CategoryInfo(BaseModel):
             "nombre": "Documentos del Vendedor",
             "icono": "📤",
             "descripcion": "Documentos de identificación y propiedad del vendedor",
+            "required": true,
             "documentos": [
                 "INE/IFE del Vendedor",
                 "Acta de Nacimiento del Vendedor",
@@ -46,6 +47,7 @@ class CategoryInfo(BaseModel):
     nombre: str = Field(..., description="Nombre de la categoría")
     icono: str = Field(..., description="Emoji icono de la categoría")
     descripcion: str = Field(..., description="Descripción de la categoría")
+    required: bool = Field(default=True, description="Si la categoría es obligatoria para el tipo de documento")
     documentos: List[str] = Field(..., description="Documentos esperados en esta categoría")
 
     model_config = {
@@ -55,6 +57,7 @@ class CategoryInfo(BaseModel):
                     "nombre": "Documentos del Vendedor",
                     "icono": "📤",
                     "descripcion": "Documentos de identificación y propiedad del vendedor",
+                    "required": True,
                     "documentos": [
                         "INE/IFE del Vendedor",
                         "Acta de Nacimiento del Vendedor",

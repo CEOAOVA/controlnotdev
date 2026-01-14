@@ -26,6 +26,8 @@ interface CategoryState {
     name: CategoryName;
     description: string;
     icon?: string;
+    /** Si la categoría es obligatoria (default: true) */
+    required?: boolean;
   }[];
 
   // Actions

@@ -4,6 +4,7 @@
       "nombre": "Documentos del Vendedor",
       "icono": "📤",
       "descripcion": "Documentos de identificación y propiedad del vendedor",
+      "required": true,
       "documentos": [
         "INE/IFE del Vendedor",
         "Acta de Nacimiento del Vendedor",
@@ -17,6 +18,7 @@
       "nombre": "Documentos del Comprador",
       "icono": "📥",
       "descripcion": "Documentos de identificación del comprador",
+      "required": true,
       "documentos": [
         "INE/IFE del Comprador",
         "Acta de Nacimiento del Comprador",
@@ -30,6 +32,7 @@
       "nombre": "Documentos del Inmueble y Antecedentes",
       "icono": "📋",
       "descripcion": "Documentación legal del inmueble",
+      "required": true,
       "documentos": [
         "Escritura o Contrato Antecedente",
         "Certificado Catastral",
@@ -45,6 +48,7 @@
       "nombre": "Documentos del Donador",
       "icono": "🎁",
       "descripcion": "Documentos de identificación y propiedad del donador",
+      "required": true,
       "documentos": [
         "INE/IFE del Donador",
         "Acta de Nacimiento del Donador",
@@ -58,6 +62,7 @@
       "nombre": "Documentos del Donatario",
       "icono": "🎉",
       "descripcion": "Documentos de identificación del donatario",
+      "required": true,
       "documentos": [
         "INE/IFE del Donatario",
         "Acta de Nacimiento del Donatario",
@@ -71,6 +76,7 @@
       "nombre": "Documentos del Inmueble y Antecedentes",
       "icono": "📋",
       "descripcion": "Documentación legal del inmueble",
+      "required": true,
       "documentos": [
         "Escritura o Contrato Antecedente",
         "Certificado Catastral",
@@ -86,6 +92,7 @@
       "nombre": "Documentos del Testador",
       "icono": "📝",
       "descripcion": "Documentos de identificación del testador",
+      "required": true,
       "documentos": [
         "INE/IFE del Testador",
         "Acta de Nacimiento del Testador",
@@ -97,7 +104,8 @@
     "parte_b": {
       "nombre": "Documentos de Herederos/Legatarios",
       "icono": "👥",
-      "descripcion": "Documentos de identificación de beneficiarios",
+      "descripcion": "Documentos de identificación de beneficiarios (opcional)",
+      "required": false,
       "documentos": [
         "INE/IFE de Herederos",
         "Actas de Nacimiento de Herederos",
@@ -108,7 +116,8 @@
     "otros": {
       "nombre": "Documentos Patrimoniales",
       "icono": "📋",
-      "descripcion": "Documentación de bienes y patrimonio",
+      "descripcion": "Documentación de bienes y patrimonio (opcional)",
+      "required": false,
       "documentos": [
         "Escrituras de Propiedades",
         "Estados de Cuenta Bancarios",
@@ -122,6 +131,7 @@
       "nombre": "Documentos del Otorgante",
       "icono": "👤",
       "descripcion": "Documentos de quien otorga el poder",
+      "required": true,
       "documentos": [
         "INE/IFE del Otorgante",
         "Acta de Nacimiento del Otorgante",
@@ -133,7 +143,8 @@
     "parte_b": {
       "nombre": "Documentos del Apoderado",
       "icono": "🤝",
-      "descripcion": "Documentos de quien recibe el poder",
+      "descripcion": "Documentos de quien recibe el poder (opcional)",
+      "required": false,
       "documentos": [
         "INE/IFE del Apoderado",
         "Acta de Nacimiento del Apoderado",
@@ -145,7 +156,8 @@
     "otros": {
       "nombre": "Documentos Adicionales",
       "icono": "📋",
-      "descripcion": "Otros documentos relevantes",
+      "descripcion": "Otros documentos relevantes (opcional)",
+      "required": false,
       "documentos": [
         "Poderes Anteriores (si se revocan)",
         "Documentos que acrediten facultades especiales",
@@ -158,6 +170,7 @@
       "nombre": "Documentos de Socios",
       "icono": "👥",
       "descripcion": "Documentos de todos los socios fundadores",
+      "required": true,
       "documentos": [
         "INE/IFE de cada Socio",
         "Actas de Nacimiento de Socios",
@@ -170,6 +183,7 @@
       "nombre": "Documentos de Administradores",
       "icono": "💼",
       "descripcion": "Documentos de representantes legales",
+      "required": true,
       "documentos": [
         "INE/IFE de Administradores",
         "Documentos de Aceptación del Cargo",
@@ -180,6 +194,7 @@
       "nombre": "Documentos Corporativos",
       "icono": "📋",
       "descripcion": "Documentación corporativa y legal",
+      "required": true,
       "documentos": [
         "Permiso de Denominación Social",
         "Comprobante de Domicilio Social",
@@ -194,6 +209,7 @@
       "nombre": "Documentos del Deudor",
       "icono": "🏠",
       "descripcion": "Documentos de identificación y propiedad del deudor",
+      "required": true,
       "documentos": [
         "INE/IFE del Deudor",
         "Acta de Nacimiento del Deudor",
@@ -206,7 +222,8 @@
     "parte_b": {
       "nombre": "Documentos del Banco/Acreedor",
       "icono": "🏦",
-      "descripcion": "Documentos del banco o institución financiera",
+      "descripcion": "Documentos del banco o institución financiera (opcional)",
+      "required": false,
       "documentos": [
         "Constancia de No Adeudo",
         "Finiquito o Carta de Liberación",
@@ -218,7 +235,8 @@
     "otros": {
       "nombre": "Documentos del Inmueble y Registro",
       "icono": "📋",
-      "descripcion": "Documentación legal del inmueble y registro público",
+      "descripcion": "Documentación legal del inmueble y registro público (opcional)",
+      "required": false,
       "documentos": [
         "Certificado de Libertad de Gravamen",
         "Certificado de Inscripción del RPP",
@@ -234,6 +252,7 @@
       "nombre": "Documentos Parte A",
       "icono": "📄",
       "descripcion": "Documentos de la primera parte",
+      "required": true,
       "documentos": [
         "Documentos de identificación"
       ]
@@ -242,6 +261,7 @@
       "nombre": "Documentos Parte B",
       "icono": "📄",
       "descripcion": "Documentos de la segunda parte",
+      "required": false,
       "documentos": [
         "Documentos de identificación"
       ]
@@ -250,17 +270,19 @@
       "nombre": "Otros Documentos",
       "icono": "📋",
       "descripcion": "Documentación adicional",
+      "required": false,
       "documentos": [
         "Documentos adicionales"
       ]
     }
   },
   "metadata": {
-    "version": "2.1.0",
+    "version": "2.2.0",
     "total_document_types": 6,
     "migrated_from": "por_partes.py + movil_cancelaciones.py",
     "source_lines": "1959-2182 + movil_cancelaciones.py",
     "category_types": ["parte_a", "parte_b", "otros"],
-    "last_update": "2025-01-22"
+    "last_update": "2026-01-14",
+    "changes": "Added 'required' field to categories for testamento, poder, cancelacion"
   }
 }

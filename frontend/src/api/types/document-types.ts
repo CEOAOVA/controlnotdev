@@ -11,6 +11,8 @@ export interface CategoryInfo {
   description: string;
   expected_documents: string[];
   icon?: string;
+  /** Si la categoría es obligatoria para el tipo de documento (default: true) */
+  required?: boolean;
 }
 
 export interface CategoriesResponse {

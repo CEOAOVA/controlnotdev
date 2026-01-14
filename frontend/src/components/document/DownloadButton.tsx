@@ -39,8 +39,8 @@ export function DownloadButton({ onSuccess }: DownloadButtonProps) {
       const result = await generateDocument(templateId);
 
       if (result?.success && result.document_id) {
-        // Download the blob using document_id
-        const blob = await documentsApi.download(result.document_id);
+        // Download the blob using document_id (uses correct endpoint /documents/download/{doc_id})
+        const blob = await documentsApi.downloadByDocId(result.document_id);
 
         // Use filename from response or generate one
         const filename = result.filename || `documento_${documentType}_${new Date().toISOString().split('T')[0]}.docx`;
