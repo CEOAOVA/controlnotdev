@@ -373,13 +373,10 @@ class ImagePreprocessingService:
                 return image_content
 
             # fastNlMeansDenoisingColored para imagenes a color
+            # Nota: Usar argumentos posicionales para compatibilidad con OpenCV 4.12+
+            # Signature: fastNlMeansDenoisingColored(src, dst, h, hColor, templateWindowSize, searchWindowSize)
             denoised = cv2.fastNlMeansDenoisingColored(
-                img,
-                None,
-                h=strength,           # Filtro para luminancia
-                hForColorComponents=strength,  # Filtro para color
-                templateWindowSize=7,
-                searchWindowSize=21
+                img, None, strength, strength, 7, 21
             )
 
             _, encoded = cv2.imencode('.jpg', denoised, [cv2.IMWRITE_JPEG_QUALITY, 90])
@@ -1240,8 +1237,15 @@ class ImagePreprocessingService:
         metadata["steps_applied"].append("sharpen")
 
         # 6. Deskew para inclinaciones pequeñas
-        processed = self.deskew_image(processed)
-        metadata["steps_applied"].append("deskew")
+        # NOTA: Saltar si ya se aplicó rotación de 90/180/270° para evitar conflicto
+        if metadata.get("rotation_applied", 0) == 0:
+            processed = self.deskew_image(processed)
+            metadata["steps_applied"].append("deskew")
+        else:
+            logger.debug(
+                "Saltando deskew - rotación grande ya aplicada",
+                rotation=metadata["rotation_applied"]
+            )
 
         # 7. Resize final para Claude Vision
         processed, media_type = self.preprocess(processed, filename)
