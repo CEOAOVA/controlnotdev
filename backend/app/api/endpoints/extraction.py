@@ -562,6 +562,13 @@ async def extract_with_vision(
     # Preparar imagenes para Claude Vision
     preprocessing_service = get_image_preprocessing_service()
     images = []
+    preprocessing_metadata = []
+
+    # Obtener configuración de WhatsApp preprocessing
+    from app.core.config import settings
+    whatsapp_auto_rotate = getattr(settings, 'WHATSAPP_AUTO_ROTATE', True)
+    whatsapp_auto_crop = getattr(settings, 'WHATSAPP_AUTO_CROP', True)
+    whatsapp_auto_segment = getattr(settings, 'WHATSAPP_AUTO_SEGMENT', False)
 
     for category in ['parte_a', 'parte_b', 'otros']:
         files = categorized_files.get(category, [])
@@ -570,17 +577,72 @@ async def extract_with_vision(
             file_content = file_info.get('content', b'')
 
             if file_content:
-                # Preprocesar imagen (resize, compress)
-                processed_content, media_type = preprocessing_service.preprocess(
-                    file_content, file_name
-                )
+                # Detectar si es imagen de WhatsApp por nombre
+                is_whatsapp = 'whatsapp' in file_name.lower() or 'wa ' in file_name.lower()
 
-                images.append({
-                    'name': file_name,
-                    'content': processed_content,
-                    'category': category,
-                    'media_type': media_type
-                })
+                if is_whatsapp:
+                    # Pipeline optimizado para WhatsApp
+                    logger.debug(
+                        "Usando pipeline WhatsApp",
+                        file_name=file_name,
+                        auto_rotate=whatsapp_auto_rotate,
+                        auto_crop=whatsapp_auto_crop
+                    )
+
+                    # Segmentar múltiples documentos si está habilitado
+                    if whatsapp_auto_segment:
+                        segments = preprocessing_service.segment_multiple_documents(file_content)
+                        for i, (segment_content, segment_meta) in enumerate(segments):
+                            # Aplicar pipeline WhatsApp a cada segmento
+                            processed_content, media_type, meta = preprocessing_service.preprocess_whatsapp_image(
+                                segment_content,
+                                f"{file_name}_doc{i+1}" if len(segments) > 1 else file_name,
+                                auto_rotate=whatsapp_auto_rotate,
+                                auto_crop=False,  # Ya segmentado
+                                auto_segment=False
+                            )
+                            images.append({
+                                'name': f"{file_name}_doc{i+1}" if len(segments) > 1 else file_name,
+                                'content': processed_content,
+                                'category': category,
+                                'media_type': media_type
+                            })
+                            preprocessing_metadata.append({
+                                "file": file_name,
+                                "segment": i + 1,
+                                "preprocessing": meta,
+                                "segmentation": segment_meta
+                            })
+                    else:
+                        # Pipeline WhatsApp sin segmentación
+                        processed_content, media_type, meta = preprocessing_service.preprocess_whatsapp_image(
+                            file_content,
+                            file_name,
+                            auto_rotate=whatsapp_auto_rotate,
+                            auto_crop=whatsapp_auto_crop,
+                            auto_segment=False
+                        )
+                        images.append({
+                            'name': file_name,
+                            'content': processed_content,
+                            'category': category,
+                            'media_type': media_type
+                        })
+                        preprocessing_metadata.append({
+                            "file": file_name,
+                            "preprocessing": meta
+                        })
+                else:
+                    # Preprocesar imagen estándar (resize, compress)
+                    processed_content, media_type = preprocessing_service.preprocess(
+                        file_content, file_name
+                    )
+                    images.append({
+                        'name': file_name,
+                        'content': processed_content,
+                        'category': category,
+                        'media_type': media_type
+                    })
 
     if not images:
         raise HTTPException(
@@ -589,7 +651,6 @@ async def extract_with_vision(
         )
 
     # Limitar a 20 imagenes (limite de Anthropic)
-    from app.core.config import settings
     max_images = settings.MAX_IMAGES_PER_REQUEST
 
     if len(images) > max_images:

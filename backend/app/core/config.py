@@ -151,6 +151,18 @@ class Settings(BaseSettings):
     MAX_FILE_SIZE_MB: int = 10
 
     # ==========================================
+    # WHATSAPP IMAGE PREPROCESSING
+    # Optimizaciones para imágenes de documentos enviados por WhatsApp
+    # ==========================================
+    WHATSAPP_AUTO_ROTATE: bool = True       # Auto-corregir rotación 90°/180°/270°
+    WHATSAPP_AUTO_CROP: bool = True         # Auto-recortar documento del fondo
+    WHATSAPP_AUTO_SEGMENT: bool = False     # Auto-segmentar múltiples docs (2 INEs)
+    WHATSAPP_DENOISE_STRENGTH: int = 8      # Fuerza de denoising (5-15)
+    WHATSAPP_CLAHE_CLIP: float = 2.5        # CLAHE clip limit (2.0-5.0)
+    WHATSAPP_SHARPEN_STRENGTH: float = 0.5  # Sharpening (0.3-1.5)
+    WHATSAPP_MIN_DOC_AREA_RATIO: float = 0.15  # Área mínima de documento (15%)
+
+    # ==========================================
     # CLAUDE VISION (Extracción directa de imágenes)
     # Specs oficiales: https://docs.anthropic.com/en/docs/build-with-claude/vision
     # ==========================================
