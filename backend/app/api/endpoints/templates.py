@@ -33,6 +33,7 @@ from app.services import (
     get_session_manager,
     TemplateVersionService
 )
+from app.services.mapping_service import PlaceholderMapper
 from app.services.supabase_storage_service import SupabaseStorageService
 from app.core.dependencies import (
     get_supabase_storage,
@@ -660,4 +661,288 @@ async def delete_template(
         raise HTTPException(
             status_code=500,
             detail=f"Error al eliminar template: {str(e)}"
+        )
+
+
+# ============================================================
+# ENDPOINTS PARA MAPEO DE PLACEHOLDERS
+# ============================================================
+
+@router.get("/{template_id}/standard-keys")
+async def get_standard_keys(
+    template_id: str,
+    tenant_id: str = Depends(get_user_tenant_id)
+):
+    """
+    Retorna las claves estándar disponibles para el tipo de documento del template
+
+    Usado por el editor de mapeo para mostrar las opciones disponibles
+    para mapear cada placeholder.
+
+    Args:
+        template_id: UUID del template
+
+    Returns:
+        Lista de claves estándar con descripción y aliases
+    """
+    logger.info(
+        "get_standard_keys_starting",
+        template_id=template_id,
+        tenant_id=tenant_id
+    )
+
+    try:
+        # 1. Obtener el template y su tipo de documento
+        template_result = supabase_admin.table('templates').select(
+            'id, nombre, tipo_documento'
+        ).eq('id', template_id).single().execute()
+
+        if not template_result.data:
+            raise HTTPException(
+                status_code=404,
+                detail="Template no encontrado"
+            )
+
+        template = template_result.data
+        doc_type = template['tipo_documento']
+
+        # 2. Obtener el modelo de Pydantic para el tipo de documento
+        model_class = PlaceholderMapper.MODEL_MAP.get(doc_type)
+        if not model_class:
+            logger.warning(
+                "document_type_not_found_in_model_map",
+                doc_type=doc_type,
+                available_types=list(PlaceholderMapper.MODEL_MAP.keys())
+            )
+            # Usar BaseKeys como fallback
+            from app.models.base import BaseKeys
+            model_class = BaseKeys
+
+        # 3. Extraer claves, descripciones y aliases
+        keys = []
+        for field_name, field_info in model_class.model_fields.items():
+            extra = field_info.json_schema_extra or {}
+            keys.append({
+                "key": field_name,
+                "description": field_info.description or "",
+                "aliases": extra.get("aliases", [])
+            })
+
+        # Ordenar alfabéticamente
+        keys.sort(key=lambda x: x['key'])
+
+        logger.info(
+            "get_standard_keys_complete",
+            template_id=template_id,
+            doc_type=doc_type,
+            total_keys=len(keys)
+        )
+
+        return {
+            "template_id": template_id,
+            "template_name": template['nombre'],
+            "document_type": doc_type,
+            "keys": keys,
+            "total": len(keys)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            "get_standard_keys_failed",
+            template_id=template_id,
+            error=str(e),
+            error_type=type(e).__name__
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al obtener claves estándar: {str(e)}"
+        )
+
+
+@router.get("/{template_id}/mapping")
+async def get_template_mapping(
+    template_id: str,
+    tenant_id: str = Depends(get_user_tenant_id)
+):
+    """
+    Obtiene el placeholder_mapping actual de un template
+
+    Args:
+        template_id: UUID del template
+
+    Returns:
+        Mapping actual de placeholders a claves estándar
+    """
+    logger.info(
+        "get_template_mapping_starting",
+        template_id=template_id,
+        tenant_id=tenant_id
+    )
+
+    try:
+        # 1. Obtener el template
+        template_result = supabase_admin.table('templates').select(
+            'id, nombre, tipo_documento, placeholders, active_version_id'
+        ).eq('id', template_id).single().execute()
+
+        if not template_result.data:
+            raise HTTPException(
+                status_code=404,
+                detail="Template no encontrado"
+            )
+
+        template = template_result.data
+        active_version_id = template.get('active_version_id')
+
+        # 2. Obtener el mapping de la versión activa
+        mapping = {}
+        placeholders = template.get('placeholders', [])
+
+        if active_version_id:
+            version_result = supabase_admin.table('template_versions').select(
+                'id, placeholder_mapping, placeholders'
+            ).eq('id', active_version_id).single().execute()
+
+            if version_result.data:
+                mapping = version_result.data.get('placeholder_mapping', {})
+                placeholders = version_result.data.get('placeholders', placeholders)
+
+        logger.info(
+            "get_template_mapping_complete",
+            template_id=template_id,
+            total_placeholders=len(placeholders),
+            total_mapped=len(mapping)
+        )
+
+        return {
+            "template_id": template_id,
+            "template_name": template['nombre'],
+            "document_type": template['tipo_documento'],
+            "placeholders": placeholders,
+            "mapping": mapping,
+            "total_placeholders": len(placeholders),
+            "total_mapped": len(mapping)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            "get_template_mapping_failed",
+            template_id=template_id,
+            error=str(e),
+            error_type=type(e).__name__
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al obtener mapping: {str(e)}"
+        )
+
+
+@router.put("/{template_id}/mapping")
+async def update_template_mapping(
+    template_id: str,
+    mapping: dict,
+    tenant_id: str = Depends(get_user_tenant_id)
+):
+    """
+    Actualiza el placeholder_mapping de un template
+
+    Args:
+        template_id: UUID del template
+        mapping: Nuevo mapping {placeholder: standard_key}
+
+    Returns:
+        Mapping actualizado
+    """
+    logger.info(
+        "update_template_mapping_starting",
+        template_id=template_id,
+        tenant_id=tenant_id,
+        mapping_size=len(mapping)
+    )
+
+    try:
+        # 1. Verificar que el template existe y pertenece al tenant
+        template_result = supabase_admin.table('templates').select(
+            'id, nombre, tipo_documento, active_version_id, tenant_id'
+        ).eq('id', template_id).single().execute()
+
+        if not template_result.data:
+            raise HTTPException(
+                status_code=404,
+                detail="Template no encontrado"
+            )
+
+        template = template_result.data
+
+        # Verificar permisos (template debe ser del tenant o ser público)
+        if template.get('tenant_id') and template['tenant_id'] != tenant_id:
+            raise HTTPException(
+                status_code=403,
+                detail="No tienes permisos para modificar este template"
+            )
+
+        # 2. Validar que las claves destino existen en el modelo
+        doc_type = template['tipo_documento']
+        model_class = PlaceholderMapper.MODEL_MAP.get(doc_type)
+
+        if model_class:
+            valid_keys = set(model_class.model_fields.keys())
+            invalid_keys = []
+            for placeholder, target_key in mapping.items():
+                # Permitir que un placeholder se mapee a sí mismo
+                if target_key != placeholder and target_key not in valid_keys:
+                    invalid_keys.append(target_key)
+
+            if invalid_keys:
+                logger.warning(
+                    "update_template_mapping_invalid_keys",
+                    template_id=template_id,
+                    invalid_keys=invalid_keys[:5]  # Limitar para log
+                )
+                # Solo warning, no bloqueamos la actualización
+                # ya que pueden ser claves customizadas
+
+        # 3. Actualizar template_versions
+        active_version_id = template.get('active_version_id')
+        if active_version_id:
+            supabase_admin.table('template_versions').update({
+                'placeholder_mapping': mapping
+            }).eq('id', active_version_id).execute()
+
+            logger.info(
+                "update_template_mapping_version_updated",
+                template_id=template_id,
+                version_id=active_version_id
+            )
+
+        logger.info(
+            "update_template_mapping_complete",
+            template_id=template_id,
+            mapping_size=len(mapping)
+        )
+
+        return {
+            "template_id": template_id,
+            "template_name": template['nombre'],
+            "mapping": mapping,
+            "updated": True,
+            "message": "Mapping actualizado correctamente"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            "update_template_mapping_failed",
+            template_id=template_id,
+            error=str(e),
+            error_type=type(e).__name__
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al actualizar mapping: {str(e)}"
         )

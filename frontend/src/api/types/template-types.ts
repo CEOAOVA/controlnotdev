@@ -59,3 +59,39 @@ export interface DocumentTypesListResponse {
   types: DocumentTypeInfo[];
   total: number;
 }
+
+// ============================================================
+// PLACEHOLDER MAPPING TYPES
+// ============================================================
+
+export interface StandardKey {
+  key: string;
+  description: string;
+  aliases: string[];
+}
+
+export interface StandardKeysResponse {
+  template_id: string;
+  template_name: string;
+  document_type: DocumentType;
+  keys: StandardKey[];
+  total: number;
+}
+
+export interface TemplateMappingResponse {
+  template_id: string;
+  template_name: string;
+  document_type: DocumentType;
+  placeholders: string[];
+  mapping: Record<string, string>;
+  total_placeholders: number;
+  total_mapped: number;
+}
+
+export interface UpdateMappingResponse {
+  template_id: string;
+  template_name: string;
+  mapping: Record<string, string>;
+  updated: boolean;
+  message: string;
+}

@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react';
-import { FileText, MoreVertical, Edit, Trash2, Download, Copy } from 'lucide-react';
+import { FileText, MoreVertical, Edit, Trash2, Download, Copy, Link } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -21,6 +21,7 @@ import type { TemplateInfo } from '@/store';
 interface TemplateGridProps {
   templates: TemplateInfo[];
   onEdit?: (template: TemplateInfo) => void;
+  onEditMapping?: (template: TemplateInfo) => void;
   onDelete?: (template: TemplateInfo) => void;
   onDownload?: (template: TemplateInfo) => void;
   onDuplicate?: (template: TemplateInfo) => void;
@@ -31,6 +32,7 @@ interface TemplateGridProps {
 export function TemplateGrid({
   templates,
   onEdit,
+  onEditMapping,
   onDelete,
   onDownload,
   onDuplicate,
@@ -124,6 +126,17 @@ export function TemplateGrid({
                     >
                       <Edit className="w-4 h-4 mr-2" />
                       Editar
+                    </DropdownMenuItem>
+                  )}
+                  {onEditMapping && (
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEditMapping(template);
+                      }}
+                    >
+                      <Link className="w-4 h-4 mr-2" />
+                      Editar Mapeo
                     </DropdownMenuItem>
                   )}
                   {onDuplicate && (

@@ -24,6 +24,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { TemplateGrid } from '@/components/templates/TemplateGrid';
 import { TemplateUpload } from '@/components/templates/TemplateUpload';
 import { TemplateEditor } from '@/components/templates/TemplateEditor';
+import { PlaceholderMappingEditor } from '@/components/templates/PlaceholderMappingEditor';
 import { useTemplates, useToast } from '@/hooks';
 import type { DocumentType, TemplateInfo } from '@/store';
 
@@ -46,6 +47,8 @@ export function Templates() {
   const [filterType, setFilterType] = useState<DocumentType | 'all'>('all');
   const [editingTemplate, setEditingTemplate] = useState<TemplateInfo | null>(null);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [mappingTemplate, setMappingTemplate] = useState<TemplateInfo | null>(null);
+  const [isMappingEditorOpen, setIsMappingEditorOpen] = useState(false);
 
   // Fetch templates on mount
   useEffect(() => {
@@ -116,6 +119,15 @@ export function Templates() {
     // TODO: Implement download functionality
     console.log('Download template:', template);
     toast.error('Funcionalidad de descarga en desarrollo');
+  };
+
+  const handleEditMapping = (template: TemplateInfo) => {
+    setMappingTemplate(template);
+    setIsMappingEditorOpen(true);
+  };
+
+  const handleMappingSaved = () => {
+    toast.success('Mapeo actualizado exitosamente');
   };
 
   return (
@@ -217,6 +229,7 @@ export function Templates() {
             <TemplateGrid
               templates={filteredTemplates}
               onEdit={handleEdit}
+              onEditMapping={handleEditMapping}
               onDelete={handleDelete}
               onDownload={handleDownload}
               onDuplicate={handleDuplicate}
@@ -236,6 +249,20 @@ export function Templates() {
           onSave={handleSaveEdit}
           isLoading={isLoading}
         />
+
+        {/* Placeholder Mapping Editor Dialog */}
+        {mappingTemplate && (
+          <PlaceholderMappingEditor
+            templateId={mappingTemplate.id}
+            templateName={mappingTemplate.name}
+            isOpen={isMappingEditorOpen}
+            onClose={() => {
+              setIsMappingEditorOpen(false);
+              setMappingTemplate(null);
+            }}
+            onSaved={handleMappingSaved}
+          />
+        )}
       </div>
     </MainLayout>
   );

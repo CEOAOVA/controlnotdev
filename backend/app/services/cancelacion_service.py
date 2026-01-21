@@ -2,13 +2,10 @@
 ControlNot v2 - Cancelacion Service
 Servicio especializado para procesamiento de Cancelaciones de Hipotecas
 
-Migrado de movil_cancelaciones.py con funcionalidades específicas para:
-- Extracción de datos de documentos bancarios
-- Validación de campos financieros
-- Procesamiento de cartas de instrucciones
-- Generación de documentos de cancelación
+OPTIMIZADO: Prompt simplificado estilo movil_cancelaciones.py
 """
 import re
+import json
 import structlog
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
@@ -26,7 +23,7 @@ class CancelacionService:
     - Obtención de categorías de documentos
     - Validación de datos financieros
     - Procesamiento de campos específicos
-    - Generación de prompts optimizados para IA
+    - Generación de prompts optimizados para IA (estilo movil_cancelaciones.py)
     """
 
     def __init__(self):
@@ -279,9 +276,27 @@ class CancelacionService:
 
         return is_valid, errors, warnings
 
+    def get_simple_keys_dict(self) -> Dict[str, str]:
+        """
+        Genera un diccionario simple de claves con sus descriptions
+        ESTILO MOVIL_CANCELACIONES.PY - Claves simples para mejor extracción
+
+        Returns:
+            Dict[str, str]: Diccionario {campo: descripción_simple}
+        """
+        claves_simples = {}
+
+        for field_name, field_info in CancelacionKeys.model_fields.items():
+            desc = field_info.description or f"Extrae {field_name}"
+            # La descripción ya está simplificada en el modelo
+            claves_simples[field_name] = desc
+
+        return claves_simples
+
     def get_extraction_prompt(self, document_type: str = "cancelacion") -> str:
         """
-        Genera un prompt optimizado para extracción de datos con IA
+        Genera un prompt SIMPLIFICADO para extracción de datos con IA
+        ESTILO MOVIL_CANCELACIONES.PY - Claves JSON simples
 
         Args:
             document_type: Tipo de documento (siempre 'cancelacion')
@@ -289,59 +304,38 @@ class CancelacionService:
         Returns:
             str: Prompt formateado para el modelo de IA
         """
-        prompt = f"""Eres un experto en extracción de datos de documentos notariales y bancarios.
+        # Obtener claves simples del modelo
+        claves_simples = self.get_simple_keys_dict()
 
-Tu tarea es extraer información de documentos de CANCELACIÓN DE HIPOTECA.
+        prompt = f"""Eres controlnot, un asistente de notaría especializado en cancelaciones de hipoteca.
 
-DOCUMENTOS QUE RECIBIRÁS:
-- Constancia de No Adeudo o Finiquito del banco
-- Carta de Instrucciones del banco
-- Poder Notarial del representante del banco
-- Escritura original de la hipoteca
+Extrae información en formato JSON con las siguientes especificaciones:
+
+{json.dumps(claves_simples, indent=2, ensure_ascii=False)}
+
+REGLAS IMPORTANTES:
+- Si no encuentras un dato, usa "NO LOCALIZADO"
+- Números de registro y tomos: convertir a palabras MAYÚSCULAS (ej: 19 → 'DIECINUEVE')
+- Fechas: en palabras minúsculas (ej: 'quince de marzo de dos mil diez')
+- Nombres de personas: en MAYÚSCULAS
+- Montos en letras: en MAYÚSCULAS con centavos (ej: 'DOSCIENTOS MIL PESOS 00/100 M.N.')
+
+DOCUMENTOS TÍPICOS:
+- Constancia de No Adeudo/Finiquito del banco
+- Carta de Instrucciones del banco (documento CRÍTICO)
 - Certificado de Libertad de Gravamen
-- Identificaciones del deudor (INE, RFC, CURP)
-- Documentos del inmueble
+- Escritura original de hipoteca
+- Poder Notarial del banco
 
-CAMPOS A EXTRAER: {self.metadata['total_campos']} campos en total
+CAMPOS CRÍTICOS (prioridad alta):
+- Deudor_Nombre_Completo
+- Numero_Credito
+- Suma_Credito / Suma_Credito_Letras
+- Numero_Registro_Libro_Propiedad / Tomo_Libro_Propiedad
+- Numero_Registro_Libro_Gravamen / Tomo_Libro_Gravamen
+- Carta_Instrucciones_Tipo_Credito
 
-CATEGORÍAS:
-{', '.join(self.metadata['categorias'])}
-
-CAMPOS CRÍTICOS (PRIORIDAD ALTA):
-{', '.join(self.metadata['campos_criticos'])}
-
-INSTRUCCIONES ESPECIALES:
-
-1. EQUIVALENTE EN SALARIOS MÍNIMOS:
-   - Es OBLIGATORIO por ley para créditos de vivienda
-   - Buscar en la escritura original de la hipoteca
-   - Puede aparecer como "VSMGM" o "veces el salario mínimo"
-
-2. CARTA DE INSTRUCCIONES:
-   - Es un documento CRÍTICO emitido por el banco
-   - Contiene 11 campos específicos muy importantes
-   - Formato típico: "EXP. No. CANC-SOFOL/XXXX/XX"
-
-3. DATOS REGISTRALES:
-   - Diferenciar LIBRO DE PROPIEDAD vs LIBRO DE GRAVÁMENES
-   - Son libros separados en el Registro Público
-   - El gravamen (hipoteca) se cancela en el libro de gravámenes
-
-4. CESIÓN DE CRÉDITO:
-   - Si el crédito fue cedido a otra institución, documentar la cesión
-   - De lo contrario, usar "NO APLICA"
-
-5. FORMATOS:
-   - Fechas: en palabras minúsculas (ej: "quince de marzo de dos mil diez")
-   - Números de registro/tomo: en palabras MAYÚSCULAS (ej: "DIECINUEVE")
-   - Montos en letras: MAYÚSCULAS con centavos (ej: "QUINIENTOS MIL PESOS 00/100 M.N.")
-   - Nombres propios: MAYÚSCULAS (ej: "JUAN CARLOS MARTINEZ LOPEZ")
-
-6. SI NO ENCUENTRAS UN DATO:
-   - Usa "NO LOCALIZADO" para datos que deberían estar pero no se encuentran
-   - Usa "NO APLICA" solo para cesión de crédito si no hubo cesión
-
-EXTRAE TODOS LOS CAMPOS POSIBLES DEL TEXTO SIGUIENTE:
+EXTRAE LOS DATOS DEL SIGUIENTE TEXTO:
 """
         return prompt
 
@@ -349,7 +343,7 @@ EXTRAE TODOS LOS CAMPOS POSIBLES DEL TEXTO SIGUIENTE:
         """
         Convierte número entero a palabras en español (MAYÚSCULAS)
 
-        Implementación básica para números hasta 9999
+        Implementación básica para números hasta 999,999
 
         Args:
             numero: Número entero a convertir
@@ -357,22 +351,55 @@ EXTRAE TODOS LOS CAMPOS POSIBLES DEL TEXTO SIGUIENTE:
         Returns:
             str: Número en palabras MAYÚSCULAS
         """
-        # Implementación simplificada
-        # Para producción, usar librería como num2words
         unidades = ["", "UNO", "DOS", "TRES", "CUATRO", "CINCO", "SEIS", "SIETE", "OCHO", "NUEVE"]
+        especiales = ["DIEZ", "ONCE", "DOCE", "TRECE", "CATORCE", "QUINCE",
+                      "DIECISÉIS", "DIECISIETE", "DIECIOCHO", "DIECINUEVE"]
         decenas = ["", "DIEZ", "VEINTE", "TREINTA", "CUARENTA", "CINCUENTA",
                    "SESENTA", "SETENTA", "OCHENTA", "NOVENTA"]
-        centenas = ["", "CIEN", "DOSCIENTOS", "TRESCIENTOS", "CUATROCIENTOS", "QUINIENTOS",
+        centenas = ["", "CIENTO", "DOSCIENTOS", "TRESCIENTOS", "CUATROCIENTOS", "QUINIENTOS",
                     "SEISCIENTOS", "SETECIENTOS", "OCHOCIENTOS", "NOVECIENTOS"]
 
         if numero == 0:
             return "CERO"
 
+        if numero == 100:
+            return "CIEN"
+
         if numero < 10:
             return unidades[numero]
 
-        # Para números mayores, usar conversión simplificada
-        # En producción, implementar conversión completa
+        if numero < 20:
+            return especiales[numero - 10]
+
+        if numero < 100:
+            d, u = divmod(numero, 10)
+            if d == 2 and u > 0:
+                return f"VEINTI{unidades[u]}"
+            elif u == 0:
+                return decenas[d]
+            else:
+                return f"{decenas[d]} Y {unidades[u]}"
+
+        if numero < 1000:
+            c, resto = divmod(numero, 100)
+            if resto == 0:
+                return centenas[c] if c != 1 else "CIEN"
+            else:
+                return f"{centenas[c]} {self._numero_a_letras(resto)}"
+
+        if numero < 1000000:
+            miles, resto = divmod(numero, 1000)
+            if miles == 1:
+                prefijo = "MIL"
+            else:
+                prefijo = f"{self._numero_a_letras(miles)} MIL"
+
+            if resto == 0:
+                return prefijo
+            else:
+                return f"{prefijo} {self._numero_a_letras(resto)}"
+
+        # Para números mayores, usar representación simple
         return str(numero)
 
 
@@ -394,3 +421,8 @@ def validate_cancelacion_data(data: Dict) -> Tuple[bool, List[str], Dict]:
 def get_cancelacion_prompt() -> str:
     """Wrapper para obtener prompt de extracción"""
     return cancelacion_service.get_extraction_prompt()
+
+
+def get_simple_keys() -> Dict[str, str]:
+    """Wrapper para obtener claves simples"""
+    return cancelacion_service.get_simple_keys_dict()

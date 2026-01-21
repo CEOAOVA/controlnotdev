@@ -16,6 +16,8 @@ export interface TemplateInfo {
   createdAt?: string;
   confidenceScore?: number;
   requiresConfirmation?: boolean;
+  /** Number of placeholders not mapped to standard keys */
+  unmappedFieldsCount?: number;
 }
 
 interface TemplateState {

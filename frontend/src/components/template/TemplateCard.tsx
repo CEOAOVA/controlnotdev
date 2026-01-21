@@ -3,7 +3,7 @@
  * Card displaying template info with selection state
  */
 
-import { FileText, Check, Cloud, HardDrive, Upload, Database } from 'lucide-react';
+import { FileText, Check, Cloud, HardDrive, Upload, Database, AlertTriangle } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -76,12 +76,21 @@ export function TemplateCard({ template, isSelected = false, onSelect }: Templat
           </div>
         )}
 
-        {/* Placeholders count */}
+        {/* Placeholders count and unmapped warning */}
         {template.placeholders && template.placeholders.length > 0 && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Badge variant="outline" className="text-xs">
               {template.placeholders.length} campos
             </Badge>
+            {template.unmappedFieldsCount !== undefined && template.unmappedFieldsCount > 0 && (
+              <Badge
+                variant="outline"
+                className="text-xs text-amber-600 border-amber-300 bg-amber-50"
+              >
+                <AlertTriangle className="w-3 h-3 mr-1" />
+                {template.unmappedFieldsCount} por mapear
+              </Badge>
+            )}
           </div>
         )}
 

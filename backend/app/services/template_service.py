@@ -117,7 +117,8 @@ class PlaceholderExtractor:
                     matches = re.finditer(pattern, all_text)
                     for match in matches:
                         placeholder = match.group(1).strip()
-                        if placeholder:  # Ignorar placeholders vacíos
+                        # Ignorar placeholders vacíos o que empiecen con '{' (duplicados de {{...}})
+                        if placeholder and not placeholder.startswith('{'):
                             placeholders.add(placeholder)
                             pattern_matches += 1
                     pattern_counts[pattern_name] = pattern_matches

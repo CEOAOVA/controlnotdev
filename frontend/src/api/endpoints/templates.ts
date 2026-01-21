@@ -11,6 +11,9 @@ import type {
   TemplateConfirmResponse,
   TemplateListResponse,
   DocumentTypesListResponse,
+  StandardKeysResponse,
+  TemplateMappingResponse,
+  UpdateMappingResponse,
 } from '../types';
 
 export const templatesApi = {
@@ -83,5 +86,42 @@ export const templatesApi = {
    */
   delete: async (templateId: string): Promise<void> => {
     await apiClient.delete(`/templates/${templateId}`);
+  },
+
+  /**
+   * GET /templates/{templateId}/standard-keys
+   * Get standard keys available for the template's document type
+   */
+  getStandardKeys: async (templateId: string): Promise<StandardKeysResponse> => {
+    const { data } = await apiClient.get<StandardKeysResponse>(
+      `/templates/${templateId}/standard-keys`
+    );
+    return data;
+  },
+
+  /**
+   * GET /templates/{templateId}/mapping
+   * Get current placeholder mapping for a template
+   */
+  getMapping: async (templateId: string): Promise<TemplateMappingResponse> => {
+    const { data } = await apiClient.get<TemplateMappingResponse>(
+      `/templates/${templateId}/mapping`
+    );
+    return data;
+  },
+
+  /**
+   * PUT /templates/{templateId}/mapping
+   * Update placeholder mapping for a template
+   */
+  updateMapping: async (
+    templateId: string,
+    mapping: Record<string, string>
+  ): Promise<UpdateMappingResponse> => {
+    const { data } = await apiClient.put<UpdateMappingResponse>(
+      `/templates/${templateId}/mapping`,
+      { mapping }
+    );
+    return data;
   },
 };
