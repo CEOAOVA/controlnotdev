@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 ControlNot v2 - Image Preprocessing Service
 Preprocesa imagenes para optimizar Claude Vision y OCR
