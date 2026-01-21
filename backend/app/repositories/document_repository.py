@@ -380,6 +380,277 @@ class DocumentRepository(BaseRepository):
             )
             raise
 
+    async def list_by_tenant_advanced(
+        self,
+        tenant_id: UUID,
+        filters: Optional[Dict] = None,
+        advanced_filters: Optional[Dict] = None,
+        limit: int = 50,
+        offset: int = 0,
+        order_by: str = 'created_at',
+        descending: bool = True
+    ) -> List[Dict]:
+        """
+        Lista documentos con filtros avanzados (búsqueda y fechas)
+
+        Args:
+            tenant_id: UUID del tenant
+            filters: Filtros simples {campo: valor}
+            advanced_filters: Filtros avanzados (search, date_from, date_to)
+            limit: Número máximo de resultados
+            offset: Offset para paginación
+            order_by: Campo para ordenar
+            descending: Ordenar descendente
+
+        Returns:
+            Lista de documentos
+        """
+        try:
+            query = self._table()\
+                .select('*')\
+                .eq('tenant_id', str(tenant_id))
+
+            # Aplicar filtros simples (equality)
+            if filters:
+                for field, value in filters.items():
+                    query = query.eq(field, value)
+
+            # Aplicar filtros avanzados
+            if advanced_filters:
+                # Búsqueda por nombre (case-insensitive, partial match)
+                if 'search' in advanced_filters and advanced_filters['search']:
+                    search_term = advanced_filters['search']
+                    # ilike para búsqueda case-insensitive con wildcards
+                    query = query.ilike('nombre_documento', f'%{search_term}%')
+
+                # Filtro por fecha desde
+                if 'date_from' in advanced_filters and advanced_filters['date_from']:
+                    query = query.gte('created_at', advanced_filters['date_from'])
+
+                # Filtro por fecha hasta
+                if 'date_to' in advanced_filters and advanced_filters['date_to']:
+                    # Agregar tiempo final del día para incluir todo el día
+                    date_to = advanced_filters['date_to']
+                    if 'T' not in date_to:
+                        date_to = f"{date_to}T23:59:59"
+                    query = query.lte('created_at', date_to)
+
+            # Ordenar
+            query = query.order(order_by, desc=descending)
+
+            # Paginación
+            query = query.range(offset, offset + limit - 1)
+
+            result = query.execute()
+
+            logger.info(
+                "documents_list_advanced_complete",
+                tenant_id=str(tenant_id),
+                filters=filters,
+                advanced_filters=advanced_filters,
+                count=len(result.data) if result.data else 0
+            )
+
+            return result.data if result.data else []
+
+        except APIError as e:
+            logger.error(
+                "documents_list_advanced_failed",
+                tenant_id=str(tenant_id),
+                error=str(e)
+            )
+            raise
+
+    async def count_by_tenant_advanced(
+        self,
+        tenant_id: UUID,
+        filters: Optional[Dict] = None,
+        advanced_filters: Optional[Dict] = None
+    ) -> int:
+        """
+        Cuenta documentos con filtros avanzados
+
+        Args:
+            tenant_id: UUID del tenant
+            filters: Filtros simples {campo: valor}
+            advanced_filters: Filtros avanzados (search, date_from, date_to)
+
+        Returns:
+            Número de documentos
+        """
+        try:
+            query = self._table()\
+                .select('id', count='exact')\
+                .eq('tenant_id', str(tenant_id))
+
+            # Aplicar filtros simples
+            if filters:
+                for field, value in filters.items():
+                    query = query.eq(field, value)
+
+            # Aplicar filtros avanzados
+            if advanced_filters:
+                if 'search' in advanced_filters and advanced_filters['search']:
+                    search_term = advanced_filters['search']
+                    query = query.ilike('nombre_documento', f'%{search_term}%')
+
+                if 'date_from' in advanced_filters and advanced_filters['date_from']:
+                    query = query.gte('created_at', advanced_filters['date_from'])
+
+                if 'date_to' in advanced_filters and advanced_filters['date_to']:
+                    date_to = advanced_filters['date_to']
+                    if 'T' not in date_to:
+                        date_to = f"{date_to}T23:59:59"
+                    query = query.lte('created_at', date_to)
+
+            result = query.execute()
+            count = result.count if result.count is not None else 0
+
+            logger.debug(
+                "documents_count_advanced_complete",
+                tenant_id=str(tenant_id),
+                count=count
+            )
+
+            return count
+
+        except APIError as e:
+            logger.error(
+                "documents_count_advanced_failed",
+                tenant_id=str(tenant_id),
+                error=str(e)
+            )
+            raise
+
+    async def delete_document(
+        self,
+        document_id: UUID,
+        tenant_id: UUID
+    ) -> bool:
+        """
+        Elimina un documento verificando que pertenezca al tenant
+
+        Args:
+            document_id: UUID del documento
+            tenant_id: UUID del tenant
+
+        Returns:
+            True si se eliminó, False si no existe o no pertenece al tenant
+        """
+        try:
+            # Primero verificar que existe y pertenece al tenant
+            doc = await self.get_by_id(document_id)
+            if not doc or str(doc.get('tenant_id')) != str(tenant_id):
+                return False
+
+            # Eliminar
+            result = self._table()\
+                .delete()\
+                .eq('id', str(document_id))\
+                .eq('tenant_id', str(tenant_id))\
+                .execute()
+
+            deleted = len(result.data) > 0 if result.data else False
+
+            if deleted:
+                logger.info(
+                    "document_deleted",
+                    document_id=str(document_id),
+                    tenant_id=str(tenant_id)
+                )
+
+            return deleted
+
+        except APIError as e:
+            logger.error(
+                "document_delete_failed",
+                document_id=str(document_id),
+                tenant_id=str(tenant_id),
+                error=str(e)
+            )
+            raise
+
+    async def bulk_delete(
+        self,
+        document_ids: List[str],
+        tenant_id: UUID
+    ) -> int:
+        """
+        Elimina múltiples documentos verificando que pertenezcan al tenant
+
+        Args:
+            document_ids: Lista de IDs de documentos
+            tenant_id: UUID del tenant
+
+        Returns:
+            Número de documentos eliminados
+        """
+        deleted_count = 0
+        try:
+            for doc_id in document_ids:
+                try:
+                    # Eliminar uno por uno para validar tenant
+                    result = self._table()\
+                        .delete()\
+                        .eq('id', doc_id)\
+                        .eq('tenant_id', str(tenant_id))\
+                        .execute()
+
+                    if result.data and len(result.data) > 0:
+                        deleted_count += 1
+                except APIError:
+                    # Continuar con el siguiente si falla uno
+                    continue
+
+            logger.info(
+                "documents_bulk_deleted",
+                requested=len(document_ids),
+                deleted=deleted_count,
+                tenant_id=str(tenant_id)
+            )
+
+            return deleted_count
+
+        except Exception as e:
+            logger.error(
+                "documents_bulk_delete_failed",
+                tenant_id=str(tenant_id),
+                error=str(e)
+            )
+            raise
+
+    async def list_for_export(
+        self,
+        tenant_id: UUID,
+        filters: Optional[Dict] = None,
+        advanced_filters: Optional[Dict] = None,
+        order_by: str = 'created_at',
+        descending: bool = True
+    ) -> List[Dict]:
+        """
+        Lista todos los documentos para exportación (sin paginación)
+
+        Args:
+            tenant_id: UUID del tenant
+            filters: Filtros simples
+            advanced_filters: Filtros avanzados
+            order_by: Campo para ordenar
+            descending: Ordenar descendente
+
+        Returns:
+            Lista completa de documentos
+        """
+        # Usar list_by_tenant_advanced con límite alto
+        return await self.list_by_tenant_advanced(
+            tenant_id=tenant_id,
+            filters=filters,
+            advanced_filters=advanced_filters,
+            limit=10000,  # Máximo razonable para export
+            offset=0,
+            order_by=order_by,
+            descending=descending
+        )
+
     async def get_signed_url(
         self,
         storage_path: str,

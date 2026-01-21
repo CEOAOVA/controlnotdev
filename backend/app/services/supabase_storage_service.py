@@ -471,13 +471,13 @@ class SupabaseStorageService:
             )
             raise
 
-    async def download_document(self, tenant_id: str, path: str) -> bytes:
+    async def download_document(self, path: str, tenant_id: Optional[str] = None) -> bytes:
         """
         Descarga un documento desde Supabase Storage
 
         Args:
-            tenant_id: ID del tenant
             path: Path del documento
+            tenant_id: ID del tenant (opcional, para logging)
 
         Returns:
             bytes: Contenido del documento
@@ -543,5 +543,45 @@ class SupabaseStorageService:
                 "Error al generar URL firmada",
                 path=path,
                 error=str(e)
+            )
+            raise
+
+    async def delete_document(self, path: str) -> bool:
+        """
+        Elimina un documento de Supabase Storage
+
+        Args:
+            path: Path del documento a eliminar
+
+        Returns:
+            bool: True si se eliminó exitosamente
+        """
+        start_time = time.time()
+        logger.debug(
+            "storage_delete_document_starting",
+            bucket=self.DOCUMENTS_BUCKET,
+            path=path
+        )
+
+        try:
+            self.client.storage.from_(self.DOCUMENTS_BUCKET).remove([path])
+            duration_ms = (time.time() - start_time) * 1000
+
+            logger.info(
+                "storage_delete_document_complete",
+                path=path,
+                duration_ms=round(duration_ms, 2)
+            )
+
+            return True
+
+        except Exception as e:
+            duration_ms = (time.time() - start_time) * 1000
+            logger.error(
+                "storage_delete_document_failed",
+                path=path,
+                error=str(e),
+                error_type=type(e).__name__,
+                duration_ms=round(duration_ms, 2)
             )
             raise

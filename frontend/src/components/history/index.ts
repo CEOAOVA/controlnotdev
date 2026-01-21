@@ -14,5 +14,7 @@ export type { DocumentDetails } from './DocumentPreviewModal';
 
 export { DocumentUpdateModal } from './DocumentUpdateModal';
 
+export { EmailModal } from './EmailModal';
+
 export { Filters } from './Filters';
 export { Pagination } from './Pagination';

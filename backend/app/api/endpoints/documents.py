@@ -18,11 +18,12 @@ from typing import List, Optional
 from uuid import UUID
 from datetime import datetime, timezone
 import time
-from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Depends, Query
+import csv
+from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Depends, Query, Body
 from fastapi.responses import StreamingResponse
 import structlog
 import uuid
-from io import BytesIO
+from io import BytesIO, StringIO
 
 from app.schemas import (
     CategoriesResponse,
@@ -88,14 +89,17 @@ async def list_documents(
     per_page: int = Query(25, ge=1, le=100, description="Documentos por página"),
     sort_by: str = Query("created_at", description="Campo para ordenar"),
     sort_order: str = Query("desc", description="Orden (asc o desc)"),
-    tipo_documento: Optional[str] = Query(None, description="Filtrar por tipo de documento"),
-    estado: Optional[str] = Query(None, description="Filtrar por estado"),
+    tipo_documento: Optional[str] = Query(None, alias="type", description="Filtrar por tipo de documento"),
+    estado: Optional[str] = Query(None, alias="status", description="Filtrar por estado"),
+    search: Optional[str] = Query(None, description="Buscar por nombre de documento"),
+    date_from: Optional[str] = Query(None, description="Fecha inicio (ISO format)"),
+    date_to: Optional[str] = Query(None, description="Fecha fin (ISO format)"),
     tenant_id: str = Depends(get_user_tenant_id)
 ):
     """
     Lista documentos generados con paginación
 
-    Soporta filtros por tipo de documento y estado.
+    Soporta filtros por tipo de documento, estado, búsqueda por nombre y rango de fechas.
     SEGURIDAD: Requiere autenticación (tenant_id obligatorio).
     """
     logger.info(
@@ -103,25 +107,38 @@ async def list_documents(
         page=page,
         per_page=per_page,
         tenant_id=tenant_id,
-        tipo_documento=tipo_documento
+        tipo_documento=tipo_documento,
+        search=search,
+        date_from=date_from,
+        date_to=date_to
     )
 
     try:
 
-        # Construir filtros
+        # Construir filtros simples (equality)
         filters = {}
         if tipo_documento:
             filters['tipo_documento'] = tipo_documento
         if estado:
             filters['estado'] = estado
 
+        # Filtros avanzados (búsqueda y fechas)
+        advanced_filters = {}
+        if search:
+            advanced_filters['search'] = search
+        if date_from:
+            advanced_filters['date_from'] = date_from
+        if date_to:
+            advanced_filters['date_to'] = date_to
+
         # Calcular offset
         offset = (page - 1) * per_page
 
-        # Obtener documentos del repositorio
-        documents = await document_repository.list_by_tenant(
+        # Obtener documentos del repositorio con filtros avanzados
+        documents = await document_repository.list_by_tenant_advanced(
             tenant_id=UUID(tenant_id),
             filters=filters if filters else None,
+            advanced_filters=advanced_filters if advanced_filters else None,
             limit=per_page,
             offset=offset,
             order_by=sort_by,
@@ -129,9 +146,10 @@ async def list_documents(
         )
 
         # Obtener total para paginación
-        total = await document_repository.count_by_tenant(
+        total = await document_repository.count_by_tenant_advanced(
             tenant_id=UUID(tenant_id),
-            filters=filters if filters else None
+            filters=filters if filters else None,
+            advanced_filters=advanced_filters if advanced_filters else None
         )
 
         # Calcular total de páginas
@@ -1506,6 +1524,333 @@ async def replace_document(
         raise HTTPException(
             status_code=500,
             detail=f"Error al reemplazar documento: {str(e)}"
+        )
+
+
+# ============================================================================
+# ENDPOINTS DE ELIMINACIÓN Y EXPORTACIÓN
+# ============================================================================
+
+@router.delete("/{document_id}", response_model=SuccessResponse)
+async def delete_document(
+    document_id: str,
+    tenant_id: str = Depends(get_user_tenant_id),
+    supabase_storage: SupabaseStorageService = Depends(get_supabase_storage)
+):
+    """
+    Elimina un documento del sistema
+
+    SEGURIDAD: Requiere autenticación (tenant_id obligatorio).
+    Solo permite eliminar documentos que pertenezcan al tenant.
+
+    Proceso:
+    1. Verifica que el documento existe y pertenece al tenant
+    2. Elimina el archivo de Supabase Storage (si existe)
+    3. Elimina el registro de la base de datos
+
+    Args:
+        document_id: UUID del documento a eliminar
+        tenant_id: ID del tenant autenticado
+
+    Returns:
+        SuccessResponse con confirmación de eliminación
+    """
+    logger.info(
+        "Eliminando documento",
+        document_id=document_id,
+        tenant_id=tenant_id
+    )
+
+    try:
+        # Obtener documento para verificar propiedad y obtener storage_path
+        document = await document_repository.get_by_id(UUID(document_id))
+
+        if not document:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Documento no encontrado: {document_id}"
+            )
+
+        # Verificar que pertenece al tenant
+        if str(document.get('tenant_id')) != tenant_id:
+            raise HTTPException(
+                status_code=403,
+                detail="No tiene permisos para eliminar este documento"
+            )
+
+        # Intentar eliminar de Storage si tiene storage_path
+        storage_path = document.get('storage_path')
+        if storage_path:
+            try:
+                await supabase_storage.delete_document(storage_path)
+                logger.info(
+                    "Archivo eliminado de Storage",
+                    storage_path=storage_path
+                )
+            except Exception as storage_error:
+                logger.warning(
+                    "Error al eliminar archivo de Storage (continuando con eliminación de BD)",
+                    storage_path=storage_path,
+                    error=str(storage_error)
+                )
+
+        # Eliminar de BD
+        deleted = await document_repository.delete_document(
+            document_id=UUID(document_id),
+            tenant_id=UUID(tenant_id)
+        )
+
+        if not deleted:
+            raise HTTPException(
+                status_code=500,
+                detail="Error al eliminar documento de la base de datos"
+            )
+
+        logger.info(
+            "Documento eliminado exitosamente",
+            document_id=document_id,
+            tenant_id=tenant_id
+        )
+
+        return SuccessResponse(
+            message="Documento eliminado exitosamente",
+            data={
+                'document_id': document_id,
+                'deleted_at': datetime.now(timezone.utc).isoformat()
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            "Error al eliminar documento",
+            document_id=document_id,
+            tenant_id=tenant_id,
+            error=str(e),
+            error_type=type(e).__name__
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al eliminar documento: {str(e)}"
+        )
+
+
+@router.post("/bulk-delete", response_model=SuccessResponse)
+async def bulk_delete_documents(
+    document_ids: List[str] = Body(..., embed=True),
+    tenant_id: str = Depends(get_user_tenant_id),
+    supabase_storage: SupabaseStorageService = Depends(get_supabase_storage)
+):
+    """
+    Elimina múltiples documentos del sistema
+
+    SEGURIDAD: Requiere autenticación (tenant_id obligatorio).
+    Solo elimina documentos que pertenezcan al tenant.
+
+    Args:
+        document_ids: Lista de UUIDs de documentos a eliminar
+        tenant_id: ID del tenant autenticado
+
+    Returns:
+        SuccessResponse con conteo de documentos eliminados
+    """
+    logger.info(
+        "Eliminación masiva de documentos",
+        count=len(document_ids),
+        tenant_id=tenant_id
+    )
+
+    if not document_ids:
+        raise HTTPException(
+            status_code=400,
+            detail="Debe proporcionar al menos un documento para eliminar"
+        )
+
+    if len(document_ids) > 100:
+        raise HTTPException(
+            status_code=400,
+            detail="Máximo 100 documentos por operación"
+        )
+
+    try:
+        deleted_count = 0
+        storage_deleted = 0
+        errors = []
+
+        for doc_id in document_ids:
+            try:
+                # Obtener documento para storage_path
+                document = await document_repository.get_by_id(UUID(doc_id))
+
+                if not document:
+                    continue
+
+                if str(document.get('tenant_id')) != tenant_id:
+                    continue
+
+                # Eliminar de Storage si existe
+                storage_path = document.get('storage_path')
+                if storage_path:
+                    try:
+                        await supabase_storage.delete_document(storage_path)
+                        storage_deleted += 1
+                    except Exception:
+                        pass  # Continuar aunque falle Storage
+
+                # Eliminar de BD
+                if await document_repository.delete_document(
+                    document_id=UUID(doc_id),
+                    tenant_id=UUID(tenant_id)
+                ):
+                    deleted_count += 1
+
+            except Exception as e:
+                errors.append({'id': doc_id, 'error': str(e)})
+                continue
+
+        logger.info(
+            "Eliminación masiva completada",
+            requested=len(document_ids),
+            deleted=deleted_count,
+            storage_deleted=storage_deleted,
+            errors=len(errors),
+            tenant_id=tenant_id
+        )
+
+        return SuccessResponse(
+            message=f"{deleted_count} de {len(document_ids)} documentos eliminados",
+            data={
+                'requested': len(document_ids),
+                'deleted': deleted_count,
+                'storage_deleted': storage_deleted,
+                'errors': errors if errors else None
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            "Error en eliminación masiva",
+            tenant_id=tenant_id,
+            error=str(e),
+            error_type=type(e).__name__
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error en eliminación masiva: {str(e)}"
+        )
+
+
+@router.get("/export", response_class=StreamingResponse)
+async def export_documents(
+    tipo_documento: Optional[str] = Query(None, alias="type", description="Filtrar por tipo"),
+    estado: Optional[str] = Query(None, alias="status", description="Filtrar por estado"),
+    search: Optional[str] = Query(None, description="Buscar por nombre"),
+    date_from: Optional[str] = Query(None, description="Fecha inicio"),
+    date_to: Optional[str] = Query(None, description="Fecha fin"),
+    tenant_id: str = Depends(get_user_tenant_id)
+):
+    """
+    Exporta documentos a CSV
+
+    SEGURIDAD: Requiere autenticación (tenant_id obligatorio).
+    Aplica los mismos filtros que el listado.
+
+    Returns:
+        StreamingResponse con archivo CSV
+    """
+    logger.info(
+        "Exportando documentos a CSV",
+        tenant_id=tenant_id,
+        tipo_documento=tipo_documento,
+        search=search
+    )
+
+    try:
+        # Construir filtros
+        filters = {}
+        if tipo_documento:
+            filters['tipo_documento'] = tipo_documento
+        if estado:
+            filters['estado'] = estado
+
+        advanced_filters = {}
+        if search:
+            advanced_filters['search'] = search
+        if date_from:
+            advanced_filters['date_from'] = date_from
+        if date_to:
+            advanced_filters['date_to'] = date_to
+
+        # Obtener todos los documentos (sin paginación)
+        documents = await document_repository.list_for_export(
+            tenant_id=UUID(tenant_id),
+            filters=filters if filters else None,
+            advanced_filters=advanced_filters if advanced_filters else None
+        )
+
+        # Generar CSV en memoria
+        output = StringIO()
+        writer = csv.writer(output)
+
+        # Encabezados
+        writer.writerow([
+            'ID',
+            'Nombre',
+            'Tipo',
+            'Estado',
+            'Fecha Creación',
+            'Fecha Actualización',
+            'Score Confianza'
+        ])
+
+        # Datos
+        for doc in documents:
+            writer.writerow([
+                doc.get('id', ''),
+                doc.get('nombre_documento', ''),
+                doc.get('tipo_documento', ''),
+                doc.get('estado', ''),
+                doc.get('created_at', ''),
+                doc.get('updated_at', ''),
+                doc.get('confidence_score', '')
+            ])
+
+        # Preparar respuesta
+        output.seek(0)
+        csv_content = output.getvalue()
+
+        # Nombre del archivo con timestamp
+        filename = f"documentos_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+
+        logger.info(
+            "Exportación completada",
+            tenant_id=tenant_id,
+            documents_count=len(documents),
+            filename=filename
+        )
+
+        return StreamingResponse(
+            iter([csv_content]),
+            media_type="text/csv",
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}",
+                "Content-Type": "text/csv; charset=utf-8"
+            }
+        )
+
+    except Exception as e:
+        logger.error(
+            "Error al exportar documentos",
+            tenant_id=tenant_id,
+            error=str(e),
+            error_type=type(e).__name__
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al exportar documentos: {str(e)}"
         )
 
 

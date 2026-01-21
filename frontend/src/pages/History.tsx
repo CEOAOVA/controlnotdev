@@ -13,6 +13,7 @@ import {
   DocumentStats,
   DocumentPreviewModal,
   DocumentUpdateModal,
+  EmailModal,
   type DocumentRecord,
   type DocumentStatsData,
   type DocumentDetails,
@@ -53,6 +54,7 @@ export function History() {
   // Modal states
   const [previewDocument, setPreviewDocument] = useState<DocumentDetails | null>(null);
   const [updateDocument, setUpdateDocument] = useState<{ id: string; name: string } | null>(null);
+  const [emailDocument, setEmailDocument] = useState<{ id: string; name: string } | null>(null);
 
   // Filters state
   const [filters, setFilters] = useState<DocumentFilters>({
@@ -224,20 +226,22 @@ export function History() {
     }
   };
 
-  const handleEmail = async (doc: DocumentRecord) => {
-    // TODO: Implement email dialog with form
-    const email = prompt('Ingresa el email del destinatario:');
-    if (!email) return;
+  const handleEmail = (doc: DocumentRecord) => {
+    // Open email modal with document info
+    setEmailDocument({ id: doc.id, name: doc.name });
+  };
 
+  const handleSendEmail = async (data: { document_id: string; to_email: string; subject: string; body?: string }) => {
     try {
-      await emailDocument({
-        document_id: doc.id,
-        to_email: email,
-        subject: `Documento: ${doc.name}`,
+      await documentsApi.sendEmail({
+        document_id: data.document_id,
+        to_email: data.to_email,
+        subject: data.subject,
+        body: data.body || 'Documento adjunto.', // Backend requires non-empty body
       });
       toast.success('Documento enviado exitosamente');
     } catch (err: any) {
-      toast.error(`Error al enviar: ${err.message}`);
+      throw new Error(err.response?.data?.detail || err.message || 'Error al enviar email');
     }
   };
 
@@ -371,6 +375,14 @@ export function History() {
         isOpen={!!updateDocument}
         onClose={() => setUpdateDocument(null)}
         onUpdate={handleUpdateDocument}
+      />
+
+      {/* Email Modal */}
+      <EmailModal
+        document={emailDocument}
+        isOpen={!!emailDocument}
+        onClose={() => setEmailDocument(null)}
+        onSend={handleSendEmail}
       />
     </MainLayout>
   );
