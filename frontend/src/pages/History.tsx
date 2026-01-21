@@ -28,7 +28,6 @@ export function History() {
   const {
     fetchDocuments,
     downloadDocument,
-    emailDocument,
     exportDocuments,
     isLoading,
     error,
@@ -54,7 +53,7 @@ export function History() {
   // Modal states
   const [previewDocument, setPreviewDocument] = useState<DocumentDetails | null>(null);
   const [updateDocument, setUpdateDocument] = useState<{ id: string; name: string } | null>(null);
-  const [emailDocument, setEmailDocument] = useState<{ id: string; name: string } | null>(null);
+  const [documentToEmail, setDocumentToEmail] = useState<{ id: string; name: string } | null>(null);
 
   // Filters state
   const [filters, setFilters] = useState<DocumentFilters>({
@@ -228,7 +227,7 @@ export function History() {
 
   const handleEmail = (doc: DocumentRecord) => {
     // Open email modal with document info
-    setEmailDocument({ id: doc.id, name: doc.name });
+    setDocumentToEmail({ id: doc.id, name: doc.name });
   };
 
   const handleSendEmail = async (data: { document_id: string; to_email: string; subject: string; body?: string }) => {
@@ -379,9 +378,9 @@ export function History() {
 
       {/* Email Modal */}
       <EmailModal
-        document={emailDocument}
-        isOpen={!!emailDocument}
-        onClose={() => setEmailDocument(null)}
+        document={documentToEmail}
+        isOpen={!!documentToEmail}
+        onClose={() => setDocumentToEmail(null)}
         onSend={handleSendEmail}
       />
     </MainLayout>
