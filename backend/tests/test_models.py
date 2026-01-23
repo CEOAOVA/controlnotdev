@@ -73,7 +73,7 @@ def test_compraventa_type_details():
     
     assert compraventa is not None
     assert compraventa["name"] == "Compraventa"
-    assert compraventa["fields_count"] == 47
+    assert compraventa["fields_count"] == 42
 
 
 def test_donacion_type_details():

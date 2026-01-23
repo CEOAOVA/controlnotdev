@@ -4,6 +4,8 @@ Descriptions SIMPLIFICADAS para mejor extracción con IA (patrón movil_cancelac
 
 Migrado de movil_cancelaciones.py - CLAVES_ESTANDARIZADAS
 Optimizado: 1 línea por descripción + ejemplo explícito
+
+AJUSTADO: 30 campos específicos según PDF "documentos notaria.pdf"
 """
 from pydantic import BaseModel, Field
 from typing import Optional
@@ -20,6 +22,8 @@ class CancelacionKeys(BaseKeys):
     - notario_actuante, numero_notaria
 
     DESCRIPTIONS SIMPLIFICADAS: 1 línea + ejemplo (estilo movil_cancelaciones.py)
+
+    TOTAL: 35 campos (30 específicos + 5 heredados de BaseKeys)
     """
 
     # ==========================================
@@ -37,71 +41,15 @@ class CancelacionKeys(BaseKeys):
         }
     )
 
-    Deudor_RFC: Optional[str] = Field(
-        None,
-        description="RFC del deudor en mayúsculas sin guiones. Ejemplo: 'MALJ850615XY7'",
-        json_schema_extra={
-            "aliases": ["RFC_Deudor", "RFC_Cliente", "RFC_Titular", "RFC_Acreditado", "RFC"]
-        }
-    )
-
-    Deudor_CURP: Optional[str] = Field(
-        None,
-        description="CURP del deudor en mayúsculas sin espacios. Ejemplo: 'MALJ850615HMCRPS09'",
-        json_schema_extra={
-            "aliases": ["CURP_Deudor", "CURP_Cliente", "CURP_Titular", "CURP"]
-        }
-    )
-
-    Deudor_Estado_Civil: Optional[str] = Field(
-        None,
-        description="Estado civil del deudor en minúsculas. Ejemplo: 'casado'",
-        json_schema_extra={
-            "aliases": ["Estado_Civil_Deudor", "Estado_Civil_Cliente", "Estado_Civil"]
-        }
-    )
-
-    Deudor_Domicilio: Optional[str] = Field(
-        None,
-        description="Domicilio completo del deudor. Ejemplo: 'Calle Morelos número 123, Colonia Centro, C.P. 58000, Morelia, Michoacán'",
-        json_schema_extra={
-            "aliases": ["Domicilio_Deudor", "Direccion_Deudor", "Domicilio_Cliente", "Direccion_Cliente"]
-        }
-    )
-
     # ==========================================
-    # DATOS DE LA INSTITUCIÓN FINANCIERA
+    # DATOS DE LA INSTITUCIÓN FINANCIERA / CRÉDITO
     # ==========================================
 
-    Acreedor_Nombre: Optional[str] = Field(
+    Intermediario_Financiero: Optional[str] = Field(
         None,
-        description="Nombre del banco/institución en MAYÚSCULAS. Ejemplo: 'HSBC MEXICO S.A. INSTITUCION DE BANCA MULTIPLE'",
+        description="Intermediario financiero del crédito. Ejemplo: 'HIPOTECARIA VANGUARDIA'",
         json_schema_extra={
-            "aliases": ["Banco", "Institucion", "Financiera", "Nombre_Banco", "Institucion_Financiera", "Acreedor", "Nombre_Acreedor", "Hipotecaria"]
-        }
-    )
-
-    Numero_Credito: Optional[str] = Field(
-        None,
-        description="Número de crédito bancario. Ejemplo: '1234567890'",
-        json_schema_extra={
-            "aliases": ["Credito_Numero", "Num_Credito", "Cuenta", "Numero_Cuenta", "Folio_Credito", "No_Credito"]
-        }
-    )
-
-    Fecha_Credito: Optional[str] = Field(
-        None,
-        description="Fecha del crédito en palabras minúsculas. Ejemplo: 'quince de marzo de dos mil diez'",
-        json_schema_extra={
-            "aliases": ["Fecha_Otorgamiento_Credito", "Fecha_Contrato", "Fecha_Escritura_Credito"]
-        }
-    )
-
-    Monto_Credito_Original: Optional[str] = Field(
-        None,
-        description="Monto original en palabras minúsculas. Ejemplo: 'trescientos mil pesos 00/100 M.N.'",
-        json_schema_extra={
-            "aliases": ["Monto_Original", "Capital_Original", "Importe_Original", "Credito_Original"]
+            "aliases": ["Intermediario", "Sofol", "Sofom", "Entidad_Financiera"]
         }
     )
 
@@ -141,38 +89,6 @@ class CancelacionKeys(BaseKeys):
     # DATOS DEL INMUEBLE HIPOTECADO
     # ==========================================
 
-    Inmueble_Tipo: Optional[str] = Field(
-        None,
-        description="Tipo de inmueble en minúsculas. Ejemplo: 'casa habitación'",
-        json_schema_extra={
-            "aliases": ["Tipo_Inmueble", "Tipo_Propiedad", "Clase_Inmueble"]
-        }
-    )
-
-    Inmueble_Direccion: Optional[str] = Field(
-        None,
-        description="Dirección completa del inmueble. Ejemplo: 'Calle Hidalgo número 456, Colonia Chapultepec, C.P. 58260, Morelia'",
-        json_schema_extra={
-            "aliases": ["Domicilio_Inmueble", "Ubicacion", "Direccion", "Direccion_Propiedad", "Domicilio_Propiedad", "Ubicacion_Propiedad"]
-        }
-    )
-
-    Inmueble_Superficie: Optional[str] = Field(
-        None,
-        description="Superficie del inmueble con unidad. Ejemplo: '120.50 metros cuadrados'",
-        json_schema_extra={
-            "aliases": ["Superficie", "Superficie_Inmueble", "Area", "Metros_Cuadrados", "M2"]
-        }
-    )
-
-    Inmueble_Colindancias: Optional[str] = Field(
-        None,
-        description="Colindancias separadas por punto y coma. Ejemplo: 'al norte con calle Hidalgo; al sur con propiedad privada'",
-        json_schema_extra={
-            "aliases": ["Colindancias", "Linderos", "Medidas_Colindancias"]
-        }
-    )
-
     Ubicacion_Inmueble: Optional[str] = Field(
         None,
         description="Ubicación completa del inmueble hipotecado. Ejemplo: 'CASA HABITACIÓN UBICADA EN LA CALLE PRIMER RETORNO DE LA ESTACAS, NUMERO 49...'",
@@ -204,22 +120,6 @@ class CancelacionKeys(BaseKeys):
     # ==========================================
     # DATOS REGISTRALES - LIBRO DE PROPIEDAD
     # ==========================================
-
-    Folio_Real: Optional[str] = Field(
-        None,
-        description="Número de folio real del inmueble. Ejemplo: '123456'",
-        json_schema_extra={
-            "aliases": ["Folio", "Folio_Electronico", "Numero_Folio", "Folio_Inmueble", "Folio_RPP"]
-        }
-    )
-
-    Partida_Registral: Optional[str] = Field(
-        None,
-        description="Datos de partida registral. Ejemplo: 'partida 789 de la sección primera del volumen 45'",
-        json_schema_extra={
-            "aliases": ["Partida", "Numero_Partida", "Partida_Registro"]
-        }
-    )
 
     Numero_Registro_Libro_Propiedad: Optional[str] = Field(
         None,
@@ -262,146 +162,6 @@ class CancelacionKeys(BaseKeys):
         description="Tomo del libro de gravamen en palabras MAYÚSCULAS. Ejemplo: 839 → 'OCHOCIENTOS TREINTA Y NUEVE'",
         json_schema_extra={
             "aliases": ["Tomo_Gravamen", "Volumen_Gravamen", "Tomo_Libro_Grav", "Libro_Gravamen"]
-        }
-    )
-
-    Fecha_Inscripcion_Hipoteca: Optional[str] = Field(
-        None,
-        description="Fecha de inscripción de la hipoteca en palabras minúsculas. Ejemplo: 'veinte de abril de dos mil diez'",
-        json_schema_extra={
-            "aliases": ["Fecha_Inscripcion", "Fecha_Registro_Hipoteca", "Inscripcion_Hipoteca", "Fecha_Hipoteca"]
-        }
-    )
-
-    # ==========================================
-    # DATOS MULTI-CRÉDITO FOVISSSTE/BANCO
-    # ==========================================
-
-    Intermediario_Financiero: Optional[str] = Field(
-        None,
-        description="Intermediario financiero del crédito. Ejemplo: 'HIPOTECARIA VANGUARDIA'",
-        json_schema_extra={
-            "aliases": ["Intermediario", "Sofol", "Sofom", "Entidad_Financiera"]
-        }
-    )
-
-    Credito_Banco_Reg_Propiedad: Optional[str] = Field(
-        None,
-        description="Registro del crédito BANCO en Libro Propiedad (número/tomo). Ejemplo: '60/1575'",
-        json_schema_extra={
-            "aliases": ["Reg_Banco_Propiedad", "Banco_Registro_Propiedad", "Inscripcion_Banco_Propiedad"]
-        }
-    )
-
-    Credito_Banco_Reg_Gravamen: Optional[str] = Field(
-        None,
-        description="Registro del crédito BANCO en Libro Gravamen (número/tomo). Ejemplo: '28/839'",
-        json_schema_extra={
-            "aliases": ["Reg_Banco_Gravamen", "Banco_Registro_Gravamen", "Inscripcion_Banco_Gravamen"]
-        }
-    )
-
-    Credito_FOVISSSTE_Reg_Propiedad: Optional[str] = Field(
-        None,
-        description="Registro FOVISSSTE en Libro Propiedad. Si es igual al banco, repetir valor",
-        json_schema_extra={
-            "aliases": ["Reg_FOVISSSTE_Propiedad", "FOVISSSTE_Registro_Propiedad", "Inscripcion_FOVISSSTE_Propiedad"]
-        }
-    )
-
-    Credito_FOVISSSTE_Reg_Gravamen: Optional[str] = Field(
-        None,
-        description="Registro FOVISSSTE en Libro Gravamen. Si es igual al banco, repetir valor",
-        json_schema_extra={
-            "aliases": ["Reg_FOVISSSTE_Gravamen", "FOVISSSTE_Registro_Gravamen", "Inscripcion_FOVISSSTE_Gravamen"]
-        }
-    )
-
-    # ==========================================
-    # DATOS DE LA CANCELACIÓN
-    # ==========================================
-
-    Fecha_Liquidacion: Optional[str] = Field(
-        None,
-        description="Fecha de liquidación en palabras minúsculas. Ejemplo: 'treinta de noviembre de dos mil veinticuatro'",
-        json_schema_extra={
-            "aliases": ["Liquidacion_Fecha", "Fecha_Pago_Total", "Fecha_Finiquito_Credito"]
-        }
-    )
-
-    Monto_Liquidacion: Optional[str] = Field(
-        None,
-        description="Monto adeudado al liquidar. Ejemplo: 'cero pesos 00/100 M.N.'",
-        json_schema_extra={
-            "aliases": ["Liquidacion_Monto", "Importe_Liquidacion", "Saldo_Liquidacion"]
-        }
-    )
-
-    Numero_Finiquito: Optional[str] = Field(
-        None,
-        description="Número de folio del finiquito. Ejemplo: 'FIN-2024-123456'",
-        json_schema_extra={
-            "aliases": ["Finiquito_Numero", "Folio_Finiquito", "No_Finiquito"]
-        }
-    )
-
-    Fecha_Finiquito: Optional[str] = Field(
-        None,
-        description="Fecha del finiquito en palabras minúsculas. Ejemplo: 'cinco de diciembre de dos mil veinticuatro'",
-        json_schema_extra={
-            "aliases": ["Finiquito_Fecha", "Fecha_Constancia_Finiquito"]
-        }
-    )
-
-    # ==========================================
-    # DATOS DE REPRESENTACIÓN LEGAL
-    # ==========================================
-
-    Representante_Banco_Nombre: Optional[str] = Field(
-        None,
-        description="Nombre del representante del banco en mayúsculas. Ejemplo: 'LIC. MARIA FERNANDA GUTIERREZ RAMIREZ'",
-        json_schema_extra={
-            "aliases": ["Nombre_Representante", "Apoderado_Nombre", "Representante_Legal", "Nombre_Apoderado"]
-        }
-    )
-
-    Representante_Banco_Cargo: Optional[str] = Field(
-        None,
-        description="Cargo del representante del banco. Ejemplo: 'Apoderado Legal'",
-        json_schema_extra={
-            "aliases": ["Cargo_Representante", "Apoderado_Cargo", "Cargo_Apoderado"]
-        }
-    )
-
-    Poder_Notarial_Numero: Optional[str] = Field(
-        None,
-        description="Número del poder notarial en palabras. Ejemplo: 'ciento veintitrés mil quinientos cuarenta y seis'",
-        json_schema_extra={
-            "aliases": ["Numero_Poder", "Escritura_Poder", "Poder_Numero", "No_Poder"]
-        }
-    )
-
-    Poder_Notarial_Fecha: Optional[str] = Field(
-        None,
-        description="Fecha del poder notarial en palabras minúsculas. Ejemplo: 'diez de enero de dos mil veinte'",
-        json_schema_extra={
-            "aliases": ["Fecha_Poder", "Poder_Fecha", "Fecha_Escritura_Poder"]
-        }
-    )
-
-    Poder_Notarial_Notario: Optional[str] = Field(
-        None,
-        description="Nombre y datos del notario del poder. Ejemplo: 'Licenciado Carlos Alberto Mendez Torres, Notario Público número 15 de Morelia'",
-        json_schema_extra={
-            "aliases": ["Notario_Poder", "Notario_Otorgante_Poder", "Datos_Notario_Poder"]
-        }
-    )
-
-    Poder_Notarial_Ciudad: Optional[str] = Field(
-        None,
-        description="Ciudad del notario del poder. Ejemplo: 'Morelia'",
-        json_schema_extra={
-            "aliases": ["Ciudad_Poder", "Lugar_Poder", "Ciudad_Notario_Poder"]
         }
     )
 
@@ -523,18 +283,6 @@ class CancelacionKeys(BaseKeys):
         }
     )
 
-    # ==========================================
-    # OBSERVACIONES
-    # ==========================================
-
-    Observaciones: Optional[str] = Field(
-        None,
-        description="Observaciones adicionales relevantes. Si no hay: 'NINGUNA'",
-        json_schema_extra={
-            "aliases": ["Notas", "Comentarios", "Notas_Adicionales", "Obs"]
-        }
-    )
-
 
 # Alias para compatibilidad
 Cancelacion = CancelacionKeys
@@ -544,46 +292,40 @@ Cancelacion = CancelacionKeys
 CANCELACION_METADATA = {
     "tipo_documento": "cancelacion",
     "nombre_largo": "Cancelación de Hipoteca",
-    "total_campos": 61,  # 56 específicos + 5 heredados de BaseKeys
+    "total_campos": 35,  # 30 específicos + 5 heredados de BaseKeys
     "campos_heredados": 5,
-    "campos_especificos": 56,
+    "campos_especificos": 30,
     "categorias": [
         "Deudor/Propietario",
-        "Institución Financiera",
-        "Datos del Crédito",
-        "Cesión de Crédito",
+        "Institución Financiera/Crédito",
         "Inmueble Hipotecado",
+        "Cesión de Crédito",
         "Datos Registrales Propiedad",
         "Datos Registrales Gravamen",
-        "Multi-Crédito FOVISSSTE",
-        "Datos de Cancelación",
-        "Constancia de Finiquito",
         "Carta de Instrucciones",
-        "Representación Legal",
-        "Observaciones"
+        "Constancia de Finiquito"
     ],
     "campos_criticos": [
         "Deudor_Nombre_Completo",
-        "Acreedor_Nombre",
-        "Numero_Credito",
+        "Intermediario_Financiero",
         "Suma_Credito",
         "Suma_Credito_Letras",
         "Equivalente_Salario_Minimo",
+        "Ubicacion_Inmueble",
         "Numero_Registro_Libro_Propiedad",
         "Tomo_Libro_Propiedad",
         "Numero_Registro_Libro_Gravamen",
         "Tomo_Libro_Gravamen",
-        "Inmueble_Direccion",
-        "Folio_Real",
-        "Fecha_Liquidacion",
         "Carta_Instrucciones_Tipo_Credito"
     ],
     "descripcion": """
     Modelo OPTIMIZADO para extracción de datos de Cancelaciones de Hipotecas.
 
+    AJUSTADO según PDF "documentos notaria.pdf":
+    - 30 campos específicos + 5 heredados de BaseKeys = 35 total
+    - Eliminados 30 campos extras no requeridos por el PDF
+
     CAMBIO CLAVE: Descriptions simplificadas a 1 línea + ejemplo explícito
     (patrón de movil_cancelaciones.py que tiene alta efectividad)
-
-    Incluye campos para multi-crédito FOVISSSTE/BANCO.
     """
 }

@@ -232,7 +232,7 @@ class CancelacionService:
         errors = []
         warnings = {}
 
-        # Validar campos críticos
+        # Validar campos críticos (ajustados según PDF documentos notaria)
         campos_criticos = self.metadata['campos_criticos']
 
         for campo in campos_criticos:
@@ -240,30 +240,28 @@ class CancelacionService:
             if not value or value == "NO LOCALIZADO" or value == "NO ENCONTRADO":
                 errors.append(f"Campo crítico faltante: {campo}")
 
-        # Validar formato de número de crédito
-        numero_credito = data.get("Numero_Credito")
+        # Validar formato de número de crédito en carta de instrucciones
+        numero_credito = data.get("Carta_Instrucciones_Numero_Credito")
         if numero_credito and not self.validate_numero_credito(numero_credito):
             warnings["numero_credito"] = "Formato de número de crédito inválido"
 
-        # Validar folio real
-        folio_real = data.get("Folio_Real")
-        if folio_real and not self.validate_folio_real(folio_real):
-            warnings["folio_real"] = "Formato de folio real inválido"
-
-        # Validar que exista al menos un monto de crédito
-        monto_original = data.get("Monto_Credito_Original")
+        # Validar que exista monto de crédito
         suma_credito = data.get("Suma_Credito")
-        if not monto_original and not suma_credito:
-            errors.append("Debe existir al menos un monto de crédito (original o suma)")
+        if not suma_credito or suma_credito == "NO LOCALIZADO":
+            errors.append("Debe existir el monto de crédito (Suma_Credito)")
 
         # Validar equivalente en salarios mínimos (requerido por ley)
         equiv_salario = data.get("Equivalente_Salario_Minimo")
         if not equiv_salario or equiv_salario == "NO LOCALIZADO":
             warnings["equivalente_salario"] = "Equivalente en salarios mínimos no encontrado (requerido por ley)"
 
-        # Validar datos registrales
-        if not data.get("Numero_Registro_Libro_Propiedad") and not data.get("Folio_Real"):
-            warnings["registro"] = "Faltan datos registrales (número de registro o folio real)"
+        # Validar datos registrales (libro propiedad)
+        if not data.get("Numero_Registro_Libro_Propiedad"):
+            warnings["registro_propiedad"] = "Falta número de registro en libro de propiedad"
+
+        # Validar datos registrales (libro gravamen)
+        if not data.get("Numero_Registro_Libro_Gravamen"):
+            warnings["registro_gravamen"] = "Falta número de registro en libro de gravamen"
 
         is_valid = len(errors) == 0
 
@@ -329,8 +327,10 @@ DOCUMENTOS TÍPICOS:
 
 CAMPOS CRÍTICOS (prioridad alta):
 - Deudor_Nombre_Completo
-- Numero_Credito
+- Intermediario_Financiero
 - Suma_Credito / Suma_Credito_Letras
+- Equivalente_Salario_Minimo
+- Ubicacion_Inmueble
 - Numero_Registro_Libro_Propiedad / Tomo_Libro_Propiedad
 - Numero_Registro_Libro_Gravamen / Tomo_Libro_Gravamen
 - Carta_Instrucciones_Tipo_Credito

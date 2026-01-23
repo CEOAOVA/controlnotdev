@@ -37,26 +37,14 @@ SEMANTIC_KEYWORDS = {
     # Datos del Deudor
     # ==========================================
     "Deudor_Nombre_Completo": ["nombre", "deudor", "cliente", "titular", "acreditado", "propietario", "persona"],
-    "Deudor_RFC": ["rfc", "registro", "fiscal", "contribuyente"],
-    "Deudor_CURP": ["curp", "clave", "unica", "poblacion"],
-    "Deudor_Estado_Civil": ["estado", "civil", "casado", "soltero"],
-    "Deudor_Domicilio": ["domicilio", "direccion", "deudor", "cliente"],
 
     # Institución Financiera
-    "Acreedor_Nombre": ["banco", "acreedor", "institucion", "financiera", "hipotecaria"],
-    "Numero_Credito": ["numero", "credito", "cuenta", "folio"],
-    "Fecha_Credito": ["fecha", "credito", "otorgamiento"],
-    "Monto_Credito_Original": ["monto", "original", "capital", "inicial"],
     "Suma_Credito": ["suma", "monto", "credito", "capital", "importe", "cantidad", "hipoteca"],
     "Suma_Credito_Letras": ["suma", "monto", "letras", "capital"],
     "Equivalente_Salario_Minimo": ["salario", "minimo", "vsm", "veces"],
     "Equivalente_Salario_Minimo_Letras": ["salario", "minimo", "letras"],
 
     # Inmueble
-    "Inmueble_Tipo": ["tipo", "inmueble", "casa", "propiedad"],
-    "Inmueble_Direccion": ["inmueble", "direccion", "domicilio", "ubicacion", "propiedad", "casa"],
-    "Inmueble_Superficie": ["superficie", "area", "metros", "m2"],
-    "Inmueble_Colindancias": ["colindancias", "linderos", "medidas"],
     "Ubicacion_Inmueble": ["ubicacion", "inmueble", "completa", "descripcion"],
 
     # Cesión
@@ -64,36 +52,15 @@ SEMANTIC_KEYWORDS = {
     "Cesion_Credito_Valor": ["cesion", "valor", "derechos"],
 
     # Registrales Propiedad
-    "Folio_Real": ["folio", "real", "electronico", "rpp"],
-    "Partida_Registral": ["partida", "registral", "seccion"],
     "Numero_Registro_Libro_Propiedad": ["registro", "propiedad", "libro", "numero", "inscripcion"],
     "Tomo_Libro_Propiedad": ["tomo", "propiedad", "volumen", "libro"],
 
     # Registrales Gravamen
     "Numero_Registro_Libro_Gravamen": ["registro", "gravamen", "hipoteca", "numero", "libro"],
     "Tomo_Libro_Gravamen": ["tomo", "gravamen", "volumen", "libro"],
-    "Fecha_Inscripcion_Hipoteca": ["fecha", "inscripcion", "hipoteca", "registro"],
 
     # Multi-crédito
     "Intermediario_Financiero": ["intermediario", "sofol", "sofom", "financiero"],
-    "Credito_Banco_Reg_Propiedad": ["banco", "registro", "propiedad"],
-    "Credito_Banco_Reg_Gravamen": ["banco", "registro", "gravamen"],
-    "Credito_FOVISSSTE_Reg_Propiedad": ["fovissste", "registro", "propiedad"],
-    "Credito_FOVISSSTE_Reg_Gravamen": ["fovissste", "registro", "gravamen"],
-
-    # Cancelación
-    "Fecha_Liquidacion": ["fecha", "liquidacion", "pago", "total"],
-    "Monto_Liquidacion": ["monto", "liquidacion", "importe", "saldo"],
-    "Numero_Finiquito": ["numero", "finiquito", "folio"],
-    "Fecha_Finiquito": ["fecha", "finiquito", "constancia"],
-
-    # Representación
-    "Representante_Banco_Nombre": ["representante", "nombre", "apoderado", "legal"],
-    "Representante_Banco_Cargo": ["representante", "cargo", "apoderado"],
-    "Poder_Notarial_Numero": ["poder", "numero", "notarial", "escritura"],
-    "Poder_Notarial_Fecha": ["poder", "fecha", "notarial"],
-    "Poder_Notarial_Notario": ["poder", "notario", "otorgante"],
-    "Poder_Notarial_Ciudad": ["poder", "ciudad", "lugar"],
 
     # Carta de Instrucciones
     "Carta_Instrucciones_Numero_Oficio": ["carta", "oficio", "numero", "expediente"],
@@ -111,9 +78,6 @@ SEMANTIC_KEYWORDS = {
     # Constancia Finiquito
     "Constancia_Finiquito_Numero_Oficio": ["constancia", "finiquito", "oficio", "numero"],
     "Constancia_Finiquito_Fecha_Emision": ["constancia", "emision", "fecha", "finiquito"],
-
-    # Observaciones
-    "Observaciones": ["observaciones", "notas", "comentarios"],
 }
 
 
