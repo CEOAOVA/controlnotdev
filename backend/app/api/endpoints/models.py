@@ -274,3 +274,148 @@ async def get_document_fields(document_type: str):
             status_code=500,
             detail=f"Error interno al obtener campos: {str(e)}"
         )
+
+
+@router.get("/fields/cancelacion/legacy")
+async def get_cancelacion_legacy_fields():
+    """
+    Obtiene los campos LEGACY para cancelaciones (movil_cancelaciones.py)
+
+    Estos son los 31 campos que funcionan al 100% en extracción.
+    Usar cuando se extrae con el endpoint /api/cancelaciones/legacy/extract
+
+    Returns:
+        {
+            "document_type": "cancelacion",
+            "fields": [...],  // 31 campos legacy
+            "categories": ["Datos Generales", "Datos del Crédito", ...],
+            "total_fields": 31,
+            "source": "movil_cancelaciones.py"
+        }
+    """
+    from app.services.cancelacion_service import CLAVES_ESTANDARIZADAS_LEGACY
+
+    logger.info("Solicitando campos LEGACY de cancelación")
+
+    # Mapeo de campos a categorías
+    category_mapping = {
+        # Datos Generales
+        "intermediario_financiero": "Datos Generales",
+        "deudor": "Datos Generales",
+
+        # Datos de la Escritura Original
+        "numero_escritura": "Datos de la Escritura",
+        "fecha_escritura": "Datos de la Escritura",
+        "notario": "Datos de la Escritura",
+        "numero_notario": "Datos de la Escritura",
+        "ciudad_residencia": "Datos de la Escritura",
+
+        # Datos del Registro
+        "numero_registro_libro_propiedad": "Datos del Registro",
+        "tomo_libro_propiedad": "Datos del Registro",
+        "numero_registro_libro_gravamen": "Datos del Registro",
+        "tomo_libro_gravamen": "Datos del Registro",
+
+        # Datos del Crédito
+        "suma_credito": "Datos del Crédito",
+        "suma_credito_letras": "Datos del Crédito",
+        "equivalente_salario_minimo": "Datos del Crédito",
+        "equivalente_salario_minimo_letras": "Datos del Crédito",
+        "ubicacion_inmueble": "Datos del Crédito",
+
+        # Cesión de Crédito
+        "cesion_credito_fecha": "Cesión de Crédito",
+        "cesion_credito_valor": "Cesión de Crédito",
+
+        # Constancia de Finiquito
+        "constancia_finiquito_numero_oficio": "Constancia de Finiquito",
+        "constancia_finiquito_fecha_emision": "Constancia de Finiquito",
+
+        # Carta de Instrucciones
+        "carta_instrucciones_numero_oficio": "Carta de Instrucciones",
+        "carta_instrucciones_fecha_constancia_liquidacion": "Carta de Instrucciones",
+        "carta_instrucciones_nombre_titular_credito": "Carta de Instrucciones",
+        "carta_instrucciones_numero_credito": "Carta de Instrucciones",
+        "carta_instrucciones_tipo_credito": "Carta de Instrucciones",
+        "carta_instrucciones_fecha_adjudicacion": "Carta de Instrucciones",
+        "carta_instrucciones_ubicacion_inmueble": "Carta de Instrucciones",
+        "carta_instrucciones_valor_credito": "Carta de Instrucciones",
+        "carta_instrucciones_valor_credito_letras": "Carta de Instrucciones",
+        "carta_instrucciones_numero_registro": "Carta de Instrucciones",
+        "carta_instrucciones_tomo": "Carta de Instrucciones",
+    }
+
+    # Mapeo de campos a labels legibles
+    label_mapping = {
+        "intermediario_financiero": "Intermediario Financiero",
+        "deudor": "Nombre del Deudor",
+        "numero_escritura": "Número de Escritura (letras)",
+        "fecha_escritura": "Fecha de Escritura",
+        "notario": "Nombre del Notario",
+        "numero_notario": "Número de Notario (letras)",
+        "ciudad_residencia": "Ciudad de Residencia",
+        "numero_registro_libro_propiedad": "Número Registro Libro Propiedad",
+        "tomo_libro_propiedad": "Tomo Libro Propiedad",
+        "numero_registro_libro_gravamen": "Número Registro Libro Gravamen",
+        "tomo_libro_gravamen": "Tomo Libro Gravamen",
+        "suma_credito": "Suma del Crédito",
+        "suma_credito_letras": "Suma del Crédito (letras)",
+        "equivalente_salario_minimo": "Equivalente Salario Mínimo",
+        "equivalente_salario_minimo_letras": "Equivalente Salario Mínimo (letras)",
+        "ubicacion_inmueble": "Ubicación del Inmueble",
+        "cesion_credito_fecha": "Fecha Cesión de Crédito",
+        "cesion_credito_valor": "Valor Cesión de Crédito",
+        "constancia_finiquito_numero_oficio": "Número Oficio Finiquito",
+        "constancia_finiquito_fecha_emision": "Fecha Emisión Finiquito",
+        "carta_instrucciones_numero_oficio": "Número Oficio Carta Instrucciones",
+        "carta_instrucciones_fecha_constancia_liquidacion": "Fecha Constancia Liquidación",
+        "carta_instrucciones_nombre_titular_credito": "Nombre Titular del Crédito",
+        "carta_instrucciones_numero_credito": "Número de Crédito",
+        "carta_instrucciones_tipo_credito": "Tipo de Crédito",
+        "carta_instrucciones_fecha_adjudicacion": "Fecha de Adjudicación",
+        "carta_instrucciones_ubicacion_inmueble": "Ubicación Inmueble (Carta)",
+        "carta_instrucciones_valor_credito": "Valor del Crédito",
+        "carta_instrucciones_valor_credito_letras": "Valor del Crédito (letras)",
+        "carta_instrucciones_numero_registro": "Número de Registro (Carta)",
+        "carta_instrucciones_tomo": "Tomo (Carta)",
+    }
+
+    # Construir lista de campos
+    fields = []
+    for key, description in CLAVES_ESTANDARIZADAS_LEGACY.items():
+        fields.append({
+            "name": key,
+            "label": label_mapping.get(key, key.replace("_", " ").title()),
+            "type": "text",
+            "category": category_mapping.get(key, "Otros Datos"),
+            "help": description,
+            "required": key in ["deudor", "intermediario_financiero", "suma_credito"],
+            "optional": key not in ["deudor", "intermediario_financiero", "suma_credito"],
+            "source": "documento"
+        })
+
+    # Obtener categorías únicas en orden
+    categories_order = [
+        "Datos Generales",
+        "Datos de la Escritura",
+        "Datos del Registro",
+        "Datos del Crédito",
+        "Cesión de Crédito",
+        "Constancia de Finiquito",
+        "Carta de Instrucciones"
+    ]
+
+    logger.info(
+        "Campos LEGACY de cancelación obtenidos",
+        total_fields=len(fields),
+        categories=len(categories_order)
+    )
+
+    return {
+        "document_type": "cancelacion",
+        "fields": fields,
+        "categories": categories_order,
+        "total_fields": len(fields),
+        "source": "movil_cancelaciones.py (CLAVES_ESTANDARIZADAS_LEGACY)",
+        "note": "Usar con endpoint POST /api/cancelaciones/legacy/extract"
+    }

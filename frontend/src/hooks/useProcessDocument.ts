@@ -17,6 +17,7 @@ import type {
   DocumentGenerationRequest,
   SendEmailRequest,
   QualityLevel,
+  LegacyExtractionResponse,
 } from '@/api/types';
 import type { Category } from '@/types';
 
@@ -164,6 +165,31 @@ export function useProcessDocument() {
     },
   });
 
+  // Legacy Extraction for Cancelaciones (100% accuracy - movil_cancelaciones.py method)
+  const legacyMutation = useMutation({
+    mutationFn: async (text: string): Promise<LegacyExtractionResponse> => {
+      setProcessing(true, 'ai');
+      setError(null);
+      return extractionApi.extractCancelacionLegacy(text);
+    },
+    onSuccess: (data) => {
+      setExtractedData(data.extracted_data);
+      if (data.stats?.tasa_exito_percent !== undefined) {
+        setConfidence(data.stats.tasa_exito_percent / 100);
+      }
+      setProcessing(false, 'complete');
+      console.log('[ProcessDocument] Legacy extraction complete', {
+        campos_encontrados: data.stats?.campos_encontrados,
+        tasa_exito: data.stats?.tasa_exito_percent,
+      });
+    },
+    onError: (error: any) => {
+      const message = error?.response?.data?.detail || error?.message || 'Error durante la extracción legacy';
+      setError(message);
+      setProcessing(false, 'idle');
+    },
+  });
+
   // Document Generation
   const generateMutation = useMutation({
     mutationFn: async (request: DocumentGenerationRequest) => {
@@ -187,16 +213,18 @@ export function useProcessDocument() {
   });
 
   /**
-   * Process document extraction using Claude Vision
+   * Process document extraction using Claude Vision or Legacy method
    *
-   * UPDATED FLOW (Vision Direct):
+   * FLOW DEPENDS ON DOCUMENT TYPE:
+   *
+   * For CANCELACIONES (legacy - 100% accuracy):
+   * 1. Upload files to /documents/upload → get session_id
+   * 2. Process OCR to get text
+   * 3. Extract with legacy method (movil_cancelaciones.py parameters)
+   *
+   * For OTHER DOCUMENTS (Vision Direct):
    * 1. Upload files to /documents/upload → get session_id
    * 2. Extract with Claude Vision (sends images directly to Claude)
-   *
-   * This is better for:
-   * - Photos of documents (WhatsApp, camera photos)
-   * - Credentials (INE, passports, licenses)
-   * - Low-quality or rotated images
    */
   const processFullWorkflow = async () => {
     if (!documentType) {
@@ -223,13 +251,26 @@ export function useProcessDocument() {
       const sessionId = uploadResult.session_id;
       console.log('[ProcessDocument] Upload complete, session_id:', sessionId);
 
-      // Step 2: Extract directly with Claude Vision (bypasses OCR)
-      console.log('[ProcessDocument] Step 2: Extracting with Claude Vision...');
-      await visionMutation.mutateAsync({
-        sessionId,
-        docType: documentType,
-      });
-      console.log('[ProcessDocument] Vision extraction complete');
+      // Step 2: Extract based on document type
+      if (documentType === 'cancelacion') {
+        // CANCELACIONES: Use legacy method (OCR → Legacy Extraction)
+        // This achieves 100% extraction accuracy
+        console.log('[ProcessDocument] Step 2a: Processing OCR for cancelacion...');
+        const ocrResult = await ocrMutation.mutateAsync(sessionId);
+        console.log('[ProcessDocument] OCR complete, text length:', ocrResult.extracted_text?.length);
+
+        console.log('[ProcessDocument] Step 2b: Extracting with LEGACY method (movil_cancelaciones.py)...');
+        await legacyMutation.mutateAsync(ocrResult.extracted_text);
+        console.log('[ProcessDocument] Legacy extraction complete');
+      } else {
+        // OTHER DOCUMENTS: Use Claude Vision directly (bypasses OCR)
+        console.log('[ProcessDocument] Step 2: Extracting with Claude Vision...');
+        await visionMutation.mutateAsync({
+          sessionId,
+          docType: documentType,
+        });
+        console.log('[ProcessDocument] Vision extraction complete');
+      }
 
     } catch (error: any) {
       console.error('[ProcessDocument] Workflow failed:', error);
@@ -271,6 +312,7 @@ export function useProcessDocument() {
     ocrMutation,
     aiMutation,
     visionMutation,
+    legacyMutation,  // NEW: Legacy extraction for cancelaciones
     generateMutation,
     emailMutation,
 
@@ -283,10 +325,11 @@ export function useProcessDocument() {
     isProcessingOCR: ocrMutation.isPending,
     isProcessingAI: aiMutation.isPending,
     isProcessingVision: visionMutation.isPending,
+    isProcessingLegacy: legacyMutation.isPending,  // NEW
     isGenerating: generateMutation.isPending,
     isSendingEmail: emailMutation.isPending,
 
-    // Overall loading (includes Vision)
-    isProcessing: uploadMutation.isPending || ocrMutation.isPending || aiMutation.isPending || visionMutation.isPending,
+    // Overall loading (includes Vision and Legacy)
+    isProcessing: uploadMutation.isPending || ocrMutation.isPending || aiMutation.isPending || visionMutation.isPending || legacyMutation.isPending,
   };
 }

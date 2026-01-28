@@ -30,7 +30,12 @@ from app.models.donacion import DonacionKeys
 from app.models.testamento import TestamentoKeys
 from app.models.poder import PoderKeys
 from app.models.sociedad import SociedadKeys
+from app.models.cancelacion import CancelacionKeys
 from app.database import get_supabase_client
+from app.services.cancelacion_service import (
+    CLAVES_ESTANDARIZADAS_LEGACY,
+    process_cancelacion_legacy as _process_cancelacion_legacy
+)
 
 logger = structlog.get_logger()
 supabase = get_supabase_client()
@@ -52,7 +57,8 @@ class AIExtractionService:
         "donacion": DonacionKeys,
         "testamento": TestamentoKeys,
         "poder": PoderKeys,
-        "sociedad": SociedadKeys
+        "sociedad": SociedadKeys,
+        "cancelacion": CancelacionKeys
     }
 
     def __init__(self, ai_client: OpenAI):
@@ -611,6 +617,42 @@ Responde SOLO con JSON válido. Para campos no encontrados usa null.
                     fallback_error=str(fallback_error)
                 )
                 raise primary_error  # Lanzar error original
+
+    def process_cancelacion_legacy(
+        self,
+        text: str
+    ) -> Dict[str, str]:
+        """
+        Procesa texto de cancelación usando el método LEGACY de movil_cancelaciones.py
+
+        === MÉTODO ESPECIAL PARA CANCELACIONES ===
+        Este método usa los parámetros EXACTOS que funcionan al 100%:
+        - model: gpt-4o
+        - temperature: 0.5 (NO 0.0)
+        - max_tokens: 1500 (NO 3000)
+        - top_p: 1
+        - Prompt simple con CLAVES_ESTANDARIZADAS_LEGACY
+
+        Args:
+            text: Texto OCR de los documentos de cancelación
+
+        Returns:
+            Dict[str, str]: Datos extraídos con formato **valor** para negrita
+
+        Example:
+            >>> result = ai_service.process_cancelacion_legacy(texto_ocr)
+            >>> print(result['deudor'])  # → "**Juan Pérez Gómez**"
+            >>> print(result['numero_escritura'])  # → "**CIENTO VEINTICINCO**"
+        """
+        logger.info(
+            "Procesando CANCELACIÓN con método legacy (movil_cancelaciones.py)",
+            text_length=len(text),
+            claves_count=len(CLAVES_ESTANDARIZADAS_LEGACY)
+        )
+
+        # Usar el método del cancelacion_service que replica EXACTAMENTE
+        # el flujo de movil_cancelaciones.py
+        return _process_cancelacion_legacy(text, self.ai_client)
 
 
 def get_available_models() -> List[Dict[str, str]]:

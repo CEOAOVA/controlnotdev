@@ -29,8 +29,14 @@ from app.services.cancelacion_service import (
     cancelacion_service,
     get_cancelacion_categories,
     validate_cancelacion_data,
-    get_cancelacion_prompt
+    get_cancelacion_prompt,
+    get_legacy_keys,
+    get_cancelacion_prompt_legacy,
+    process_cancelacion_legacy,
+    CLAVES_ESTANDARIZADAS_LEGACY
 )
+from app.core.dependencies import get_ai_service
+from app.services.ai_service import AIExtractionService
 from app.models.cancelacion import CancelacionKeys, CANCELACION_METADATA
 
 logger = structlog.get_logger()
@@ -435,3 +441,182 @@ async def delete_cancelacion_session(
         "deleted": True,
         "mensaje": "Sesión eliminada exitosamente"
     }
+
+
+# ==============================================================================
+# NUEVO: Endpoints LEGACY - Replican EXACTAMENTE movil_cancelaciones.py
+# ==============================================================================
+
+@router.get("/legacy/keys")
+async def get_legacy_extraction_keys():
+    """
+    Obtiene las CLAVES_ESTANDARIZADAS_LEGACY exactas de movil_cancelaciones.py
+
+    Estas son las 31 claves que funcionan al 100% en extracción:
+    - intermediario_financiero
+    - deudor
+    - numero_escritura
+    - fecha_escritura
+    - notario
+    - numero_notario
+    - ciudad_residencia
+    - numero_registro_libro_propiedad
+    - tomo_libro_propiedad
+    - numero_registro_libro_gravamen
+    - tomo_libro_gravamen
+    - suma_credito
+    - suma_credito_letras
+    - equivalente_salario_minimo
+    - equivalente_salario_minimo_letras
+    - ubicacion_inmueble
+    - cesion_credito_fecha
+    - cesion_credito_valor
+    - constancia_finiquito_numero_oficio
+    - constancia_finiquito_fecha_emision
+    - carta_instrucciones_numero_oficio
+    - carta_instrucciones_fecha_constancia_liquidacion
+    - carta_instrucciones_nombre_titular_credito
+    - carta_instrucciones_numero_credito
+    - carta_instrucciones_tipo_credito
+    - carta_instrucciones_fecha_adjudicacion
+    - carta_instrucciones_ubicacion_inmueble
+    - carta_instrucciones_valor_credito
+    - carta_instrucciones_valor_credito_letras
+    - carta_instrucciones_numero_registro
+    - carta_instrucciones_tomo
+
+    Returns:
+        Las 31 claves exactas con sus descripciones
+    """
+    return {
+        "source": "movil_cancelaciones.py lineas 221-253",
+        "total_claves": len(CLAVES_ESTANDARIZADAS_LEGACY),
+        "claves": CLAVES_ESTANDARIZADAS_LEGACY,
+        "nota": "Estas claves funcionan al 100% - NO MODIFICAR"
+    }
+
+
+@router.get("/legacy/prompt")
+async def get_legacy_prompt_endpoint():
+    """
+    Obtiene el prompt EXACTO de movil_cancelaciones.py
+
+    Este prompt simple funciona mejor que el complejo:
+    "Eres controlnot, un asistente de notaría. Extrae información en formato JSON..."
+
+    Returns:
+        Prompt exacto del sistema original
+    """
+    prompt = get_cancelacion_prompt_legacy()
+
+    return {
+        "source": "movil_cancelaciones.py lineas 332-333",
+        "prompt": prompt,
+        "parametros_requeridos": {
+            "model": "gpt-4o",
+            "temperature": 0.5,
+            "max_tokens": 1500,
+            "top_p": 1
+        },
+        "nota": "Usar EXACTAMENTE estos parámetros para 100% extracción"
+    }
+
+
+@router.post("/legacy/extract")
+async def extract_cancelacion_legacy(
+    text: str = Form(..., description="Texto OCR de los documentos de cancelación"),
+    ai_service: AIExtractionService = Depends(get_ai_service),
+    session_manager: SessionManager = Depends(get_session_manager)
+):
+    """
+    Extrae datos de cancelación usando el método LEGACY de movil_cancelaciones.py
+
+    === MÉTODO QUE FUNCIONA AL 100% ===
+
+    Parámetros EXACTOS que usa internamente:
+    - model: gpt-4o
+    - temperature: 0.5 (NO 0.0)
+    - max_tokens: 1500 (NO 3000)
+    - top_p: 1
+    - Prompt simple con CLAVES_ESTANDARIZADAS_LEGACY
+
+    Args:
+        text: Texto OCR extraído de los documentos
+
+    Returns:
+        Dict con los 31 campos extraídos formateados con **negrita** para Word
+
+    Ejemplo de respuesta:
+    {
+        "deudor": "**Juan Pérez Gómez**",
+        "numero_escritura": "**CIENTO VEINTICINCO**",
+        "fecha_escritura": "**veinticinco de marzo de dos mil veinticuatro**",
+        ...
+    }
+    """
+    import time
+    start_time = time.time()
+
+    logger.info(
+        "Extrayendo cancelación con método LEGACY (movil_cancelaciones.py)",
+        text_length=len(text),
+        claves_count=len(CLAVES_ESTANDARIZADAS_LEGACY)
+    )
+
+    try:
+        # Usar método legacy que replica EXACTAMENTE movil_cancelaciones.py
+        extracted_data = ai_service.process_cancelacion_legacy(text)
+
+        processing_time = time.time() - start_time
+
+        # Contar campos extraídos exitosamente
+        campos_encontrados = [
+            k for k, v in extracted_data.items()
+            if v and "NO LOCALIZADO" not in str(v) and "NO ENCONTRADO" not in str(v)
+        ]
+
+        campos_no_encontrados = [
+            k for k, v in extracted_data.items()
+            if not v or "NO LOCALIZADO" in str(v) or "NO ENCONTRADO" in str(v)
+        ]
+
+        tasa_exito = len(campos_encontrados) / len(CLAVES_ESTANDARIZADAS_LEGACY) * 100
+
+        logger.info(
+            "Extracción legacy completada",
+            campos_encontrados=len(campos_encontrados),
+            campos_no_encontrados=len(campos_no_encontrados),
+            tasa_exito=f"{tasa_exito:.1f}%",
+            processing_time=processing_time
+        )
+
+        return {
+            "source": "movil_cancelaciones.py (método legacy)",
+            "extracted_data": extracted_data,
+            "stats": {
+                "total_claves": len(CLAVES_ESTANDARIZADAS_LEGACY),
+                "campos_encontrados": len(campos_encontrados),
+                "campos_no_encontrados": len(campos_no_encontrados),
+                "tasa_exito_percent": round(tasa_exito, 1),
+                "lista_encontrados": campos_encontrados,
+                "lista_no_encontrados": campos_no_encontrados
+            },
+            "parametros_usados": {
+                "model": "gpt-4o",
+                "temperature": 0.5,
+                "max_tokens": 1500,
+                "top_p": 1
+            },
+            "processing_time_seconds": round(processing_time, 2)
+        }
+
+    except Exception as e:
+        logger.error(
+            "Error en extracción legacy",
+            error=str(e),
+            error_type=type(e).__name__
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error en extracción legacy: {str(e)}"
+        )

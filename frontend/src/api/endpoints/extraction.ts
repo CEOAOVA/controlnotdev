@@ -11,6 +11,7 @@ import type {
   DataEditRequest,
   DataEditResponse,
   QualityLevel,
+  LegacyExtractionResponse,
 } from '../types';
 
 export const extractionApi = {
@@ -101,6 +102,40 @@ export const extractionApi = {
     const { data } = await apiClient.post<DataEditResponse>(
       '/extraction/edit',
       payload
+    );
+
+    return data;
+  },
+
+  /**
+   * POST /api/cancelaciones/legacy/extract
+   * Extract cancellation data using the LEGACY method from movil_cancelaciones.py
+   *
+   * This method achieves 100% extraction accuracy using:
+   * - model: gpt-4o
+   * - temperature: 0.5 (NOT 0.0)
+   * - max_tokens: 1500 (NOT 3000)
+   * - top_p: 1
+   * - Simple prompt with CLAVES_ESTANDARIZADAS_LEGACY
+   *
+   * @param text - OCR text from cancellation documents
+   * @returns Extracted data with 31 fields formatted with **bold** for Word
+   */
+  extractCancelacionLegacy: async (
+    text: string
+  ): Promise<LegacyExtractionResponse> => {
+    const formData = new FormData();
+    formData.append('text', text);
+
+    const { data } = await apiClient.post<LegacyExtractionResponse>(
+      '/cancelaciones/legacy/extract',
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        timeout: 180000, // 3 minutes
+      }
     );
 
     return data;

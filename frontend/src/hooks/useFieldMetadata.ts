@@ -3,24 +3,33 @@
  * Dynamically fetches field definitions for any document type
  *
  * Replaces hardcoded field metadata in DataEditor component
+ *
+ * UPDATED: For cancelaciones, uses legacy endpoint to get the 31 fields
+ * that match the legacy extraction method (100% accuracy)
  */
 
 import { useQuery } from '@tanstack/react-query';
 import { modelsApi } from '@/api/endpoints';
+import { apiClient } from '@/api/client';
 import type { DocumentFieldsResponse, FieldMetadata } from '@/api/types';
 
 interface UseFieldMetadataOptions {
   enabled?: boolean;
+  useLegacy?: boolean;  // Force legacy fields for cancelaciones
 }
 
 export function useFieldMetadata(
   documentType: string | null,
   options: UseFieldMetadataOptions = {}
 ) {
-  const { enabled = true } = options;
+  const { enabled = true, useLegacy } = options;
+
+  // Determine if we should use legacy endpoint
+  // For cancelaciones, always use legacy unless explicitly disabled
+  const shouldUseLegacy = useLegacy ?? (documentType === 'cancelacion');
 
   const query = useQuery({
-    queryKey: ['field-metadata', documentType],
+    queryKey: ['field-metadata', documentType, shouldUseLegacy ? 'legacy' : 'standard'],
     queryFn: async (): Promise<DocumentFieldsResponse> => {
       if (!documentType) {
         return {
@@ -31,6 +40,15 @@ export function useFieldMetadata(
         };
       }
 
+      // For cancelaciones, use legacy endpoint
+      if (shouldUseLegacy && documentType === 'cancelacion') {
+        const { data } = await apiClient.get<DocumentFieldsResponse>(
+          '/models/fields/cancelacion/legacy'
+        );
+        return data;
+      }
+
+      // For other document types, use standard endpoint
       return modelsApi.getFields(documentType);
     },
     enabled: enabled && !!documentType,

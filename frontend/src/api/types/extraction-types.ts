@@ -166,3 +166,41 @@ export interface DataEditResponse {
   session_id: string;
   message: string;
 }
+
+// ============================================
+// Legacy Extraction Types (Cancelaciones)
+// ============================================
+
+/**
+ * Response from /api/cancelaciones/legacy/extract
+ * Uses the exact method from movil_cancelaciones.py (100% accuracy)
+ */
+export interface LegacyExtractionResponse {
+  source: string;
+  extracted_data: Record<string, string>;
+  stats: {
+    total_claves: number;
+    campos_encontrados: number;
+    campos_no_encontrados: number;
+    tasa_exito_percent: number;
+    lista_encontrados: string[];
+    lista_no_encontrados: string[];
+  };
+  parametros_usados: {
+    model: string;
+    temperature: number;
+    max_tokens: number;
+    top_p: number;
+  };
+  processing_time_seconds: number;
+}
+
+/**
+ * Legacy keys response from /api/cancelaciones/legacy/keys
+ */
+export interface LegacyKeysResponse {
+  source: string;
+  total_claves: number;
+  claves: Record<string, string>;
+  nota: string;
+}

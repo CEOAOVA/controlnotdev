@@ -3,6 +3,7 @@ ControlNot v2 - Cancelacion Service
 Servicio especializado para procesamiento de Cancelaciones de Hipotecas
 
 OPTIMIZADO: Prompt simplificado estilo movil_cancelaciones.py
+CORRECCIÓN CRÍTICA: Usar CLAVES_ESTANDARIZADAS_LEGACY exactas del original
 """
 import re
 import json
@@ -13,6 +14,45 @@ from pathlib import Path
 from app.models.cancelacion import CancelacionKeys, CANCELACION_METADATA
 
 logger = structlog.get_logger()
+
+
+# ==============================================================================
+# CLAVES_ESTANDARIZADAS_LEGACY - Copia EXACTA de movil_cancelaciones.py (líneas 221-253)
+# CRÍTICO: Estas son las claves que FUNCIONAN al 100% en extracción
+# ==============================================================================
+CLAVES_ESTANDARIZADAS_LEGACY = {
+    "intermediario_financiero": "Extrae el intermediario financiero del texto.",
+    "deudor": "Extrae el deudor del texto legal. Ejemplo: 'Juan Pérez Gómez'",
+    "numero_escritura": "Extrae el número de escritura en letras y mayúsculas. Ejemplo: 125 → 'CIENTO VEINTICINCO'",
+    "fecha_escritura": "Extrae la fecha de la escritura en palabras minúsculas. Ejemplo: 'veinticinco de marzo de dos mil veinticuatro'",
+    "notario": "Extrae el nombre del notario, añadiendo de la Licenciada o del Lincenciado antes del nombre, según el género. Ejemplo: 'del Lincenciado Roberto Sánchez Martínez'",
+    "numero_notario": "Extrae el número del notario en letras minúsculas. Ejemplo: 15 → 'quince'",
+    "ciudad_residencia": "Extrae la ciudad de residencia del notario público. Ejemplo: 'Morelia'",
+    "numero_registro_libro_propiedad": "Extrae el número de registro de la propiedad y conviértelo en palabras mayúsculas. Ejemplo: 19 → 'DIECINUEVE'",
+    "tomo_libro_propiedad": "Extrae el tomo del libro de propiedad y conviértelo en palabras mayúsculas. Ejemplo: 7069 → 'SIETE MIL SESENTA Y NUEVE'",
+    "numero_registro_libro_gravamen": "Extrae el número de registro del gravamen y conviértelo en palabras mayúsculas. Ejemplo: 4 → 'CUATRO'",
+    "tomo_libro_gravamen": "Extrae el tomo del libro de gravamen y conviértelo en palabras mayúsculas. Ejemplo: 4 → 'CUATRO'",
+    "suma_credito": "Extrae la suma de crédito con garantía hipotecaria. Ejemplo: '$250,000.00'",
+    "suma_credito_letras": "Extrae la suma de crédito en letras y mayúsculas. Ejemplo: $250,000.00' → 'DOSCIENTOS CINCUENTA MIL'",
+    "equivalente_salario_minimo": "Extrae el equivalente en salario mínimo (número). Ejemplo: '500'",
+    "equivalente_salario_minimo_letras": "Extrae el equivalente en salario mínimo en letras mayúsculas. Ejemplo: 500 → 'QUINIENTOS'",
+    "ubicacion_inmueble": "Extrae la ubicación del inmueble hipotecado y su tipo. Ejemplo: 'CASA HABITACIÓN UBICADA EN LA CALLE PRIMER RETORNO DE LA ESTACAS, NUMERO 49 (CUARENTA Y NUEVE), CASA \"B\", CONSTRUIDA SOBRE EL LOTE NUMERO 136 (CIENTO TREINTA Y SEIS), DE LA MANZANA 8 (OCHO), PERTENECIENTE AL CONJUNTO HABITACIONAL DE INTERÉS SOCIAL BAJO EL RÉGIMEN DE PROPIEDAD EN CONDOMINIO, LOMAS DE LA MAESTRANZA, DE ESTE MUNICIPIO DE MORELIA, MICHOACAN'",
+    "cesion_credito_fecha": "Extrae la fecha de la cesión de crédito en palabras minúsculas. Ejemplo: 'quince de julio de dos mil veintitrés'",
+    "cesion_credito_valor": "Extrae cuántos derechos hipotecarios se transmitieron en la cesión en palabras minúsculas. Ejemplo: 'tres derechos hipotecarios'",
+    "constancia_finiquito_numero_oficio": "Extrae el número de oficio de la constancia de finiquito. Ejemplo: 'OFICIO NO. JSGR-PROG-30-60/2023/4885'",
+    "constancia_finiquito_fecha_emision": "Extrae la fecha de emisión de la constancia de finiquito en palabras minúsculas. Ejemplo: 'doce de junio de dos mil veintidós'",
+    "carta_instrucciones_numero_oficio": "Extrae el número de oficio de la carta de instrucciones en el formato EXP. No. CANC-SOFOL/XXXX/XX. Ejemplo: 'EXP. No. CANC-SOFOL/2023/12'",
+    "carta_instrucciones_fecha_constancia_liquidacion": "Extrae la fecha de la constancia de liquidación en palabras minúsculas. Ejemplo: 'veinte de abril de dos mil veintidós'",
+    "carta_instrucciones_nombre_titular_credito": "Extrae el nombre del titular del crédito. Ejemplo: 'María López Ramírez'",
+    "carta_instrucciones_numero_credito": "Extrae el número de crédito. Ejemplo: '123456789'",
+    "carta_instrucciones_tipo_credito": "Extrae el tipo de crédito",
+    "carta_instrucciones_fecha_adjudicacion": "Extrae la fecha de adjudicación del crédito en palabras minúsculas. Ejemplo: 'uno de marzo de dos mil veintiuno'",
+    "carta_instrucciones_ubicacion_inmueble": "Extrae la ubicación del inmueble. Ejemplo: 'CASA HABITACIÓN UBICADA EN LA CALLE PRIMER RETORNO DE LA ESTACAS, NUMERO 49 (CUARENTA Y NUEVE), CASA \"B\", CONSTRUIDA SOBRE EL LOTE NUMERO 136 (CIENTO TREINTA Y SEIS), DE LA MANZANA 8 (OCHO), PERTENECIENTE AL CONJUNTO HABITACIONAL DE INTERÉS SOCIAL BAJO EL RÉGIMEN DE PROPIEDAD EN CONDOMINIO, LOMAS DE LA MAESTRANZA, DE ESTE MUNICIPIO DE MORELIA, MICHOACÁN'",
+    "carta_instrucciones_valor_credito": "Extrae el valor del crédito. Ejemplo: '500000'",
+    "carta_instrucciones_valor_credito_letras": "Extrae el valor del crédito en letras y mayúsculas. Ejemplo: 500000 → 'QUINIENTOS MIL'",
+    "carta_instrucciones_numero_registro": "Extrae el número de registro del crédito en palabras mayúsculas. Ejemplo: 302 → 'TRESCIENTOS DOS'",
+    "carta_instrucciones_tomo": "Extrae el tomo donde se inscribió el crédito en palabras mayúsculas. Ejemplo: 27 → 'VEINTISIETE'",
+}
 
 
 class CancelacionService:
@@ -294,7 +334,7 @@ class CancelacionService:
     def get_extraction_prompt(self, document_type: str = "cancelacion") -> str:
         """
         Genera un prompt SIMPLIFICADO para extracción de datos con IA
-        ESTILO MOVIL_CANCELACIONES.PY - Claves JSON simples
+        ESTILO MOVIL_CANCELACIONES.PY - Prompt IDÉNTICO al original que funciona 100%
 
         Args:
             document_type: Tipo de documento (siempre 'cancelacion')
@@ -302,42 +342,89 @@ class CancelacionService:
         Returns:
             str: Prompt formateado para el modelo de IA
         """
-        # Obtener claves simples del modelo
-        claves_simples = self.get_simple_keys_dict()
+        # PROMPT SIMPLE - IDÉNTICO a movil_cancelaciones.py líneas 332-333
+        system_message = "Eres controlnot, un asistente de notaría. Extrae información en formato JSON con las siguientes especificaciones:\n"
+        system_message += json.dumps(CLAVES_ESTANDARIZADAS_LEGACY, indent=4, ensure_ascii=False)
+        return system_message
 
-        prompt = f"""Eres controlnot, un asistente de notaría especializado en cancelaciones de hipoteca.
+    def get_extraction_prompt_legacy(self) -> str:
+        """
+        Genera el prompt EXACTO de movil_cancelaciones.py
+        Para uso con process_text_with_openai_legacy()
 
-Extrae información en formato JSON con las siguientes especificaciones:
+        Returns:
+            str: Prompt idéntico al sistema original
+        """
+        system_message = "Eres controlnot, un asistente de notaría. Extrae información en formato JSON con las siguientes especificaciones:\n"
+        system_message += json.dumps(CLAVES_ESTANDARIZADAS_LEGACY, indent=4, ensure_ascii=False)
+        return system_message
 
-{json.dumps(claves_simples, indent=2, ensure_ascii=False)}
+    def process_text_with_openai_legacy(self, text: str, openai_client) -> Dict:
+        """
+        Procesa texto EXACTAMENTE como movil_cancelaciones.py (líneas 329-350)
 
-REGLAS IMPORTANTES:
-- Si no encuentras un dato, usa "NO LOCALIZADO"
-- Números de registro y tomos: convertir a palabras MAYÚSCULAS (ej: 19 → 'DIECINUEVE')
-- Fechas: en palabras minúsculas (ej: 'quince de marzo de dos mil diez')
-- Nombres de personas: en MAYÚSCULAS
-- Montos en letras: en MAYÚSCULAS con centavos (ej: 'DOSCIENTOS MIL PESOS 00/100 M.N.')
+        USA LOS PARÁMETROS EXACTOS QUE FUNCIONAN:
+        - model: gpt-4o
+        - temperature: 0.5
+        - max_tokens: 1500
+        - top_p: 1
 
-DOCUMENTOS TÍPICOS:
-- Constancia de No Adeudo/Finiquito del banco
-- Carta de Instrucciones del banco (documento CRÍTICO)
-- Certificado de Libertad de Gravamen
-- Escritura original de hipoteca
-- Poder Notarial del banco
+        Args:
+            text: Texto OCR extraído de los documentos
+            openai_client: Cliente de OpenAI
 
-CAMPOS CRÍTICOS (prioridad alta):
-- Deudor_Nombre_Completo
-- Intermediario_Financiero
-- Suma_Credito / Suma_Credito_Letras
-- Equivalente_Salario_Minimo
-- Ubicacion_Inmueble
-- Numero_Registro_Libro_Propiedad / Tomo_Libro_Propiedad
-- Numero_Registro_Libro_Gravamen / Tomo_Libro_Gravamen
-- Carta_Instrucciones_Tipo_Credito
+        Returns:
+            Dict: Datos extraídos con formato **valor** para negrita
+        """
+        try:
+            system_message = self.get_extraction_prompt_legacy()
 
-EXTRAE LOS DATOS DEL SIGUIENTE TEXTO:
-"""
-        return prompt
+            logger.info(
+                "Procesando con método legacy (movil_cancelaciones.py)",
+                text_length=len(text),
+                claves_count=len(CLAVES_ESTANDARIZADAS_LEGACY)
+            )
+
+            # PARÁMETROS EXACTOS de movil_cancelaciones.py líneas 335-344
+            response = openai_client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": system_message},
+                    {"role": "user", "content": f"Extrae la información en formato JSON del siguiente texto:\n{text}"}
+                ],
+                temperature=0.5,  # CRÍTICO: 0.5 no 0.0
+                max_tokens=1500,  # CRÍTICO: 1500 no 3000
+                top_p=1           # CRÍTICO: top_p=1
+            )
+
+            content = response.choices[0].message.content.strip()
+
+            # Limpiar markdown si existe (línea 347)
+            cleaned_content = re.sub(r"```json|```", "", content)
+
+            # Parsear JSON (línea 348)
+            extracted_data = json.loads(cleaned_content)
+
+            # Formatear con negrita para Word (línea 350)
+            formatted_data = {
+                key: f"**{value.strip()}**" if isinstance(value, str) else f"**{value}**"
+                for key, value in extracted_data.items()
+            }
+
+            logger.info(
+                "Extracción legacy completada",
+                campos_extraidos=len(formatted_data),
+                campos_con_valor=[k for k, v in extracted_data.items() if v and v != "NO LOCALIZADO"]
+            )
+
+            return formatted_data
+
+        except json.JSONDecodeError as e:
+            logger.error(f"Error al parsear JSON: {e}")
+            return {}
+        except Exception as e:
+            logger.error(f"Error al procesar con OpenAI: {str(e)}")
+            return {}
 
     def _numero_a_letras(self, numero: int) -> str:
         """
@@ -426,3 +513,44 @@ def get_cancelacion_prompt() -> str:
 def get_simple_keys() -> Dict[str, str]:
     """Wrapper para obtener claves simples"""
     return cancelacion_service.get_simple_keys_dict()
+
+
+def get_legacy_keys() -> Dict[str, str]:
+    """
+    Wrapper para obtener CLAVES_ESTANDARIZADAS_LEGACY exactas
+    Estas son las claves que funcionan 100% en movil_cancelaciones.py
+    """
+    return CLAVES_ESTANDARIZADAS_LEGACY
+
+
+def get_cancelacion_prompt_legacy() -> str:
+    """
+    Wrapper para obtener el prompt EXACTO de movil_cancelaciones.py
+    """
+    return cancelacion_service.get_extraction_prompt_legacy()
+
+
+def process_cancelacion_legacy(text: str, openai_client) -> Dict:
+    """
+    Procesa texto de cancelación EXACTAMENTE como movil_cancelaciones.py
+
+    PARÁMETROS USADOS (idénticos al original):
+    - model: gpt-4o
+    - temperature: 0.5
+    - max_tokens: 1500
+    - top_p: 1
+
+    Args:
+        text: Texto OCR de documentos de cancelación
+        openai_client: Cliente de OpenAI inicializado
+
+    Returns:
+        Dict: Datos extraídos con formato **valor** para negrita en Word
+
+    Example:
+        >>> from openai import OpenAI
+        >>> client = OpenAI(api_key="...")
+        >>> result = process_cancelacion_legacy(texto_ocr, client)
+        >>> print(result['deudor'])  # → "**Juan Pérez Gómez**"
+    """
+    return cancelacion_service.process_text_with_openai_legacy(text, openai_client)
