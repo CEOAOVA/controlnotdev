@@ -187,7 +187,7 @@ def get_ai_service() -> AIExtractionService:
         AIExtractionService instance with OpenAI/OpenRouter client
     """
     ai_client = get_openai_client()
-    return AIExtractionService(client=ai_client)
+    return AIExtractionService(ai_client=ai_client)
 
 
 def get_anthropic_service() -> AnthropicExtractionService:
