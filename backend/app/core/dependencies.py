@@ -162,9 +162,9 @@ def get_email_service() -> EmailService:
     return EmailService(
         smtp_server=settings.SMTP_SERVER,
         smtp_port=settings.SMTP_PORT,
-        smtp_user=settings.SMTP_USER,
+        smtp_user=settings.SMTP_EMAIL,
         smtp_password=settings.SMTP_PASSWORD,
-        from_email=settings.FROM_EMAIL
+        from_email=settings.SMTP_EMAIL
     )
 
 
