@@ -203,6 +203,7 @@ def post_process_extracted_data(extracted_data: dict, document_type: str) -> dic
 
     Actualmente maneja:
     - Conversión de números a palabras para campos RPP (Numero_Registro, Numero_tomo_Registro)
+    - Fallback de campos de Juicio Sucesorio → campos genéricos de antecedente
 
     Args:
         extracted_data: Diccionario con datos extraídos por Claude
@@ -216,6 +217,7 @@ def post_process_extracted_data(extracted_data: dict, document_type: str) -> dic
 
     processed = extracted_data.copy()
 
+    # === CONVERSIÓN DE NÚMEROS A PALABRAS ===
     for campo in CAMPOS_CONVERSION_NUMEROS:
         if campo in processed:
             valor = processed[campo]
@@ -229,6 +231,31 @@ def post_process_extracted_data(extracted_data: dict, document_type: str) -> dic
                         convertido=valor_convertido
                     )
                 processed[campo] = valor_convertido
+
+    # === FALLBACK PARA JUICIO SUCESORIO ===
+    # Si el antecedente es juicio sucesorio, copiar campos a los genéricos de antecedente
+    antecedente_tipo = processed.get("Antecedente_Tipo", "").lower()
+
+    if "juicio" in antecedente_tipo or "sucesorio" in antecedente_tipo or "herencia" in antecedente_tipo:
+        # Mapeo de campos de juicio sucesorio → campos genéricos de escritura antecedente
+        fallback_map = {
+            "Juicio_Sucesorio_Notario_Protocolizacion": "Escritura_Privada_Notario",
+            "Juicio_Sucesorio_Fecha_Sentencia": "Escritura_Privada_fecha",
+            "Juicio_Sucesorio_Expediente": "Escritura_Privada_numero",
+        }
+
+        for source, target in fallback_map.items():
+            source_val = processed.get(source)
+            target_val = processed.get(target)
+
+            # Solo copiar si el campo destino está vacío/NO ENCONTRADO y origen tiene valor
+            if source_val and "NO ENCONTRADO" not in str(source_val):
+                if not target_val or "NO ENCONTRADO" in str(target_val):
+                    processed[target] = source_val
+                    logger.debug(
+                        f"Fallback Juicio Sucesorio: {source} → {target}",
+                        valor=source_val
+                    )
 
     return processed
 
@@ -818,6 +845,24 @@ RESPONDE SOLO CON JSON (sin markdown ni explicaciones):"""
                 original_count=len(images)
             )
             images = images[:100]
+
+        # === DETECCIÓN AUTOMÁTICA DE JUICIO SUCESORIO ===
+        # Detectar por nombre de archivo si hay documentos de juicio sucesorio
+        juicio_sucesorio_keywords = ['sucesorio', 'sentencia', 'juzgado', 'adjudicacion',
+                                      'adjudicación', 'intestamentario', 'testamentario',
+                                      'herencia', 'causante', 'albacea']
+        for img in images:
+            img_name = img.get('name', '').lower()
+            if any(kw in img_name for kw in juicio_sucesorio_keywords):
+                if document_hints is None:
+                    document_hints = []
+                if 'juicio_sucesorio' not in document_hints:
+                    document_hints.append('juicio_sucesorio')
+                    logger.info(
+                        "Detectado documento de juicio sucesorio por nombre de archivo",
+                        filename=img.get('name')
+                    )
+                break
 
         try:
             # =====================================================

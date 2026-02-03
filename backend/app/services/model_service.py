@@ -60,6 +60,7 @@ CATEGORY_PATTERNS = {
 
     # Comunes
     "Escritura_Privada": "Antecedente de Propiedad",
+    "Juicio_Sucesorio": "Antecedente (Juicio Sucesorio)",
     "Certificado": "Documentos Oficiales",
     "Constancia": "Documentos Oficiales",
     "Avaluo": "Avalúo",
@@ -116,6 +117,15 @@ FIELD_LABELS = {
     "Escritura_Privada_fecha": "Fecha de Escritura Antecedente",
     "Escritura_Privada_Notario": "Notario del Antecedente",
     "Escritura_Privada_Notario_numero": "Notaría del Antecedente",
+
+    # Juicio Sucesorio (cuando el antecedente es por herencia)
+    "Antecedente_Tipo": "Tipo de Antecedente",
+    "Juicio_Sucesorio_Tipo": "Tipo de Juicio Sucesorio",
+    "Juicio_Sucesorio_Juzgado": "Juzgado del Sucesorio",
+    "Juicio_Sucesorio_Expediente": "Expediente del Sucesorio",
+    "Juicio_Sucesorio_Causante": "Causante (Finado)",
+    "Juicio_Sucesorio_Fecha_Sentencia": "Fecha de Sentencia",
+    "Juicio_Sucesorio_Notario_Protocolizacion": "Notario de Protocolización",
 
     # Inmueble
     "Escritura_Privada_Urbano_Descripcion": "Descripción del Inmueble",
@@ -312,6 +322,7 @@ def get_fields_for_document_type(document_type: str) -> Dict:
         "Deudor", "Acreedor", "Datos de Hipoteca",
         "Socios", "Representante Legal", "Datos de la Sociedad",
         "Antecedente de Propiedad",
+        "Antecedente (Juicio Sucesorio)",
         "Inmueble",
         "Documentos de Identidad",
         "Documentos Fiscales",
