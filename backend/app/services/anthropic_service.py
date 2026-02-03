@@ -36,6 +36,7 @@ from app.core.config import settings
 from app.models.base import BaseKeys
 from app.models.compraventa import CompraventaKeys
 from app.models.donacion import DonacionKeys
+from app.utils.number_conversion import convertir_si_es_numero
 from app.models.testamento import TestamentoKeys
 from app.models.poder import PoderKeys
 from app.models.sociedad import SociedadKeys
@@ -149,6 +150,34 @@ INSTRUCCIONES:
 - El numero de servicio tiene formato especifico de CFE
 """,
 
+    "juicio_sucesorio": """
+TIPO DE DOCUMENTO: Juicio Sucesorio / Sentencia de Adjudicación
+
+CONSIDERACIONES ESPECIALES:
+- Este documento puede ser una sentencia judicial o su protocolización notarial
+- Contiene información sobre la transmisión de propiedad por fallecimiento
+- Puede ser intestamentario (sin testamento) o testamentario (con testamento)
+
+CAMPOS CRITICOS A BUSCAR:
+- Tipo de juicio: "INTESTAMENTARIO" o "TESTAMENTARIO"
+- Nombre del causante (persona fallecida): "SUCESION A BIENES DE", "DE CUJUS"
+- Número de expediente judicial: "EXPEDIENTE", "EXP."
+- Juzgado que conoció del caso: "JUZGADO", "TRIBUNAL"
+- Fecha de la sentencia: "SENTENCIA DE FECHA", "RESOLUCION"
+- Notario que protocolizó (si aplica): "PROTOCOLIZADO ANTE"
+
+INSTRUCCIONES:
+- Si detectas "JUICIO SUCESORIO", llena los campos Juicio_Sucesorio_*
+- Los campos Escritura_Privada_* aplican para escrituras, NO para juicios
+- El notario de protocolización es DIFERENTE al notario de una escritura antecedente
+
+BUSCAR FRASES CLAVE:
+- "JUICIO SUCESORIO INTESTAMENTARIO A BIENES DE..."
+- "SUCESION TESTAMENTARIA DE..."
+- "SENTENCIA DEFINITIVA DE ADJUDICACION"
+- "PROTOCOLIZACION DE SENTENCIA"
+""",
+
     "default": """
 TIPO DE DOCUMENTO: Documento General
 
@@ -159,6 +188,49 @@ INSTRUCCIONES:
 - Mantén formatos exactos de fechas, numeros y nombres
 """
 }
+
+
+# Campos que requieren conversión automática de números a palabras
+CAMPOS_CONVERSION_NUMEROS = [
+    "Numero_Registro",
+    "Numero_tomo_Registro",
+]
+
+
+def post_process_extracted_data(extracted_data: dict, document_type: str) -> dict:
+    """
+    Post-procesa datos extraídos para aplicar conversiones automáticas.
+
+    Actualmente maneja:
+    - Conversión de números a palabras para campos RPP (Numero_Registro, Numero_tomo_Registro)
+
+    Args:
+        extracted_data: Diccionario con datos extraídos por Claude
+        document_type: Tipo de documento (para futuras reglas específicas)
+
+    Returns:
+        dict: Datos post-procesados con conversiones aplicadas
+    """
+    if not extracted_data:
+        return extracted_data
+
+    processed = extracted_data.copy()
+
+    for campo in CAMPOS_CONVERSION_NUMEROS:
+        if campo in processed:
+            valor = processed[campo]
+            # Solo convertir si no es NO ENCONTRADO y tiene valor
+            if valor and "NO ENCONTRADO" not in str(valor):
+                valor_convertido = convertir_si_es_numero(valor, mayusculas=True)
+                if valor_convertido != valor:
+                    logger.debug(
+                        f"Campo {campo} convertido",
+                        original=valor,
+                        convertido=valor_convertido
+                    )
+                processed[campo] = valor_convertido
+
+    return processed
 
 
 class AnthropicExtractionService:
@@ -498,6 +570,9 @@ RESPONDE SOLO CON JSON (sin markdown ni explicaciones):"""
 
             # Parsear JSON
             extracted_data = json.loads(content)
+
+            # Post-procesar datos (conversión de números, etc.)
+            extracted_data = post_process_extracted_data(extracted_data, document_type)
 
             # Guardar métricas de tokens
             usage = response.usage
@@ -900,6 +975,9 @@ RESPONDE SOLO CON JSON VÁLIDO (sin markdown, sin explicaciones, sin ```):
 
             # Parsear JSON
             extracted_data = json.loads(response_content)
+
+            # Post-procesar datos (conversión de números, etc.)
+            extracted_data = post_process_extracted_data(extracted_data, document_type)
 
             # Guardar métricas de tokens
             usage = response.usage

@@ -78,6 +78,23 @@ SEMANTIC_KEYWORDS = {
     # Constancia Finiquito
     "Constancia_Finiquito_Numero_Oficio": ["constancia", "finiquito", "oficio", "numero"],
     "Constancia_Finiquito_Fecha_Emision": ["constancia", "emision", "fecha", "finiquito"],
+
+    # ==========================================
+    # Campos de Antecedente y Juicio Sucesorio (Donación)
+    # ==========================================
+    "Antecedente_Tipo": ["antecedente", "tipo", "documento", "instrumento", "escritura", "juicio"],
+    "Juicio_Sucesorio_Tipo": ["juicio", "sucesorio", "tipo", "intestamentario", "testamentario"],
+    "Juicio_Sucesorio_Juzgado": ["juicio", "juzgado", "tribunal", "juzgador", "autoridad"],
+    "Juicio_Sucesorio_Expediente": ["juicio", "expediente", "numero", "causa", "sucesorio"],
+    "Juicio_Sucesorio_Causante": ["causante", "fallecido", "difunto", "finado", "sucesion"],
+    "Juicio_Sucesorio_Fecha_Sentencia": ["juicio", "sentencia", "fecha", "resolucion", "adjudicacion"],
+    "Juicio_Sucesorio_Notario_Protocolizacion": ["notario", "protocolizacion", "protocolizo", "sucesorio"],
+
+    # ==========================================
+    # Campos RPP mejorados
+    # ==========================================
+    "Numero_Registro": ["registro", "numero", "inscripcion", "rpp", "asiento"],
+    "Numero_tomo_Registro": ["tomo", "registro", "volumen", "libro", "rpp"],
 }
 
 

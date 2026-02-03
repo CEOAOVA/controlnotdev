@@ -117,22 +117,48 @@ Convertir palabras a números si es necesario."""
 
     Numero_Registro: Optional[str] = Field(
         None,
-        description="""FORMATO DE SALIDA: Número en palabras MAYÚSCULAS
-Ejemplo: VEINTISIETE
+        description="""NUMERO DE INSCRIPCION en el Registro Público de la Propiedad (RPP).
 
-Extrae el número de inscripción en el RPP del antecedente.
-Fuente: boleta/asiento RPP.
-Mantener en palabras MAYÚSCULAS."""
+FORMATO DE SALIDA: Número en palabras MAYÚSCULAS
+EJEMPLOS: DIECIOCHO, VEINTISIETE, MIL SEISCIENTOS OCHENTA Y OCHO
+
+BUSCAR EN BOLETA RPP o ASIENTO REGISTRAL:
+- Campo "REGISTRO:", "INSCRIPCION:", "No. DE INSCRIPCION:"
+- Puede aparecer como número (00000018, 18) o ya en palabras
+
+CONVERSION AUTOMATICA:
+- Si encuentras "00000018" o "18" → extraer como DIECIOCHO
+- Si encuentras "00001688" o "1688" → extraer como MIL SEISCIENTOS OCHENTA Y OCHO
+- Si ya viene en palabras, mantener tal cual
+
+IMPORTANTE: El sistema convertirá automáticamente números a palabras.
+Puedes extraer el valor como aparece (número o palabras).
+
+Si no hay boleta RPP visible: '**[NO ENCONTRADO]**'""",
+        json_schema_extra={"optional_field": True, "source": "boleta_rpp", "auto_convert": True}
     )
 
     Numero_tomo_Registro: Optional[str] = Field(
         None,
-        description="""FORMATO DE SALIDA: Número en palabras MAYÚSCULAS
-Ejemplo: TRESCIENTOS OCHENTA Y UNO
+        description="""NUMERO DE TOMO en el Registro Público de la Propiedad (RPP).
 
-Extrae el tomo del RPP del antecedente.
-Fuente: boleta/asiento RPP.
-Mantener en palabras MAYÚSCULAS."""
+FORMATO DE SALIDA: Número en palabras MAYÚSCULAS
+EJEMPLOS: TRESCIENTOS OCHENTA Y UNO, MIL SEISCIENTOS OCHENTA Y OCHO
+
+BUSCAR EN BOLETA RPP o ASIENTO REGISTRAL:
+- Campo "TOMO:", "No. DE TOMO:", "LIBRO:"
+- Puede aparecer como número (00001688, 381) o ya en palabras
+
+CONVERSION AUTOMATICA:
+- Si encuentras "00001688" o "1688" → extraer como MIL SEISCIENTOS OCHENTA Y OCHO
+- Si encuentras "00000381" o "381" → extraer como TRESCIENTOS OCHENTA Y UNO
+- Si ya viene en palabras, mantener tal cual
+
+IMPORTANTE: El sistema convertirá automáticamente números a palabras.
+Puedes extraer el valor como aparece (número o palabras).
+
+Si no hay boleta RPP visible: '**[NO ENCONTRADO]**'""",
+        json_schema_extra={"optional_field": True, "source": "boleta_rpp", "auto_convert": True}
     )
 
     Nombre_ANTECEDENTE_TRANSMITENTE: Optional[str] = Field(
@@ -299,11 +325,23 @@ Extrae tipo de identificación oficial del VENDEDOR."""
 
     INE_Parte_Vendedora_numero: Optional[str] = Field(
         None,
-        description="""FORMATO DE SALIDA: Clave completa del INE
-Ejemplo: IDMEX2650430777
+        description="""NUMERO OCR / IDMEX del INE del VENDEDOR.
 
-Extrae la clave/folio de INE del VENDEDOR.
-Fuente: INE."""
+UBICACION CRITICA: REVERSO de la credencial INE/IFE
+- Buscar en la zona MRZ (Machine Readable Zone) - parte inferior del reverso
+- Es un código alfanumérico que identifica de forma única la credencial
+
+FORMATO: IDMEX + 10 dígitos numéricos
+EJEMPLOS: IDMEX2650430777, IDMEX2545265854
+
+INSTRUCCIONES:
+1. Localizar el REVERSO de la credencial INE del VENDEDOR
+2. Buscar la línea que comienza con "IDMEX" en la zona inferior
+3. Extraer SOLO caracteres alfanuméricos (ignorar símbolos < o >>)
+4. El código completo debe tener 14 caracteres (IDMEX + 10 dígitos)
+
+NOTA: Este dato NO aparece en el frente de la credencial.
+Si no está visible el reverso del INE: '**[NO ENCONTRADO]**'"""
     )
 
     CURP_Parte_Vendedora: Optional[str] = Field(
@@ -384,10 +422,23 @@ Extrae tipo de identificación oficial del COMPRADOR."""
 
     INE_Parte_Compradora_numero: Optional[str] = Field(
         None,
-        description="""FORMATO DE SALIDA: Clave completa del INE
-Ejemplo: IDMEX2749126814
+        description="""NUMERO OCR / IDMEX del INE del COMPRADOR.
 
-Extrae la clave/folio de INE del COMPRADOR."""
+UBICACION CRITICA: REVERSO de la credencial INE/IFE
+- Buscar en la zona MRZ (Machine Readable Zone) - parte inferior del reverso
+- Es un código alfanumérico que identifica de forma única la credencial
+
+FORMATO: IDMEX + 10 dígitos numéricos
+EJEMPLOS: IDMEX2749126814, IDMEX2545265854
+
+INSTRUCCIONES:
+1. Localizar el REVERSO de la credencial INE del COMPRADOR
+2. Buscar la línea que comienza con "IDMEX" en la zona inferior
+3. Extraer SOLO caracteres alfanuméricos (ignorar símbolos < o >>)
+4. El código completo debe tener 14 caracteres (IDMEX + 10 dígitos)
+
+NOTA: Este dato NO aparece en el frente de la credencial.
+Si no está visible el reverso del INE: '**[NO ENCONTRADO]**'"""
     )
 
     CURP_Parte_Compradora: Optional[str] = Field(

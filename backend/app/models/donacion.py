@@ -115,37 +115,212 @@ PROCESO LÓGICO GENÉRICO:
 Si después de excluir al donador no queda nadie con documentos de identidad: 'NO LOCALIZADO'"""
     )
 
-    # Antecedente (igual que compraventa)
+    # ==========================================
+    # ANTECEDENTE DE PROPIEDAD
+    # Puede ser: Escritura Notarial, Juicio Sucesorio, Sentencia, etc.
+    # ==========================================
+
+    Antecedente_Tipo: Optional[str] = Field(
+        None,
+        description="""TIPO DE ANTECEDENTE de la propiedad.
+
+VALORES POSIBLES:
+- escritura: Escritura pública o privada notarial
+- juicio_sucesorio: Juicio sucesorio intestamentario o testamentario
+- sentencia: Sentencia judicial de adjudicación
+- contrato_privado: Contrato privado de compraventa
+- otro: Otro tipo de documento
+
+COMO DETECTAR:
+- Si aparece "JUICIO SUCESORIO", "SUCESION A BIENES DE", "INTESTAMENTARIO" → juicio_sucesorio
+- Si aparece "SENTENCIA", "JUZGADO", "EXPEDIENTE JUDICIAL" → sentencia
+- Si aparece "ESCRITURA", "INSTRUMENTO", "NOTARIA" → escritura
+- Si no se identifica claramente → escritura (default)
+
+Si no hay antecedente visible: '**[NO ENCONTRADO]**'"""
+    )
+
     Escritura_Privada_numero: Optional[str] = Field(
         None,
-        description="Número en palabras minúsculas. Ejemplo: cuatrocientos noventa y nueve"
+        description="""Número del instrumento antecedente en palabras minúsculas.
+
+APLICA PARA: Escrituras notariales (NO juicios sucesorios)
+Ejemplo: cuatrocientos noventa y nueve
+
+Si el antecedente es JUICIO SUCESORIO, este campo debe ser: '**[NO ENCONTRADO]**'
+(usar campo Juicio_Sucesorio_Expediente en su lugar)"""
     )
 
     Escritura_Privada_fecha: Optional[str] = Field(
         None,
-        description="Fecha completa en palabras minúsculas. Ejemplo: once de diciembre de mil novecientos noventa y seis"
+        description="""Fecha del instrumento antecedente en palabras minúsculas.
+
+APLICA PARA: Escrituras notariales (NO juicios sucesorios)
+Ejemplo: once de diciembre de mil novecientos noventa y seis
+
+Si el antecedente es JUICIO SUCESORIO, este campo debe ser: '**[NO ENCONTRADO]**'
+(usar campo Juicio_Sucesorio_Fecha_Sentencia en su lugar)"""
     )
 
     Escritura_Privada_Notario: Optional[str] = Field(
         None,
-        description="Nombre completo con título profesional. Ejemplo: Licenciado Gilberto Rivera Martínez"
+        description="""Nombre del Notario del instrumento antecedente con título profesional.
+
+APLICA PARA: Escrituras notariales (NO juicios sucesorios)
+Ejemplo: Licenciado Gilberto Rivera Martínez
+
+IMPORTANTE - DISTINGUIR:
+- Si viene de una ESCRITURA NOTARIAL → extraer el notario de esa escritura
+- Si viene de un JUICIO SUCESORIO → usar campo Juicio_Sucesorio_Notario_Protocolizacion
+
+Si el antecedente NO es escritura notarial: '**[NO ENCONTRADO]**'"""
     )
 
     Escritura_Privada_Notario_numero: Optional[str] = Field(
         None,
-        description="Número de notaría en palabras minúsculas. Ejemplo: ciento veintitrés"
+        description="""Número de notaría del instrumento antecedente en palabras minúsculas.
+
+APLICA PARA: Escrituras notariales (NO juicios sucesorios)
+Ejemplo: ciento veintitrés
+
+Si el antecedente NO es escritura notarial: '**[NO ENCONTRADO]**'"""
+    )
+
+    # ==========================================
+    # CAMPOS ESPECÍFICOS PARA JUICIO SUCESORIO
+    # Usar cuando el antecedente es un juicio sucesorio
+    # ==========================================
+
+    Juicio_Sucesorio_Tipo: Optional[str] = Field(
+        None,
+        description="""Tipo de juicio sucesorio.
+
+VALORES: intestamentario, testamentario
+
+BUSCAR: "JUICIO SUCESORIO INTESTAMENTARIO" o "JUICIO SUCESORIO TESTAMENTARIO"
+- Intestamentario: cuando NO hay testamento
+- Testamentario: cuando SÍ hay testamento
+
+Si el antecedente NO es juicio sucesorio: '**[NO ENCONTRADO]**'""",
+        json_schema_extra={"optional_field": True, "source": "juicio_sucesorio"}
+    )
+
+    Juicio_Sucesorio_Juzgado: Optional[str] = Field(
+        None,
+        description="""Juzgado que conoció del juicio sucesorio.
+
+FORMATO: Nombre completo del juzgado
+EJEMPLOS:
+- Juzgado Primero Civil de Primera Instancia del Distrito Judicial de Morelia
+- Juzgado Segundo de lo Familiar de Zacapu, Michoacán
+
+BUSCAR: "JUZGADO", "TRIBUNAL", después de "ante el" o "radicado en"
+
+Si el antecedente NO es juicio sucesorio: '**[NO ENCONTRADO]**'""",
+        json_schema_extra={"optional_field": True, "source": "juicio_sucesorio"}
+    )
+
+    Juicio_Sucesorio_Expediente: Optional[str] = Field(
+        None,
+        description="""Número de expediente del juicio sucesorio.
+
+FORMATO: Número tal como aparece
+EJEMPLOS: 123/2020, 2019-456, EXP. 789/2021
+
+BUSCAR: "EXPEDIENTE", "EXP.", "No. DE EXPEDIENTE"
+
+Si el antecedente NO es juicio sucesorio: '**[NO ENCONTRADO]**'""",
+        json_schema_extra={"optional_field": True, "source": "juicio_sucesorio"}
+    )
+
+    Juicio_Sucesorio_Causante: Optional[str] = Field(
+        None,
+        description="""Nombre del causante (persona fallecida) del juicio sucesorio.
+
+FORMATO: Nombre completo con tratamiento
+EJEMPLOS:
+- la señora María López Hernández
+- el señor Juan Pérez García
+
+BUSCAR: "SUCESION A BIENES DE", "DE CUJUS", "CAUSANTE", "QUIEN EN VIDA FUE"
+
+Si el antecedente NO es juicio sucesorio: '**[NO ENCONTRADO]**'""",
+        json_schema_extra={"optional_field": True, "source": "juicio_sucesorio"}
+    )
+
+    Juicio_Sucesorio_Fecha_Sentencia: Optional[str] = Field(
+        None,
+        description="""Fecha de la sentencia del juicio sucesorio en palabras.
+
+FORMATO: Fecha completa en palabras minúsculas
+EJEMPLOS: dieciséis de julio de dos mil veinticinco
+
+BUSCAR: "SENTENCIA DE FECHA", "RESOLUCION DE", "ADJUDICACION DE FECHA"
+
+Si el antecedente NO es juicio sucesorio: '**[NO ENCONTRADO]**'""",
+        json_schema_extra={"optional_field": True, "source": "juicio_sucesorio"}
+    )
+
+    Juicio_Sucesorio_Notario_Protocolizacion: Optional[str] = Field(
+        None,
+        description="""Notario que protocolizó la sentencia del juicio sucesorio.
+
+FORMATO: Nombre completo con título profesional
+EJEMPLOS: Lic. Ana Mariela Servin Pita, Licenciado Roberto García López
+
+BUSCAR: "PROTOCOLIZADO ANTE", "NOTARIO QUE PROTOCOLIZO", después de la sentencia
+
+IMPORTANTE: Este es el notario que convirtió la sentencia judicial en escritura pública,
+NO es el notario de una escritura antecedente regular.
+
+Si el antecedente NO es juicio sucesorio: '**[NO ENCONTRADO]**'""",
+        json_schema_extra={"optional_field": True, "source": "juicio_sucesorio"}
     )
 
     Numero_Registro: Optional[str] = Field(
         None,
-        description="Número de inscripción RPP en palabras MAYÚSCULAS. Ejemplo: VEINTISIETE",
-        json_schema_extra={"optional_field": True, "source": "boleta_rpp"}
+        description="""NUMERO DE INSCRIPCION en el Registro Público de la Propiedad (RPP).
+
+FORMATO DE SALIDA: Número en palabras MAYÚSCULAS
+EJEMPLOS: DIECIOCHO, VEINTISIETE, MIL SEISCIENTOS OCHENTA Y OCHO
+
+BUSCAR EN BOLETA RPP o ASIENTO REGISTRAL:
+- Campo "REGISTRO:", "INSCRIPCION:", "No. DE INSCRIPCION:"
+- Puede aparecer como número (00000018, 18) o ya en palabras
+
+CONVERSION AUTOMATICA:
+- Si encuentras "00000018" o "18" → extraer como DIECIOCHO
+- Si encuentras "00001688" o "1688" → extraer como MIL SEISCIENTOS OCHENTA Y OCHO
+- Si ya viene en palabras, mantener tal cual
+
+IMPORTANTE: El sistema convertirá automáticamente números a palabras.
+Puedes extraer el valor como aparece (número o palabras).
+
+Si no hay boleta RPP visible: '**[NO ENCONTRADO]**'""",
+        json_schema_extra={"optional_field": True, "source": "boleta_rpp", "auto_convert": True}
     )
 
     Numero_tomo_Registro: Optional[str] = Field(
         None,
-        description="Tomo del RPP en palabras MAYÚSCULAS. Ejemplo: TRESCIENTOS OCHENTA Y UNO",
-        json_schema_extra={"optional_field": True, "source": "boleta_rpp"}
+        description="""NUMERO DE TOMO en el Registro Público de la Propiedad (RPP).
+
+FORMATO DE SALIDA: Número en palabras MAYÚSCULAS
+EJEMPLOS: TRESCIENTOS OCHENTA Y UNO, MIL SEISCIENTOS OCHENTA Y OCHO
+
+BUSCAR EN BOLETA RPP o ASIENTO REGISTRAL:
+- Campo "TOMO:", "No. DE TOMO:", "LIBRO:"
+- Puede aparecer como número (00001688, 381) o ya en palabras
+
+CONVERSION AUTOMATICA:
+- Si encuentras "00001688" o "1688" → extraer como MIL SEISCIENTOS OCHENTA Y OCHO
+- Si encuentras "00000381" o "381" → extraer como TRESCIENTOS OCHENTA Y UNO
+- Si ya viene en palabras, mantener tal cual
+
+IMPORTANTE: El sistema convertirá automáticamente números a palabras.
+Puedes extraer el valor como aparece (número o palabras).
+
+Si no hay boleta RPP visible: '**[NO ENCONTRADO]**'""",
+        json_schema_extra={"optional_field": True, "source": "boleta_rpp", "auto_convert": True}
     )
 
     Nombre_ANTECEDENTE_TRANSMITENTE: Optional[str] = Field(
@@ -247,7 +422,23 @@ FUENTES: Acta de Nacimiento, INE, CURP"""
 
     INE_Parte_Donadora_numero: Optional[str] = Field(
         None,
-        description="Clave/folio INE. Ejemplo: IDMEX2650430777"
+        description="""NUMERO OCR / IDMEX del INE del DONADOR.
+
+UBICACION CRITICA: REVERSO de la credencial INE/IFE
+- Buscar en la zona MRZ (Machine Readable Zone) - parte inferior del reverso
+- Es un código alfanumérico que identifica de forma única la credencial
+
+FORMATO: IDMEX + 10 dígitos numéricos
+EJEMPLOS: IDMEX2650430777, IDMEX2545265854
+
+INSTRUCCIONES:
+1. Localizar el REVERSO de la credencial INE del DONADOR
+2. Buscar la línea que comienza con "IDMEX" en la zona inferior
+3. Extraer SOLO caracteres alfanuméricos (ignorar símbolos < o >>)
+4. El código completo debe tener 14 caracteres (IDMEX + 10 dígitos)
+
+NOTA: Este dato NO aparece en el frente de la credencial.
+Si no está visible el reverso del INE: '**[NO ENCONTRADO]**'"""
     )
 
     CURP_Parte_Donadora: Optional[str] = Field(
@@ -342,7 +533,23 @@ FUENTES: Acta de Nacimiento, INE, CURP"""
 
     INE_Parte_Donataria_numero: Optional[str] = Field(
         None,
-        description="Clave/folio INE. Ejemplo: IDMEX2749126814"
+        description="""NUMERO OCR / IDMEX del INE del DONATARIO.
+
+UBICACION CRITICA: REVERSO de la credencial INE/IFE
+- Buscar en la zona MRZ (Machine Readable Zone) - parte inferior del reverso
+- Es un código alfanumérico que identifica de forma única la credencial
+
+FORMATO: IDMEX + 10 dígitos numéricos
+EJEMPLOS: IDMEX2749126814, IDMEX2545265854
+
+INSTRUCCIONES:
+1. Localizar el REVERSO de la credencial INE del DONATARIO
+2. Buscar la línea que comienza con "IDMEX" en la zona inferior
+3. Extraer SOLO caracteres alfanuméricos (ignorar símbolos < o >>)
+4. El código completo debe tener 14 caracteres (IDMEX + 10 dígitos)
+
+NOTA: Este dato NO aparece en el frente de la credencial.
+Si no está visible el reverso del INE: '**[NO ENCONTRADO]**'"""
     )
 
     CURP_Parte_Donataria: Optional[str] = Field(
