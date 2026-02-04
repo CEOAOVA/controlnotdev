@@ -449,6 +449,63 @@ Tu respuesta DEBE ser JSON válido sin texto adicional.
 No incluyas markdown, explicaciones ni comentarios.
 Solo el objeto JSON con los campos solicitados."""
 
+    def _condense_description(self, description: str) -> str:
+        """
+        Condensa una descripción larga a lo esencial (patrón movil_cancelaciones.py)
+
+        Extrae:
+        1. Primera línea significativa (qué extraer)
+        2. Formato de salida si existe
+        3. Primer ejemplo si existe
+
+        Máximo ~250 caracteres para mantener contexto manejable.
+
+        Args:
+            description: Descripción completa del campo
+
+        Returns:
+            str: Descripción condensada (~150-250 chars)
+        """
+        lines = description.strip().split('\n')
+
+        result_parts = []
+        formato = None
+        ejemplo = None
+
+        for line in lines:
+            line = line.strip()
+            if not line or line.startswith('===') or line.startswith('---'):
+                continue
+
+            # Capturar formato de salida
+            if 'FORMATO' in line.upper() and ':' in line:
+                formato = line.split(':', 1)[1].strip()
+                continue
+
+            # Capturar ejemplo
+            if 'EJEMPLO' in line.upper() or line.startswith('Ejemplo:'):
+                ejemplo = line
+                continue
+
+            # Primera línea descriptiva significativa
+            if not result_parts and len(line) > 10:
+                result_parts.append(line)
+
+        # Construir descripción condensada
+        condensed = result_parts[0] if result_parts else description.split('\n')[0]
+
+        if formato:
+            condensed = f"FORMATO: {formato}. {condensed}"
+
+        if ejemplo:
+            condensed += f" {ejemplo}"
+
+        # Limitar a 250 chars máximo
+        if len(condensed) > 250:
+            condensed = condensed[:247] + "..."
+
+        return condensed
+
     def _build_fields_context(
         self,
         document_type: str,
@@ -457,13 +514,13 @@ Solo el objeto JSON con los campos solicitados."""
         """
         Construye el contexto de campos como JSON estructurado (CACHEABLE)
 
-        MEJORA: Adopta el enfoque de cancelaciones (movil_cancelaciones.py)
-        - Envía descripciones COMPLETAS sin truncar
-        - Preserva estructura (saltos de línea, viñetas)
-        - Formato JSON estructurado para mejor comprensión de Claude
+        Usa descripciones CONDENSADAS siguiendo el patrón de movil_cancelaciones.py:
+        - Instrucción clara y concisa
+        - Ejemplo concreto
+        - Sin verbosidad excesiva
 
-        Claude soporta 200K tokens, no hay problema con contextos grandes.
-        El prompt caching minimiza el costo de contextos repetidos.
+        Esto reduce el contexto de ~38,000 chars a ~7,200 chars manteniendo
+        la información esencial para una extracción precisa.
 
         Args:
             document_type: Tipo de documento
@@ -476,17 +533,18 @@ Solo el objeto JSON con los campos solicitados."""
 
         model_class = self._get_model_for_type(document_type)
 
-        # Diccionario con descripciones COMPLETAS (igual que cancelaciones)
+        # Diccionario con descripciones CONDENSADAS
         fields_dict = {}
         for field_name, field_info in model_class.model_fields.items():
             desc = field_info.description or ""
             if desc:
-                # SIN TRUNCAR - descripción completa preservando estructura
-                fields_dict[field_name] = desc.strip()
+                # Condensar descripción: extraer formato + ejemplo
+                condensed = self._condense_description(desc)
+                fields_dict[field_name] = condensed
             else:
                 fields_dict[field_name] = f"Extraer el campo {field_name}"
 
-        # JSON estructurado (igual que cancelaciones)
+        # JSON estructurado
         context = f"""CAMPOS A EXTRAER ({len(fields_dict)} total):
 
 Extrae la información en formato JSON con las siguientes especificaciones:
