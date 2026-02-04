@@ -455,40 +455,49 @@ Solo el objeto JSON con los campos solicitados."""
         placeholders: Optional[List[str]] = None
     ) -> str:
         """
-        Construye el contexto de campos CON DESCRIPTIONS (CACHEABLE)
+        Construye el contexto de campos como JSON estructurado (CACHEABLE)
 
-        Lista de campos a extraer según el tipo de documento,
-        incluyendo las instrucciones de búsqueda de cada campo.
-        También cacheable por 5 minutos.
+        MEJORA: Adopta el enfoque de cancelaciones (movil_cancelaciones.py)
+        - Envía descripciones COMPLETAS sin truncar
+        - Preserva estructura (saltos de línea, viñetas)
+        - Formato JSON estructurado para mejor comprensión de Claude
+
+        Claude soporta 200K tokens, no hay problema con contextos grandes.
+        El prompt caching minimiza el costo de contextos repetidos.
 
         Args:
             document_type: Tipo de documento
             placeholders: Placeholders opcionales del template
 
         Returns:
-            str: Contexto de campos formateado con descriptions
+            str: Contexto de campos formateado como JSON estructurado
         """
-        # Obtener campos del modelo
+        import json
+
         model_class = self._get_model_for_type(document_type)
 
-        # Construir lista de campos CON descriptions
-        fields_info = []
+        # Diccionario con descripciones COMPLETAS (igual que cancelaciones)
+        fields_dict = {}
         for field_name, field_info in model_class.model_fields.items():
             desc = field_info.description or ""
             if desc:
-                # Truncar a 500 chars para balancear contexto vs tokens
-                short_desc = desc[:500].replace('\n', ' ').strip()
-                fields_info.append(f"  - {field_name}: {short_desc}")
+                # SIN TRUNCAR - descripción completa preservando estructura
+                fields_dict[field_name] = desc.strip()
             else:
-                fields_info.append(f"  - {field_name}")
+                fields_dict[field_name] = f"Extraer el campo {field_name}"
 
-        context = f"""CAMPOS A EXTRAER ({len(model_class.model_fields)} total):
-{chr(10).join(fields_info)}"""
+        # JSON estructurado (igual que cancelaciones)
+        context = f"""CAMPOS A EXTRAER ({len(fields_dict)} total):
 
-        # Añadir placeholders si existen
+Extrae la información en formato JSON con las siguientes especificaciones:
+{json.dumps(fields_dict, indent=2, ensure_ascii=False)}"""
+
         if placeholders:
-            placeholders_list = "\n".join([f"  - {ph}" for ph in placeholders])
-            context += f"\n\nPLACEHOLDERS DEL TEMPLATE ({len(placeholders)} total):\n{placeholders_list}"
+            placeholders_dict = {ph: f"Extraer valor para {ph}" for ph in placeholders}
+            context += f"""
+
+PLACEHOLDERS ADICIONALES DEL TEMPLATE ({len(placeholders)} total):
+{json.dumps(placeholders_dict, indent=2, ensure_ascii=False)}"""
 
         return context
 
