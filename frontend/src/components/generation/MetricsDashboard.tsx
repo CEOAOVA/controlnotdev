@@ -18,6 +18,7 @@ interface MetricsDashboardProps {
   foundFields: number;
   emptyFields: number;
   completionRate: number;
+  optionalMissing?: number;
 }
 
 interface MetricCardProps {
@@ -51,6 +52,7 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({
   foundFields,
   emptyFields,
   completionRate,
+  optionalMissing = 0,
 }) => {
   return (
     <div className="mb-6">
@@ -93,10 +95,18 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({
       {emptyFields > 0 && (
         <div className="mt-4 p-3 bg-warning/10 border border-warning/20 rounded-lg">
           <p className="text-sm text-warning-700 font-medium">
-            ⚠️ Faltan {emptyFields} campo{emptyFields !== 1 ? 's' : ''} por completar
+            Faltan {emptyFields} campo{emptyFields !== 1 ? 's requeridos' : ' requerido'} por completar
           </p>
           <p className="text-xs text-warning-600 mt-1">
-            Todos los campos deben estar llenos antes de generar el documento.
+            Todos los campos requeridos deben estar llenos antes de generar el documento.
+          </p>
+        </div>
+      )}
+
+      {emptyFields === 0 && optionalMissing > 0 && (
+        <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <p className="text-sm text-blue-700 font-medium">
+            Todos los campos requeridos completos. {optionalMissing} campo{optionalMissing !== 1 ? 's opcionales' : ' opcional'} sin datos de documentos ausentes.
           </p>
         </div>
       )}

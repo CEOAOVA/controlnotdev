@@ -81,22 +81,27 @@ export function DataEditor() {
     return true;
   };
 
-  // Calculate statistics
+  // Calculate statistics (separating required vs optional)
   const stats = useMemo(() => {
-    if (!editedData || !fieldMetadata) return { total: 0, filled: 0, empty: 0, percentage: 0 };
+    if (!editedData || !fieldMetadata) return { total: 0, filled: 0, empty: 0, percentage: 0, optionalMissing: 0 };
 
-    const total = fieldMetadata.length;
-    const filled = fieldMetadata.filter((field) => {
-      const value = editedData[field.name];
-      return isFieldFilled(value);
-    }).length;
+    const requiredFields = fieldMetadata.filter(f => !f.optional);
+    const optionalFields = fieldMetadata.filter(f => f.optional);
+
+    const requiredFilled = requiredFields.filter(f => isFieldFilled(editedData[f.name])).length;
+    const optionalFilled = optionalFields.filter(f => isFieldFilled(editedData[f.name])).length;
+
+    const total = requiredFields.length;
+    const filled = requiredFilled;
     const empty = total - filled;
+    const optionalMissing = optionalFields.length - optionalFilled;
 
     return {
       total,
       filled,
       empty,
       percentage: total > 0 ? Math.round((filled / total) * 100) : 0,
+      optionalMissing,
     };
   }, [editedData, fieldMetadata]);
 
@@ -178,6 +183,7 @@ export function DataEditor() {
         foundFields={stats.filled}
         emptyFields={stats.empty}
         completionRate={stats.percentage}
+        optionalMissing={stats.optionalMissing}
       />
 
       {/* OCR Robusto 2025: Validation Summary */}
@@ -256,17 +262,17 @@ export function DataEditor() {
       {/* Categories and fields */}
       <div className="space-y-4">
         {Object.entries(filteredCategories).map(([category, fields]) => {
-          const categoryFilledCount = fields.filter((field) => {
-            const value = editedData[field.name];
-            return isFieldFilled(value);
-          }).length;
+          const categoryRequiredFields = fields.filter(f => !f.optional);
+          const categoryFilledCount = categoryRequiredFields.filter(f => isFieldFilled(editedData[f.name])).length;
+          const categoryOptionalMissing = fields.filter(f => f.optional && !isFieldFilled(editedData[f.name])).length;
 
           return (
             <CategorySection
               key={category}
               title={category}
-              fieldCount={fields.length}
+              fieldCount={categoryRequiredFields.length}
               filledCount={categoryFilledCount}
+              optionalMissing={categoryOptionalMissing}
             >
               {fields.map((field) => {
                 const value = editedData[field.name];

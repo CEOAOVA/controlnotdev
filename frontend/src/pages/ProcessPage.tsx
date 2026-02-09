@@ -4,7 +4,7 @@
  * States: Upload → Edit → Complete
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { ArrowRight, ArrowLeft, PlayCircle, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -30,7 +30,7 @@ import { DownloadButton } from '@/components/document/DownloadButton';
 import { EmailForm } from '@/components/document/EmailForm';
 
 // Hooks and stores
-import { useProcessDocument, useCategories } from '@/hooks';
+import { useProcessDocument, useCategories, useFieldMetadata } from '@/hooks';
 import { useDocumentStore, useTemplateStore, useCategoryStore } from '@/store';
 
 export function ProcessPage() {
@@ -45,9 +45,10 @@ export function ProcessPage() {
   const { getTotalFilesCount, areAllCategoriesPopulated } = useCategories();
 
   // Stores
-  const { extractedData, editedData, reset, processingStep } = useDocumentStore();
+  const { extractedData, editedData, reset, processingStep, documentType } = useDocumentStore();
   const { selectedTemplate } = useTemplateStore();
   const { clearAll } = useCategoryStore();
+  const { fields: fieldMetadata } = useFieldMetadata(documentType);
 
   // Update states
   useEffect(() => {
@@ -68,14 +69,24 @@ export function ProcessPage() {
   // Check if can proceed to next step
   const canProceedFromUpload = hasTemplate && filesCount > 0 && areAllCategoriesPopulated();
 
-  // STRICT VALIDATION: All fields must be filled before proceeding
-  const canProceedFromEdit = editedData && Object.values(editedData).every(value => {
-    // Check that value exists and is not empty string
-    if (value === null || value === undefined) return false;
-    if (typeof value === 'string' && value.trim() === '') return false;
-    if (typeof value === 'string' && value === 'No encontrado') return false;
-    return true;
-  });
+  // STRICT VALIDATION: All required fields must be filled; optional fields may have NOT FOUND
+  const canProceedFromEdit = useMemo(() => {
+    if (!editedData || !fieldMetadata || fieldMetadata.length === 0) return false;
+
+    return fieldMetadata.every(field => {
+      const value = editedData[field.name];
+
+      if (value === null || value === undefined) return false;
+      if (typeof value === 'string' && value.trim() === '') return false;
+
+      // NOT FOUND: allow only for optional fields
+      if (typeof value === 'string' && value.toUpperCase().includes('NO ENCONTRADO')) {
+        return field.optional === true;
+      }
+
+      return true;
+    });
+  }, [editedData, fieldMetadata]);
 
   // Handle step changes
   const goToStep = (step: ProcessStep) => {

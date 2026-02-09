@@ -15,6 +15,7 @@ interface CategorySectionProps {
   icon?: React.ReactNode;
   fieldCount: number;
   filledCount: number;
+  optionalMissing?: number;
   children: React.ReactNode;
   defaultOpen?: boolean;
 }
@@ -25,11 +26,12 @@ export function CategorySection({
   icon,
   fieldCount,
   filledCount,
+  optionalMissing = 0,
   children,
   defaultOpen = true,
 }: CategorySectionProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
-  const completionPercentage = Math.round((filledCount / fieldCount) * 100);
+  const completionPercentage = fieldCount > 0 ? Math.round((filledCount / fieldCount) * 100) : 100;
   const isComplete = filledCount === fieldCount;
 
   return (
@@ -72,6 +74,12 @@ export function CategorySection({
             <Badge variant="outline" className="font-mono">
               {completionPercentage}%
             </Badge>
+
+            {optionalMissing > 0 && (
+              <Badge variant="outline" className="font-mono text-muted-foreground">
+                +{optionalMissing} opcional{optionalMissing !== 1 ? 'es' : ''}
+              </Badge>
+            )}
           </div>
 
           {/* Expand icon */}
