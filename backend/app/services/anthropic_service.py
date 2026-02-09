@@ -514,13 +514,11 @@ Solo el objeto JSON con los campos solicitados."""
         """
         Construye el contexto de campos como JSON estructurado (CACHEABLE)
 
-        Usa descripciones CONDENSADAS siguiendo el patrón de movil_cancelaciones.py:
-        - Instrucción clara y concisa
-        - Ejemplo concreto
-        - Sin verbosidad excesiva
-
-        Esto reduce el contexto de ~38,000 chars a ~7,200 chars manteniendo
-        la información esencial para una extracción precisa.
+        Usa descripciones COMPLETAS de cada campo, igual que los scripts legacy
+        (por_partes.py, escrituras.py) que envían json.dumps(relevant_keys, indent=4).
+        Las descripciones contienen lógica de extracción crítica (prioridades,
+        pasos de exclusión, lógica temporal) que no debe truncarse.
+        Claude tiene 200K de contexto, así que no hay riesgo de overflow.
 
         Args:
             document_type: Tipo de documento
@@ -533,14 +531,12 @@ Solo el objeto JSON con los campos solicitados."""
 
         model_class = self._get_model_for_type(document_type)
 
-        # Diccionario con descripciones CONDENSADAS
+        # Diccionario con descripciones COMPLETAS (como en legacy por_partes.py/escrituras.py)
         fields_dict = {}
         for field_name, field_info in model_class.model_fields.items():
             desc = field_info.description or ""
             if desc:
-                # Condensar descripción: extraer formato + ejemplo
-                condensed = self._condense_description(desc)
-                fields_dict[field_name] = condensed
+                fields_dict[field_name] = desc.strip()
             else:
                 fields_dict[field_name] = f"Extraer el campo {field_name}"
 
@@ -565,7 +561,7 @@ PLACEHOLDERS ADICIONALES DEL TEMPLATE ({len(placeholders)} total):
         document_type: str,
         placeholders: Optional[List[str]] = None,
         temperature: float = 0.0,  # Best practice: 0 para extracción determinista
-        max_tokens: int = 4096
+        max_tokens: int = 8192
     ) -> Dict[str, str]:
         """
         Extrae datos usando Claude con Prompt Caching
@@ -848,7 +844,7 @@ RESPONDE SOLO CON JSON (sin markdown ni explicaciones):"""
         document_type: str,
         placeholders: Optional[List[str]] = None,
         temperature: float = 0.0,  # OpenAI/Anthropic best practice: 0 para extracción
-        max_tokens: int = 4096,
+        max_tokens: int = 8192,
         quality_level: str = "high",
         document_hints: Optional[List[str]] = None
     ) -> Dict[str, str]:

@@ -40,6 +40,7 @@ from app.core.dependencies import (
 from app.repositories.uploaded_file_repository import uploaded_file_repository
 from app.repositories.session_repository import session_repository
 from app.database import get_current_tenant_id, supabase_admin
+from app.utils.number_conversion import convertir_si_es_numero
 from uuid import UUID
 
 logger = structlog.get_logger()
@@ -97,8 +98,7 @@ async def inject_notary_profile_data(extracted_data: dict, tenant_id: str, docum
         if extracted_data.get('numero_instrumento') in not_found_markers:
             ultimo = profile.get('ultimo_numero_instrumento', 0) or 0
             siguiente = ultimo + 1
-            # Convertir a palabras (función auxiliar)
-            extracted_data['numero_instrumento'] = f"[SIGUIENTE: {siguiente}]"
+            extracted_data['numero_instrumento'] = convertir_si_es_numero(str(siguiente), mayusculas=False)
             logger.debug("Sugerido numero_instrumento", siguiente=siguiente)
 
         logger.info(
