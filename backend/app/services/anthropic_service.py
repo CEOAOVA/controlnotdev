@@ -697,10 +697,9 @@ aunque el nombre del archivo sea generico. Si en el CONTENIDO de las imagenes ve
 Entonces DEBES:
 1. Antecedente_Tipo = "juicio_sucesorio"
 2. LLENAR TODOS los campos Juicio_Sucesorio_* (Tipo, Causante, Expediente, Juzgado, Fecha_Sentencia, Notario_Protocolizacion)
-3. Escritura_Privada_Notario = notario que protocolizo (mismo que Juicio_Sucesorio_Notario_Protocolizacion)
-4. Escritura_Privada_Notario_numero = numero de notaria donde se protocolizo (buscar "NOTARIA NUMERO", "NOTARIA No.")
-5. Escritura_Privada_numero y Escritura_Privada_fecha = datos de la escritura de PROTOCOLIZACION (numero y fecha de la escritura notarial, NO del expediente judicial)
-6. Nombre_ANTECEDENTE_TRANSMITENTE = el causante (persona fallecida)
+3. TAMBIEN llenar Escritura_Privada_* con datos de la protocolizacion notarial:
+   - Escritura_Privada_Notario_numero = numero de la notaria del notario protocolizante (buscar "NOTARIA NUMERO", "NOTARIA No.")
+4. Nombre_ANTECEDENTE_TRANSMITENTE = el causante (persona fallecida)
 
 === BOLETA RPP EN ANTECEDENTES ===
 Buscar documento con sello "Registro Publico" o "Instituto Registral":
