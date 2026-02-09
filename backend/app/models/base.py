@@ -24,7 +24,9 @@ class BaseKeys(BaseModel):
         None,
         description="Fecha del día en que se firma el instrumento (formato completo en palabras)",
         json_schema_extra={
-            "aliases": ["Fecha_Escritura", "Fecha_Documento", "Fecha_Firma", "Fecha_Acto", "Fecha"]
+            "aliases": ["Fecha_Escritura", "Fecha_Documento", "Fecha_Firma", "Fecha_Acto", "Fecha"],
+            "optional_field": True,
+            "source": "notary_profile"
         }
     )
 
@@ -54,7 +56,9 @@ class BaseKeys(BaseModel):
             "aliases": [
                 "Notario", "Nombre_Notario", "Notario_Publico", "Fedatario", "Notario_Nombre",
                 "notario"
-            ]
+            ],
+            "optional_field": True,
+            "source": "notary_profile"
         }
     )
 

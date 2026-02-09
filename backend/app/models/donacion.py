@@ -288,6 +288,9 @@ BUSCAR EN BOLETA RPP o ASIENTO REGISTRAL:
 - Campo "REGISTRO:", "INSCRIPCION:", "No. DE INSCRIPCION:"
 - Puede aparecer como número (00000018, 18) o ya en palabras
 
+BUSCAR TAMBIEN EN: documentos de ANTECEDENTES (la boleta RPP puede estar
+junto con la escritura/protocolizacion antecedente)
+
 CONVERSION AUTOMATICA:
 - Si encuentras "00000018" o "18" → extraer como DIECIOCHO
 - Si encuentras "00001688" o "1688" → extraer como MIL SEISCIENTOS OCHENTA Y OCHO
@@ -311,6 +314,9 @@ BUSCAR EN BOLETA RPP o ASIENTO REGISTRAL:
 - Campo "TOMO:", "No. DE TOMO:", "LIBRO:"
 - Puede aparecer como número (00001688, 381) o ya en palabras
 
+BUSCAR TAMBIEN EN: documentos de ANTECEDENTES (la boleta RPP puede estar
+junto con la escritura/protocolizacion antecedente)
+
 CONVERSION AUTOMATICA:
 - Si encuentras "00001688" o "1688" → extraer como MIL SEISCIENTOS OCHENTA Y OCHO
 - Si encuentras "00000381" o "381" → extraer como TRESCIENTOS OCHENTA Y UNO
@@ -330,8 +336,13 @@ Si no hay boleta RPP visible: '**[NO ENCONTRADO]**'""",
 LOGICA TEMPORAL: Buscar en la escritura antecedente quien VENDIO o TRANSFIRIO la propiedad.
 BUSCAR frases clave: "VENDE a", "ENAJENA a", "CEDE a", "TRANSMITE a", "OTORGA en favor de"
 La persona que aparece ANTES de estas frases es el transmitente.
+
+EN JUICIO SUCESORIO: el transmitente es el CAUSANTE (persona fallecida).
+Buscar: "SUCESION A BIENES DE", "DE CUJUS", "CAUSANTE", "QUIEN EN VIDA FUE"
+Formato: tratamiento + nombre (ej: "el señor Carlos Jimenez Custodio")
+
 FORMATO: tratamiento + nombre completo (ej: "el señor Juan Pérez García")
-BUSCAR EN: documentos de categoria 'otros' (escritura antecedente, boleta RPP)"""
+BUSCAR EN: documentos de categoria 'otros' (escritura antecedente, boleta RPP, protocolizacion)"""
     )
 
     # Descripción del predio
@@ -439,7 +450,10 @@ FORMATO: Ciudad, Estado (ej: "Morelia, Michoacán", "Zacapu, Michoacán")"""
 
 BUSCAR EN: acta de matrimonio, anotaciones marginales en acta de nacimiento, INE del DONADOR
 Valores posibles: casado, casada, soltero, soltera, viudo, viuda, divorciado, divorciada
-Si hay acta de matrimonio entre documentos parte_a → probablemente casado/a"""
+Si hay acta de matrimonio entre documentos parte_a → probablemente casado/a
+
+FUENTES ADICIONALES: documentos de ANTECEDENTES donde el donador declara
+personales en la protocolizacion o escritura ("estado civil de casada/o")"""
     )
 
     SAT_situacion_fiscal_Parte_Donadora: Optional[str] = Field(
@@ -474,7 +488,10 @@ INSTRUCCIONES:
 3. Extraer SOLO caracteres alfanuméricos (ignorar símbolos < o >>)
 4. El código completo debe tener 14 caracteres (IDMEX + 10 dígitos)
 
-NOTA: Este dato NO aparece en el frente de la credencial.
+IMPORTANTE: El frente y reverso de la credencial pueden estar en la MISMA imagen
+(fotocopia o foto). Buscar "IDMEX" seguido de digitos en la zona MRZ aunque aparezca
+en la misma imagen que el frente.
+
 Si no está visible el reverso del INE: '**[NO ENCONTRADO]**'"""
     )
 
@@ -497,6 +514,10 @@ FUENTES DE BÚSQUEDA (en orden de prioridad):
 1. MANIFESTACIÓN EN GENERALES: Buscar frases como "de ocupación...", "dedicado a...", "se dedica a..."
 2. ACTA DE NACIMIENTO: Sección de anotaciones marginales o datos de los padres
 3. INE/IFE: Algunos formatos incluyen ocupación
+4. SAT Constancia pagina 2, campo "Actividades Economicas":
+   - "Escuelas del sector publico" → maestra o docente
+   - "Sueldos y Salarios" sin actividad especifica → empleado/empleada
+   - "Sin obligaciones fiscales" sin actividad → hogar
 
 OCUPACIONES COMUNES EN NOTARÍAS:
 - Profesiones: licenciado, ingeniero, contador, arquitecto, médico, abogado
@@ -593,7 +614,10 @@ INSTRUCCIONES:
 3. Extraer SOLO caracteres alfanuméricos (ignorar símbolos < o >>)
 4. El código completo debe tener 14 caracteres (IDMEX + 10 dígitos)
 
-NOTA: Este dato NO aparece en el frente de la credencial.
+IMPORTANTE: El frente y reverso de la credencial pueden estar en la MISMA imagen
+(fotocopia o foto). Buscar "IDMEX" seguido de digitos en la zona MRZ aunque aparezca
+en la misma imagen que el frente.
+
 Si no está visible el reverso del INE: '**[NO ENCONTRADO]**'"""
     )
 
@@ -616,6 +640,10 @@ FUENTES DE BÚSQUEDA (en orden de prioridad):
 1. MANIFESTACIÓN EN GENERALES: Buscar frases como "de ocupación...", "dedicado a...", "se dedica a..."
 2. ACTA DE NACIMIENTO: Sección de anotaciones marginales
 3. INE/IFE: Algunos formatos incluyen ocupación
+4. SAT Constancia pagina 2, campo "Actividades Economicas":
+   - "Escuelas del sector publico" → maestra o docente
+   - "Sueldos y Salarios" sin actividad especifica → empleado/empleada
+   - "Sin obligaciones fiscales" sin actividad → hogar
 
 OCUPACIONES COMUNES EN NOTARÍAS:
 - Profesiones: licenciado, ingeniero, contador, arquitecto, médico, abogado

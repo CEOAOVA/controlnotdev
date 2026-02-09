@@ -212,6 +212,90 @@ CAMPOS_CONVERSION_NUMEROS = [
 ]
 
 
+def _numero_a_palabras(n: int) -> str:
+    """Convierte un entero (0-9999) a palabras en español minúsculas."""
+    UNIDADES = {
+        0: '', 1: 'un', 2: 'dos', 3: 'tres', 4: 'cuatro', 5: 'cinco',
+        6: 'seis', 7: 'siete', 8: 'ocho', 9: 'nueve', 10: 'diez',
+        11: 'once', 12: 'doce', 13: 'trece', 14: 'catorce', 15: 'quince',
+        16: 'dieciseis', 17: 'diecisiete', 18: 'dieciocho', 19: 'diecinueve',
+        20: 'veinte', 21: 'veintiun', 22: 'veintidos', 23: 'veintitres',
+        24: 'veinticuatro', 25: 'veinticinco', 26: 'veintiseis',
+        27: 'veintisiete', 28: 'veintiocho', 29: 'veintinueve'
+    }
+    DECENAS = {
+        30: 'treinta', 40: 'cuarenta', 50: 'cincuenta', 60: 'sesenta',
+        70: 'setenta', 80: 'ochenta', 90: 'noventa'
+    }
+    CENTENAS = {
+        100: 'cien', 200: 'doscientos', 300: 'trescientos', 400: 'cuatrocientos',
+        500: 'quinientos', 600: 'seiscientos', 700: 'setecientos',
+        800: 'ochocientos', 900: 'novecientos'
+    }
+
+    if n == 0:
+        return 'cero'
+    if n < 0:
+        return 'menos ' + _numero_a_palabras(-n)
+
+    if n <= 29:
+        return UNIDADES[n]
+
+    if n < 100:
+        decena = (n // 10) * 10
+        unidad = n % 10
+        if unidad == 0:
+            return DECENAS[decena]
+        return f"{DECENAS[decena]} y {UNIDADES[unidad]}"
+
+    if n < 1000:
+        centena = (n // 100) * 100
+        resto = n % 100
+        if resto == 0:
+            return CENTENAS[centena]
+        if centena == 100:
+            return f"ciento {_numero_a_palabras(resto)}"
+        return f"{CENTENAS[centena]} {_numero_a_palabras(resto)}"
+
+    if n < 10000:
+        miles = n // 1000
+        resto = n % 1000
+        if miles == 1:
+            prefijo = 'mil'
+        else:
+            prefijo = f"{_numero_a_palabras(miles)} mil"
+        if resto == 0:
+            return prefijo
+        return f"{prefijo} {_numero_a_palabras(resto)}"
+
+    return str(n)
+
+
+def _fecha_a_palabras(fecha) -> str:
+    """
+    Convierte fecha a formato: 'nueve de febrero de dos mil veintiseis'
+
+    Args:
+        fecha: objeto datetime
+
+    Returns:
+        str: Fecha en palabras españolas minúsculas
+    """
+    MESES = {
+        1: 'enero', 2: 'febrero', 3: 'marzo', 4: 'abril',
+        5: 'mayo', 6: 'junio', 7: 'julio', 8: 'agosto',
+        9: 'septiembre', 10: 'octubre', 11: 'noviembre', 12: 'diciembre'
+    }
+
+    dia = _numero_a_palabras(fecha.day)
+    # Fix: "un" -> "primero" for day 1
+    if fecha.day == 1:
+        dia = 'primero'
+    mes = MESES[fecha.month]
+    ano = _numero_a_palabras(fecha.year)
+    return f"{dia} de {mes} de {ano}"
+
+
 def _derivar_acreditacion_estado_civil(estado_civil: str) -> str:
     """
     Deriva la frase legal de acreditación a partir del estado civil.
@@ -299,10 +383,12 @@ def post_process_extracted_data(extracted_data: dict, document_type: str) -> dic
                         valor=source_val
                     )
 
+    # Helper para detectar campos vacíos o no encontrados
+    def _is_empty(val):
+        return not val or "NO ENCONTRADO" in str(val)
+
     # === DERIVACIÓN AUTOMÁTICA PARA DONACIÓN ===
     if document_type == "donacion":
-        def _is_empty(val):
-            return not val or "NO ENCONTRADO" in str(val)
 
         # Derivar acreditación de estado civil del donador
         if _is_empty(processed.get("Estado_civil_acreditacion_Parte_Donadora")):
@@ -354,6 +440,29 @@ def post_process_extracted_data(extracted_data: dict, document_type: str) -> dic
             elif has_escritura:
                 processed["Antecedente_Tipo"] = "escritura"
                 logger.debug("Inferido Antecedente_Tipo = escritura")
+
+        # Inferir ocupacion del donador
+        if _is_empty(processed.get("Parte_Donadora_Ocupacion")):
+            processed["Parte_Donadora_Ocupacion"] = "hogar"
+            logger.debug("Derivado Parte_Donadora_Ocupacion con default")
+
+        # Inferir ocupacion del donatario
+        if _is_empty(processed.get("Parte_Donataria_Ocupacion")):
+            tratamiento = processed.get("Tratamiento_Donatario", "").lower()
+            if "señora" in tratamiento:
+                processed["Parte_Donataria_Ocupacion"] = "empleada"
+            elif "señor" in tratamiento:
+                processed["Parte_Donataria_Ocupacion"] = "empleado"
+            else:
+                processed["Parte_Donataria_Ocupacion"] = "empleado"
+            logger.debug("Derivado Parte_Donataria_Ocupacion con default")
+
+    # === DEFAULT PARA FECHA INSTRUMENTO (aplica a todos los tipos) ===
+    if _is_empty(processed.get("fecha_instrumento")):
+        from datetime import datetime
+        fecha_actual = datetime.now()
+        processed["fecha_instrumento"] = _fecha_a_palabras(fecha_actual)
+        logger.debug("Derivado fecha_instrumento con fecha actual")
 
     return processed
 
@@ -512,14 +621,40 @@ class AnthropicExtractionService:
 MAPA DE CAMPOS POR CATEGORIA (DONACION):
 
 DONADOR (parte_a) -> Buscar aqui:
-- Nombre, Edad, Nacimiento, Origen, Estado civil, CURP, RFC, INE, Ocupacion, Domicilio (CFE)
+- Nombre, Edad, Nacimiento, Origen, Estado civil, CURP, RFC, INE IDMEX, Ocupacion, Domicilio (CFE)
 
 DONATARIO (parte_b) -> Buscar aqui:
-- Nombre, Edad, Nacimiento, Origen, Estado civil, CURP, RFC, INE, Ocupacion, Parentesco
+- Nombre, Edad, Nacimiento, Origen, Estado civil, CURP, RFC, INE IDMEX, Ocupacion, Parentesco
 
 ANTECEDENTES (otros) -> Buscar aqui:
 - Tipo antecedente, escritura/juicio datos, transmitente, descripcion predio, medidas LADO 1-4
-- Superficie, valor catastral, avaluo, registro publico, constancia no adeudo
+- Superficie, valor catastral, Numero_Registro, Numero_tomo_Registro (boleta RPP)
+- TODOS los campos Juicio_Sucesorio_* si el antecedente es juicio sucesorio
+
+=== DETECCION CRITICA: JUICIO SUCESORIO ===
+Los documentos ANTECEDENTES pueden ser una PROTOCOLIZACION de juicio sucesorio
+aunque el nombre del archivo sea generico. Si en el CONTENIDO de las imagenes ves:
+- "JUICIO SUCESORIO INTESTAMENTARIO" o "TESTAMENTARIO"
+- "SUCESION A BIENES DE", "PROTOCOLIZACION", "ADJUDICACION", "ALBACEA"
+Entonces DEBES:
+1. Antecedente_Tipo = "juicio_sucesorio"
+2. LLENAR TODOS los campos Juicio_Sucesorio_* (Tipo, Causante, Expediente, Juzgado, Fecha_Sentencia, Notario_Protocolizacion)
+3. TAMBIEN llenar Escritura_Privada_* con datos de la protocolizacion notarial
+4. Nombre_ANTECEDENTE_TRANSMITENTE = el causante (persona fallecida)
+
+=== BOLETA RPP EN ANTECEDENTES ===
+Buscar documento con sello "Registro Publico" o "Instituto Registral":
+- Numero_Registro = campo "REGISTRO NUMERO:" (convertir a palabras)
+- Numero_tomo_Registro = campo "TOMO:" (convertir a palabras)
+
+=== INE FRENTE Y REVERSO ===
+Las credenciales INE pueden tener FRENTE y REVERSO en la MISMA imagen (fotocopia).
+El IDMEX esta en la zona MRZ del reverso (texto que inicia con "IDMEX" seguido de numeros).
+
+=== DATOS CRUZADOS ENTRE CATEGORIAS ===
+- Estado civil del DONADOR puede aparecer en documentos ANTECEDENTES
+  (cuando declara personales en la protocolizacion)
+- Ocupacion puede inferirse de SAT Constancia pagina 2 "Actividades Economicas"
 
 CAMPOS DERIVABLES (se generan automaticamente si no se encuentran):
 - Estado_civil_acreditacion: se genera del estado civil
