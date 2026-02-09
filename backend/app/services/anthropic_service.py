@@ -190,11 +190,53 @@ INSTRUCCIONES:
 }
 
 
+# Etiquetas descriptivas por categoría de documento para mejorar extracción
+CATEGORY_LABELS = {
+    "donacion": {
+        "parte_a": "DONADOR - Documentos del propietario actual (INE, CURP, acta nacimiento, CFE, SAT)",
+        "parte_b": "DONATARIO - Documentos de quien recibe (INE, CURP, acta nacimiento, acta matrimonio)",
+        "otros": "ANTECEDENTES E INMUEBLE - Escritura antecedente, avaluo, certificado catastral, constancia no adeudo, boleta RPP"
+    },
+    "compraventa": {
+        "parte_a": "VENDEDOR - Documentos del propietario (INE, CURP, acta nacimiento, CFE, SAT)",
+        "parte_b": "COMPRADOR - Documentos del comprador (INE, CURP, acta nacimiento)",
+        "otros": "ANTECEDENTES E INMUEBLE - Escritura antecedente, avaluo, certificado catastral, boleta RPP"
+    }
+}
+
+
 # Campos que requieren conversión automática de números a palabras
 CAMPOS_CONVERSION_NUMEROS = [
     "Numero_Registro",
     "Numero_tomo_Registro",
 ]
+
+
+def _derivar_acreditacion_estado_civil(estado_civil: str) -> str:
+    """
+    Deriva la frase legal de acreditación a partir del estado civil.
+
+    Args:
+        estado_civil: Estado civil extraído (casado, soltero, viudo, divorciado, etc.)
+
+    Returns:
+        str: Frase legal de acreditación correspondiente
+    """
+    if not estado_civil:
+        return "estado civil que manifiesta bajo protesta de decir verdad"
+
+    ec = estado_civil.strip().lower()
+
+    if ec in ("casado", "casada"):
+        return "tal y como lo acredita con la copia certificada de su acta de matrimonio la cual quedara agregada al apendice de la presente escritura"
+    elif ec in ("soltero", "soltera"):
+        return "estado civil que manifiesta bajo protesta de decir verdad"
+    elif ec in ("viudo", "viuda"):
+        return "tal y como lo acredita con la copia certificada del acta de defuncion de quien en vida fue su conyuge"
+    elif ec in ("divorciado", "divorciada"):
+        return "tal y como lo acredita con la sentencia de divorcio debidamente ejecutoriada"
+    else:
+        return "estado civil que manifiesta bajo protesta de decir verdad"
 
 
 def post_process_extracted_data(extracted_data: dict, document_type: str) -> dict:
@@ -256,6 +298,62 @@ def post_process_extracted_data(extracted_data: dict, document_type: str) -> dic
                         f"Fallback Juicio Sucesorio: {source} → {target}",
                         valor=source_val
                     )
+
+    # === DERIVACIÓN AUTOMÁTICA PARA DONACIÓN ===
+    if document_type == "donacion":
+        def _is_empty(val):
+            return not val or "NO ENCONTRADO" in str(val)
+
+        # Derivar acreditación de estado civil del donador
+        if _is_empty(processed.get("Estado_civil_acreditacion_Parte_Donadora")):
+            ec_donador = processed.get("Estado_civil_Parte_Donadora", "")
+            if ec_donador and not _is_empty(ec_donador):
+                processed["Estado_civil_acreditacion_Parte_Donadora"] = _derivar_acreditacion_estado_civil(ec_donador)
+                logger.debug("Derivado Estado_civil_acreditacion_Parte_Donadora", estado_civil=ec_donador)
+
+        # Derivar acreditación de estado civil del donatario
+        if _is_empty(processed.get("Estado_civil_acreditacion_Parte_Donataria")):
+            ec_donatario = processed.get("Estado_civil_Parte_Donataria", "")
+            if ec_donatario and not _is_empty(ec_donatario):
+                processed["Estado_civil_acreditacion_Parte_Donataria"] = _derivar_acreditacion_estado_civil(ec_donatario)
+                logger.debug("Derivado Estado_civil_acreditacion_Parte_Donataria", estado_civil=ec_donatario)
+
+        # Motivo de donación (default)
+        if _is_empty(processed.get("Motivo_Donacion")):
+            processed["Motivo_Donacion"] = "por el amor y carino que le profesa"
+            logger.debug("Derivado Motivo_Donacion con valor default")
+
+        # Cláusula de reserva de usufructo (default)
+        if _is_empty(processed.get("Clausula_Reserva_Usufructo")):
+            processed["Clausula_Reserva_Usufructo"] = "sin reserva de usufructo"
+            logger.debug("Derivado Clausula_Reserva_Usufructo con valor default")
+
+        # Aceptación explícita de donación (generar con tratamiento)
+        if _is_empty(processed.get("Aceptacion_Donacion_Explicita")):
+            tratamiento = processed.get("Tratamiento_Donatario", "")
+            if tratamiento and not _is_empty(tratamiento):
+                processed["Aceptacion_Donacion_Explicita"] = f"{tratamiento} acepta expresamente la donacion que se le hace"
+            else:
+                processed["Aceptacion_Donacion_Explicita"] = "el donatario acepta expresamente la donacion que se le hace"
+            logger.debug("Derivado Aceptacion_Donacion_Explicita")
+
+        # Inferir tipo de antecedente
+        if _is_empty(processed.get("Antecedente_Tipo")):
+            # Detectar juicio sucesorio
+            juicio_fields = ["Juicio_Sucesorio_Tipo", "Juicio_Sucesorio_Juzgado",
+                           "Juicio_Sucesorio_Expediente", "Juicio_Sucesorio_Causante"]
+            has_juicio = any(not _is_empty(processed.get(f)) for f in juicio_fields)
+
+            escritura_fields = ["Escritura_Privada_numero", "Escritura_Privada_fecha",
+                              "Escritura_Privada_Notario"]
+            has_escritura = any(not _is_empty(processed.get(f)) for f in escritura_fields)
+
+            if has_juicio:
+                processed["Antecedente_Tipo"] = "juicio_sucesorio"
+                logger.debug("Inferido Antecedente_Tipo = juicio_sucesorio")
+            elif has_escritura:
+                processed["Antecedente_Tipo"] = "escritura"
+                logger.debug("Inferido Antecedente_Tipo = escritura")
 
     return processed
 
@@ -407,6 +505,29 @@ class AnthropicExtractionService:
         ).replace('October', 'octubre').replace('November', 'noviembre').replace('December', 'diciembre')
         ano_actual = fecha_actual.year
 
+        # Mapa de campos por categoría (solo para donación)
+        mapa_campos = ""
+        if document_type == "donacion":
+            mapa_campos = """
+MAPA DE CAMPOS POR CATEGORIA (DONACION):
+
+DONADOR (parte_a) -> Buscar aqui:
+- Nombre, Edad, Nacimiento, Origen, Estado civil, CURP, RFC, INE, Ocupacion, Domicilio (CFE)
+
+DONATARIO (parte_b) -> Buscar aqui:
+- Nombre, Edad, Nacimiento, Origen, Estado civil, CURP, RFC, INE, Ocupacion, Parentesco
+
+ANTECEDENTES (otros) -> Buscar aqui:
+- Tipo antecedente, escritura/juicio datos, transmitente, descripcion predio, medidas LADO 1-4
+- Superficie, valor catastral, avaluo, registro publico, constancia no adeudo
+
+CAMPOS DERIVABLES (se generan automaticamente si no se encuentran):
+- Estado_civil_acreditacion: se genera del estado civil
+- Motivo_Donacion: default "por el amor y carino que le profesa"
+- Clausula_Reserva_Usufructo: default "sin reserva de usufructo"
+- Aceptacion_Donacion_Explicita: se genera del nombre del donatario
+"""
+
         return f"""Eres un asistente experto en extracción de datos de documentos notariales mexicanos.
 
 ESPECIALIZACIÓN: {document_type}
@@ -443,7 +564,7 @@ FORMATOS REQUERIDOS:
 - CURP: 18 caracteres (ejemplo: AAAA860101HDFLLS05)
 - Nombres: Apellido paterno, materno y nombre(s) completo
 - Edades: número en palabras + "años" (ejemplo: sesenta y un años)
-
+{mapa_campos}
 IMPORTANTE:
 Tu respuesta DEBE ser JSON válido sin texto adicional.
 No incluyas markdown, explicaciones ni comentarios.
@@ -962,9 +1083,11 @@ RESPONDE SOLO CON JSON (sin markdown ni explicaciones):"""
 
                 # === CLAUDE VISION BEST PRACTICE ===
                 # "Introduce each image with Image 1:, Image 2:"
+                category_labels = CATEGORY_LABELS.get(document_type, {})
+                category_desc = category_labels.get(img_category, img_category)
                 content.append({
                     "type": "text",
-                    "text": f"Image {image_count}: {img_name} (Categoría: {img_category})"
+                    "text": f"Image {image_count}: {img_name} ({category_desc})"
                 })
 
                 # Agregar imagen DESPUÉS del label (image-then-text)

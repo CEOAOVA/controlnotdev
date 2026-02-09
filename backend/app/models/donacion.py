@@ -325,38 +325,67 @@ Si no hay boleta RPP visible: '**[NO ENCONTRADO]**'""",
 
     Nombre_ANTECEDENTE_TRANSMITENTE: Optional[str] = Field(
         None,
-        description="Transmitente del antecedente. Ejemplo: la señora María López Hernández"
+        description="""Transmitente del antecedente. Ejemplo: la señora María López Hernández
+
+LOGICA TEMPORAL: Buscar en la escritura antecedente quien VENDIO o TRANSFIRIO la propiedad.
+BUSCAR frases clave: "VENDE a", "ENAJENA a", "CEDE a", "TRANSMITE a", "OTORGA en favor de"
+La persona que aparece ANTES de estas frases es el transmitente.
+FORMATO: tratamiento + nombre completo (ej: "el señor Juan Pérez García")
+BUSCAR EN: documentos de categoria 'otros' (escritura antecedente, boleta RPP)"""
     )
 
     # Descripción del predio
     Escritura_Privada_Urbano_Descripcion: Optional[str] = Field(
         None,
-        description="Descripción completa del predio en MAYÚSCULAS"
+        description="""Descripción completa del predio en MAYÚSCULAS
+
+BUSCAR EN: escritura antecedente, certificado catastral, avaluo (categoria 'otros')
+Buscar frases: "LOTE DE TERRENO", "FRACCION", "PREDIO URBANO", "INMUEBLE UBICADO EN"
+Incluir: tipo de predio, ubicacion (calle, numero, colonia, ciudad), clave catastral si existe
+FORMATO: Todo en MAYUSCULAS, descripcion completa tal como aparece en el documento"""
     )
 
     Escritura_Privada_Urbano_Clausulas_Medidas_LADO_1: Optional[str] = Field(
         None,
-        description="Primer lado con medidas y colindancias. Ejemplo: NORESTE: 16.00 dieciséis metros, con lote número once"
+        description="""Primer lado con medidas y colindancias. Ejemplo: NORESTE: 16.00 dieciséis metros, con lote número once
+
+FORMATO: ORIENTACION + medida numerica + medida en palabras + colindancia
+BUSCAR EN: escritura antecedente, certificado catastral, avaluo (categoria 'otros')
+Buscar secciones de "MEDIDAS Y COLINDANCIAS", "LINDEROS", "DIMENSIONES"
+Ejemplo completo: "AL NORTE: 16.00 dieciseis metros, colinda con lote numero once" """
     )
 
     Escritura_Privada_Urbano_Clausulas_Medidas_LADO_2: Optional[str] = Field(
         None,
-        description="Segundo lado con medidas y colindancias"
+        description="""Segundo lado con medidas y colindancias
+
+FORMATO: ORIENTACION + medida numerica + medida en palabras + colindancia
+BUSCAR EN: escritura antecedente, certificado catastral, avaluo (categoria 'otros')"""
     )
 
     Escritura_Privada_Urbano_Clausulas_Medidas_LADO_3: Optional[str] = Field(
         None,
-        description="Tercer lado con medidas y colindancias"
+        description="""Tercer lado con medidas y colindancias
+
+FORMATO: ORIENTACION + medida numerica + medida en palabras + colindancia
+BUSCAR EN: escritura antecedente, certificado catastral, avaluo (categoria 'otros')"""
     )
 
     Escritura_Privada_Urbano_Clausulas_Medidas_LADO_4: Optional[str] = Field(
         None,
-        description="Cuarto lado con medidas y colindancias"
+        description="""Cuarto lado con medidas y colindancias
+
+FORMATO: ORIENTACION + medida numerica + medida en palabras + colindancia
+BUSCAR EN: escritura antecedente, certificado catastral, avaluo (categoria 'otros')"""
     )
 
     Certificado_Registro_Catastral: Optional[str] = Field(
         None,
-        description="Superficie en m². Ejemplo: 145.00 M2 (CIENTO CUARENTA Y CINCO METROS CUADRADOS)"
+        description="""Superficie en m². Ejemplo: 145.00 M2 (CIENTO CUARENTA Y CINCO METROS CUADRADOS)
+
+BUSCAR EN: certificado catastral, avaluo, escritura antecedente (categoria 'otros')
+Buscar: "SUPERFICIE", "AREA DEL TERRENO", "SUPERFICIE TOTAL", "AREA CONSTRUIDA"
+FORMATO: numero + M2 + (numero en palabras MAYUSCULAS + METROS CUADRADOS)"""
     )
 
     # Datos personales Donador
@@ -397,12 +426,20 @@ FUENTES: Acta de Nacimiento, INE, CURP"""
 
     Origen_Parte_Donadora: Optional[str] = Field(
         None,
-        description="Lugar de origen. Ejemplo: Pátzcuaro, Michoacán"
+        description="""Lugar de origen. Ejemplo: Pátzcuaro, Michoacán
+
+BUSCAR EN: acta de nacimiento del DONADOR (categoria 'parte_a')
+Campo "Lugar de nacimiento", "Lugar de origen", "Nacio en"
+FORMATO: Ciudad, Estado (ej: "Morelia, Michoacán", "Zacapu, Michoacán")"""
     )
 
     Estado_civil_Parte_Donadora: Optional[str] = Field(
         None,
-        description="Estado civil en minúsculas. Ejemplo: casado"
+        description="""Estado civil en minúsculas. Ejemplo: casado
+
+BUSCAR EN: acta de matrimonio, anotaciones marginales en acta de nacimiento, INE del DONADOR
+Valores posibles: casado, casada, soltero, soltera, viudo, viuda, divorciado, divorciada
+Si hay acta de matrimonio entre documentos parte_a → probablemente casado/a"""
     )
 
     SAT_situacion_fiscal_Parte_Donadora: Optional[str] = Field(
@@ -508,12 +545,20 @@ FUENTES: Acta de Nacimiento, INE, CURP"""
 
     Origen_Parte_Donataria: Optional[str] = Field(
         None,
-        description="Lugar de origen. Ejemplo: Zacapu, Michoacán"
+        description="""Lugar de origen. Ejemplo: Zacapu, Michoacán
+
+BUSCAR EN: acta de nacimiento del DONATARIO (categoria 'parte_b')
+Campo "Lugar de nacimiento", "Lugar de origen", "Nacio en"
+FORMATO: Ciudad, Estado (ej: "Morelia, Michoacán", "Zacapu, Michoacán")"""
     )
 
     Estado_civil_Parte_Donataria: Optional[str] = Field(
         None,
-        description="Estado civil en minúsculas. Ejemplo: divorciado"
+        description="""Estado civil en minúsculas. Ejemplo: divorciado
+
+BUSCAR EN: acta de matrimonio, anotaciones marginales en acta de nacimiento, INE del DONATARIO
+Valores posibles: casado, casada, soltero, soltera, viudo, viuda, divorciado, divorciada
+Si hay acta de matrimonio entre documentos parte_b → probablemente casado/a"""
     )
 
     SAT_situacion_fiscal_Parte__Donataria: Optional[str] = Field(
@@ -585,32 +630,61 @@ Si no encuentras ocupación explícita: '**[NO ENCONTRADO]**'"""
     # Documentos oficiales
     Constancia_No_Adeudo_Urbano_Fecha: Optional[str] = Field(
         None,
-        description="Fecha de Constancia de No Adeudo en palabras minúsculas"
+        description="""Fecha de Constancia de No Adeudo en palabras minúsculas
+
+BUSCAR EN: constancia de no adeudo de predial (categoria 'otros')
+Buscar: "FECHA DE EXPEDICION", "EXPEDIDA EL", fecha del documento
+FORMATO: dia de mes de año en palabras (ej: "quince de enero de dos mil veinticinco")""",
+        json_schema_extra={"optional_field": True, "source": "constancia_no_adeudo"}
     )
 
     Certificado_Registro_Catastral_Urbano_Fecha: Optional[str] = Field(
         None,
-        description="Fecha del Certificado Catastral en palabras minúsculas"
+        description="""Fecha del Certificado Catastral en palabras minúsculas
+
+BUSCAR EN: certificado catastral (categoria 'otros')
+Buscar: "FECHA DE EXPEDICION", fecha del documento catastral
+FORMATO: dia de mes de año en palabras (ej: "diez de febrero de dos mil veinticinco")""",
+        json_schema_extra={"optional_field": True, "source": "certificado_catastral"}
     )
 
     Avaluo_Urbano_Datos_Generales_Fecha: Optional[str] = Field(
         None,
-        description="Fecha del Avalúo en palabras minúsculas"
+        description="""Fecha del Avalúo en palabras minúsculas
+
+BUSCAR EN: avaluo o dictamen de valuacion (categoria 'otros')
+Buscar: "FECHA DEL AVALUO", "FECHA DE VALUACION", "VIGENCIA"
+FORMATO: dia de mes de año en palabras (ej: "veinte de marzo de dos mil veinticinco")""",
+        json_schema_extra={"optional_field": True, "source": "avaluo"}
     )
 
     Numero_Avaluo: Optional[str] = Field(
         None,
-        description="Número completo del avalúo. Ejemplo: 2025-134-387"
+        description="""Número completo del avalúo. Ejemplo: 2025-134-387
+
+BUSCAR EN: avaluo o dictamen de valuacion (categoria 'otros')
+Buscar: NUMERO DE AVALUO, No. DE AVALUO, FOLIO""",
+        json_schema_extra={"optional_field": True, "source": "avaluo"}
     )
 
     Valor_Catastral: Optional[str] = Field(
         None,
-        description="Valor catastral con formato. Ejemplo: $31,920.00"
+        description="""Valor catastral con formato. Ejemplo: $31,920.00
+
+BUSCAR EN: avaluo, certificado catastral (categoria 'otros')
+Buscar: "VALOR CATASTRAL", "VALOR FISCAL", "VALOR DEL TERRENO"
+FORMATO: $X,XXX.XX""",
+        json_schema_extra={"optional_field": True, "source": "avaluo"}
     )
 
     Valuador: Optional[str] = Field(
         None,
-        description="Nombre del valuador con título. Ejemplo: ING. JAVIER LIEVANOS HUERTA"
+        description="""Nombre del valuador con título. Ejemplo: ING. JAVIER LIEVANOS HUERTA
+
+BUSCAR EN: avaluo o dictamen de valuacion (categoria 'otros')
+Buscar: "PERITO VALUADOR", "VALUADOR", "ELABORO"
+FORMATO: TITULO + NOMBRE COMPLETO EN MAYUSCULAS""",
+        json_schema_extra={"optional_field": True, "source": "avaluo"}
     )
 
     # Tratamientos
