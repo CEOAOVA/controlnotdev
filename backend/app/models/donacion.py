@@ -144,22 +144,26 @@ Si no hay antecedente visible: '**[NO ENCONTRADO]**'"""
         None,
         description="""Número del instrumento antecedente en palabras minúsculas.
 
-APLICA PARA: Escrituras notariales (NO juicios sucesorios)
+APLICA PARA: Escrituras notariales Y protocolizaciones de juicio sucesorio
 Ejemplo: cuatrocientos noventa y nueve
 
-Si el antecedente es JUICIO SUCESORIO, este campo debe ser: '**[NO ENCONTRADO]**'
-(usar campo Juicio_Sucesorio_Expediente en su lugar)"""
+Si el antecedente es JUICIO SUCESORIO PROTOCOLIZADO: usar número de la ESCRITURA
+de protocolización (NO el expediente del juicio, que va en Juicio_Sucesorio_Expediente)
+
+Si no se encuentra: '**[NO ENCONTRADO]**'"""
     )
 
     Escritura_Privada_fecha: Optional[str] = Field(
         None,
         description="""Fecha del instrumento antecedente en palabras minúsculas.
 
-APLICA PARA: Escrituras notariales (NO juicios sucesorios)
+APLICA PARA: Escrituras notariales Y protocolizaciones de juicio sucesorio
 Ejemplo: once de diciembre de mil novecientos noventa y seis
 
-Si el antecedente es JUICIO SUCESORIO, este campo debe ser: '**[NO ENCONTRADO]**'
-(usar campo Juicio_Sucesorio_Fecha_Sentencia en su lugar)"""
+Si el antecedente es JUICIO SUCESORIO PROTOCOLIZADO: usar fecha de la ESCRITURA
+de protocolización (NO la fecha de la sentencia, que va en Juicio_Sucesorio_Fecha_Sentencia)
+
+Si no se encuentra: '**[NO ENCONTRADO]**'"""
     )
 
     Escritura_Privada_Notario: Optional[str] = Field(
@@ -171,19 +175,24 @@ Ejemplo: Licenciado Gilberto Rivera Martínez
 
 IMPORTANTE - DISTINGUIR:
 - Si viene de una ESCRITURA NOTARIAL → extraer el notario de esa escritura
-- Si viene de un JUICIO SUCESORIO → usar campo Juicio_Sucesorio_Notario_Protocolizacion
+- Si viene de un JUICIO SUCESORIO PROTOCOLIZADO → extraer el notario de la PROTOCOLIZACION
+  (es la misma persona que Juicio_Sucesorio_Notario_Protocolizacion)
 
-Si el antecedente NO es escritura notarial: '**[NO ENCONTRADO]**'"""
+Si no se encuentra el notario: '**[NO ENCONTRADO]**'"""
     )
 
     Escritura_Privada_Notario_numero: Optional[str] = Field(
         None,
         description="""Número de notaría del instrumento antecedente en palabras minúsculas.
 
-APLICA PARA: Escrituras notariales (NO juicios sucesorios)
+APLICA PARA: Escrituras notariales Y protocolizaciones de juicio sucesorio
+(la protocolización es un instrumento notarial con número de notaría propio)
 Ejemplo: ciento veintitrés
 
-Si el antecedente NO es escritura notarial: '**[NO ENCONTRADO]**'"""
+BUSCAR: "NOTARIA NUMERO", "NOTARIA No.", junto al nombre del notario
+En protocolizaciones: buscar el numero de la notaría donde se protocolizó la sentencia
+
+Si no se encuentra el número de notaría: '**[NO ENCONTRADO]**'"""
     )
 
     # ==========================================

@@ -441,6 +441,31 @@ def post_process_extracted_data(extracted_data: dict, document_type: str) -> dic
                 processed["Antecedente_Tipo"] = "escritura"
                 logger.debug("Inferido Antecedente_Tipo = escritura")
 
+        # Inferir estado civil de donadora cuando es juicio sucesorio
+        # Patron notarial: causante fallecio → donador/a era conyuge → viuda/viudo
+        if _is_empty(processed.get("Estado_civil_Parte_Donadora")):
+            antecedente = processed.get("Antecedente_Tipo", "").lower()
+            parentesco = processed.get("Parentezco", "").lower()
+            causante = processed.get("Juicio_Sucesorio_Causante", "")
+
+            if ("juicio" in antecedente or "sucesorio" in antecedente):
+                if any(p in parentesco for p in ["hija", "hijo", "nieta", "nieto"]):
+                    if causante and not _is_empty(causante):
+                        tratamiento = processed.get("Tratamiento_Donador", "").lower()
+                        if "señora" in tratamiento:
+                            processed["Estado_civil_Parte_Donadora"] = "viuda"
+                        else:
+                            processed["Estado_civil_Parte_Donadora"] = "viudo"
+                        logger.debug("Inferido Estado_civil_Parte_Donadora desde juicio sucesorio")
+
+        # Re-derivar acreditacion estado civil donador si fue inferido arriba
+        if not _is_empty(processed.get("Estado_civil_Parte_Donadora")):
+            if _is_empty(processed.get("Estado_civil_acreditacion_Parte_Donadora")):
+                processed["Estado_civil_acreditacion_Parte_Donadora"] = _derivar_acreditacion_estado_civil(
+                    processed["Estado_civil_Parte_Donadora"]
+                )
+                logger.debug("Re-derivado Estado_civil_acreditacion_Parte_Donadora post-inferencia")
+
         # Inferir ocupacion del donador
         if _is_empty(processed.get("Parte_Donadora_Ocupacion")):
             processed["Parte_Donadora_Ocupacion"] = "hogar"
@@ -456,6 +481,39 @@ def post_process_extracted_data(extracted_data: dict, document_type: str) -> dic
             else:
                 processed["Parte_Donataria_Ocupacion"] = "empleado"
             logger.debug("Derivado Parte_Donataria_Ocupacion con default")
+
+        # Mapear actividades SAT crudas a ocupaciones reales
+        SAT_OCUPACION_MAP = {
+            "escuelas del sector publico": "maestra",
+            "escuelas del sector privado": "maestra",
+            "servicios de profesorado": "docente",
+            "sin obligaciones fiscales": "hogar",
+            "actividades agricolas": "agricultor",
+            "comercio al por menor": "comerciante",
+            "comercio al por mayor": "comerciante",
+            "servicios de contabilidad": "contador",
+            "actividad empresarial": "comerciante",
+        }
+
+        def _normalize_accents(text: str) -> str:
+            """Remove accents for fuzzy SAT matching."""
+            import unicodedata
+            nfkd = unicodedata.normalize('NFKD', text)
+            return ''.join(c for c in nfkd if not unicodedata.combining(c))
+
+        for campo_ocup in ["Parte_Donadora_Ocupacion", "Parte_Donataria_Ocupacion"]:
+            val = processed.get(campo_ocup, "").lower().strip()
+            if val and not _is_empty(val):
+                val_normalized = _normalize_accents(val)
+                for sat_key, ocupacion in SAT_OCUPACION_MAP.items():
+                    if sat_key in val_normalized:
+                        tratamiento_key = "Tratamiento_Donador" if "Donadora" in campo_ocup else "Tratamiento_Donatario"
+                        trat = processed.get(tratamiento_key, "").lower()
+                        if "señora" in trat and ocupacion.endswith("o"):
+                            ocupacion = ocupacion[:-1] + "a"
+                        processed[campo_ocup] = ocupacion
+                        logger.debug(f"Mapeado SAT actividad a ocupacion: {val} -> {ocupacion}")
+                        break
 
     # === DEFAULT PARA FECHA INSTRUMENTO (aplica a todos los tipos) ===
     if _is_empty(processed.get("fecha_instrumento")):
@@ -639,17 +697,26 @@ aunque el nombre del archivo sea generico. Si en el CONTENIDO de las imagenes ve
 Entonces DEBES:
 1. Antecedente_Tipo = "juicio_sucesorio"
 2. LLENAR TODOS los campos Juicio_Sucesorio_* (Tipo, Causante, Expediente, Juzgado, Fecha_Sentencia, Notario_Protocolizacion)
-3. TAMBIEN llenar Escritura_Privada_* con datos de la protocolizacion notarial
-4. Nombre_ANTECEDENTE_TRANSMITENTE = el causante (persona fallecida)
+3. Escritura_Privada_Notario = notario que protocolizo (mismo que Juicio_Sucesorio_Notario_Protocolizacion)
+4. Escritura_Privada_Notario_numero = numero de notaria donde se protocolizo (buscar "NOTARIA NUMERO", "NOTARIA No.")
+5. Escritura_Privada_numero y Escritura_Privada_fecha = datos de la escritura de PROTOCOLIZACION (numero y fecha de la escritura notarial, NO del expediente judicial)
+6. Nombre_ANTECEDENTE_TRANSMITENTE = el causante (persona fallecida)
 
 === BOLETA RPP EN ANTECEDENTES ===
 Buscar documento con sello "Registro Publico" o "Instituto Registral":
 - Numero_Registro = campo "REGISTRO NUMERO:" (convertir a palabras)
 - Numero_tomo_Registro = campo "TOMO:" (convertir a palabras)
 
-=== INE FRENTE Y REVERSO ===
-Las credenciales INE pueden tener FRENTE y REVERSO en la MISMA imagen (fotocopia).
-El IDMEX esta en la zona MRZ del reverso (texto que inicia con "IDMEX" seguido de numeros).
+=== INE FRENTE Y REVERSO (CRITICO) ===
+Las credenciales INE tienen FRENTE y REVERSO en la MISMA imagen (fotocopia).
+La imagen puede estar ROTADA 90 grados - el texto MRZ corre verticalmente.
+DEBES extraer IDMEX de AMBAS credenciales (donador y donatario):
+1. Buscar la zona MRZ (3 lineas de texto con caracteres < como separadores)
+2. La primera linea MRZ empieza con "IDMEX" seguido de 9-10 digitos
+3. Ejemplo: IDMEX2545265854 (5 letras + 9-10 digitos)
+4. La ultima linea MRZ contiene APELLIDOS<<NOMBRE (confirma de quien es)
+5. Usar el CURP extraido para confirmar cual INE pertenece a cual persona
+IMPORTANTE: Si hay 2 INEs, AMBAS deben tener IDMEX extraido.
 
 === DATOS CRUZADOS ENTRE CATEGORIAS ===
 - Estado civil del DONADOR puede aparecer en documentos ANTECEDENTES
