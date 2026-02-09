@@ -180,10 +180,13 @@ Si el antecedente NO es escritura notarial: '**[NO ENCONTRADO]**'"""
         None,
         description="""Número de notaría del instrumento antecedente en palabras minúsculas.
 
-APLICA PARA: Escrituras notariales (NO juicios sucesorios)
-Ejemplo: ciento veintitrés
+Ejemplo: ciento veintitrés, cincuenta y ocho
 
-Si el antecedente NO es escritura notarial: '**[NO ENCONTRADO]**'"""
+BUSCAR: "NOTARIA NUMERO", "NOTARIA No.", junto al nombre del notario.
+En escrituras: numero de notaria del notario de la escritura.
+En protocolizaciones de juicio sucesorio: numero de notaria del notario protocolizante.
+
+Si no se encuentra: '**[NO ENCONTRADO]**'"""
     )
 
     # ==========================================
@@ -214,7 +217,10 @@ EJEMPLOS:
 - Juzgado Primero Civil de Primera Instancia del Distrito Judicial de Morelia
 - Juzgado Segundo de lo Familiar de Zacapu, Michoacán
 
-BUSCAR: "JUZGADO", "TRIBUNAL", después de "ante el" o "radicado en"
+BUSCAR en documentos de ANTECEDENTES (protocolizacion):
+- "JUZGADO", "TRIBUNAL", después de "ante el" o "radicado en"
+- Tambien buscar cerca de "EXPEDIENTE" o "JUICIO SUCESORIO INTESTAMENTARIO"
+- Puede aparecer en la parte narrativa de la protocolizacion
 
 Si el antecedente NO es juicio sucesorio: '**[NO ENCONTRADO]**'""",
         json_schema_extra={"optional_field": True, "source": "juicio_sucesorio"}
