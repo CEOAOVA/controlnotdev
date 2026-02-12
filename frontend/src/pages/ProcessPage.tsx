@@ -181,7 +181,7 @@ export function ProcessPage() {
               />
 
               {/* Actions */}
-              <div className="flex items-center justify-between p-6 bg-muted/30 rounded-lg">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 sm:p-6 bg-muted/30 rounded-lg">
                 <div className="flex-1">
                   {!hasTemplate && (
                     <Alert>
@@ -210,7 +210,7 @@ export function ProcessPage() {
                   size="lg"
                   onClick={handleStartProcessing}
                   disabled={!canProceedFromUpload || isProcessing}
-                  className="gap-2 ml-4"
+                  className="gap-2 w-full sm:w-auto sm:ml-4"
                 >
                   {isProcessing ? (
                     'Procesando...'
@@ -237,16 +237,16 @@ export function ProcessPage() {
           {/* STEP 2: EDIT */}
           {currentStep === 'edit' && (
             <>
-              <Card className="p-6">
+              <Card className="p-4 sm:p-6">
                 <DataEditor />
               </Card>
 
               {/* Actions */}
-              <div className="flex items-center justify-between p-6 bg-muted/30 rounded-lg">
+              <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 p-4 sm:p-6 bg-muted/30 rounded-lg">
                 <Button
                   variant="outline"
                   onClick={goToPreviousStep}
-                  className="gap-2"
+                  className="gap-2 w-full sm:w-auto"
                 >
                   <ArrowLeft className="w-4 h-4" />
                   Volver
@@ -256,7 +256,7 @@ export function ProcessPage() {
                   size="lg"
                   onClick={goToNextStep}
                   disabled={!canProceedFromEdit}
-                  className="gap-2"
+                  className="gap-2 w-full sm:w-auto"
                 >
                   Continuar
                   <ArrowRight className="w-4 h-4" />
@@ -280,12 +280,12 @@ export function ProcessPage() {
             <>
               {/* Preview */}
               <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold">Documento Listo</h2>
+                <h2 className="text-xl sm:text-2xl font-bold">Documento Listo</h2>
                 <PreviewModal onEdit={() => setCurrentStep('edit')} />
               </div>
 
               {/* Download section */}
-              <Card className="p-6">
+              <Card className="p-4 sm:p-6">
                 <div className="space-y-4">
                   <div>
                     <h3 className="text-lg font-semibold mb-1">Descargar Documento</h3>
@@ -300,17 +300,17 @@ export function ProcessPage() {
 
               {/* Email section */}
               {generatedFilename && generatedDocumentId && (
-                <Card className="p-6">
+                <Card className="p-4 sm:p-6">
                   <EmailForm documentId={generatedDocumentId} documentName={generatedFilename} />
                 </Card>
               )}
 
               {/* Actions */}
-              <div className="flex items-center justify-between p-6 bg-muted/30 rounded-lg">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 sm:p-6 bg-muted/30 rounded-lg">
                 <Button
                   variant="outline"
                   onClick={goToPreviousStep}
-                  className="gap-2"
+                  className="gap-2 w-full sm:w-auto"
                 >
                   <ArrowLeft className="w-4 w-4" />
                   Volver a editar
@@ -319,7 +319,7 @@ export function ProcessPage() {
                 <Button
                   variant="outline"
                   onClick={handleReset}
-                  className="gap-2"
+                  className="gap-2 w-full sm:w-auto"
                 >
                   <RotateCcw className="w-4 h-4" />
                   Nuevo Documento

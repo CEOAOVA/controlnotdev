@@ -19,7 +19,7 @@ interface MainLayoutProps {
 }
 
 export function MainLayout({ children, fullWidth = false }: MainLayoutProps) {
-  const { isOpen, close } = useSidebarStore();
+  const { isOpen, close, isCollapsed } = useSidebarStore();
 
   return (
     <div className="flex min-h-screen bg-neutral-50">
@@ -27,7 +27,7 @@ export function MainLayout({ children, fullWidth = false }: MainLayoutProps) {
       {!fullWidth && <Sidebar isOpen={isOpen} onClose={close} />}
 
       {/* Main Content Area - responsive margin */}
-      <div className={`flex-1 flex flex-col ${!fullWidth ? 'md:ml-64' : ''}`}>
+      <div className={`flex-1 flex flex-col transition-[margin] duration-300 ${!fullWidth ? (isCollapsed ? 'md:ml-20' : 'md:ml-64') : ''}`}>
         {/* Topbar */}
         <Topbar />
 

@@ -110,14 +110,14 @@ export function Filters({ onFiltersChange, isLoading = false }: FiltersProps) {
         </div>
 
         {/* Quick Filters */}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full sm:w-auto">
           {/* Status Filter */}
           <Select
             value={status}
             onValueChange={(value) => setStatus(value as typeof status)}
             disabled={isLoading}
           >
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger className="w-full sm:w-[180px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -135,7 +135,7 @@ export function Filters({ onFiltersChange, isLoading = false }: FiltersProps) {
             onValueChange={(value) => setType(value as typeof type)}
             disabled={isLoading}
           >
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger className="w-full sm:w-[180px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

@@ -134,9 +134,9 @@ export function Templates() {
     <MainLayout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
-            <h1 className="text-3xl font-bold text-neutral-900">Templates</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900">Templates</h1>
             <p className="text-neutral-600 mt-1">
               Gestiona los templates de documentos para tu notaría
             </p>
@@ -183,7 +183,7 @@ export function Templates() {
         {viewMode === 'grid' && (
           <>
             {/* Filters */}
-            <div className="flex items-center gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
               {/* Search */}
               <div className="relative flex-1 max-w-md">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
@@ -203,7 +203,7 @@ export function Templates() {
                   setFilterType(value as DocumentType | 'all')
                 }
               >
-                <SelectTrigger className="w-[200px]">
+                <SelectTrigger className="w-full sm:w-[200px]">
                   <SelectValue placeholder="Filtrar por tipo" />
                 </SelectTrigger>
                 <SelectContent>

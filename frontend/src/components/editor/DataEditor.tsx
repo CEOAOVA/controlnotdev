@@ -171,7 +171,7 @@ export function DataEditor() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h2 className="text-2xl font-bold">Editar Datos Extraidos</h2>
+        <h2 className="text-xl sm:text-2xl font-bold">Editar Datos Extraidos</h2>
         <p className="text-muted-foreground mt-1">
           Revisa y corrige los datos extraidos por la IA
         </p>

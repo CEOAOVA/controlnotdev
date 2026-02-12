@@ -146,7 +146,7 @@ export function Dashboard() {
       <div className="space-y-8">
         {/* Welcome Header */}
         <div>
-          <h1 className="text-3xl font-bold text-neutral-900">
+          <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900">
             Bienvenido, {userName}
           </h1>
           {tenantName && (
@@ -187,9 +187,9 @@ export function Dashboard() {
         </div>
 
         {/* Metrics Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           {metrics.map((metric, index) => (
-            <Card key={index} className="p-6">
+            <Card key={index} className="p-4 sm:p-6">
               <div className="flex items-start justify-between">
                 <div className="space-y-2">
                   <p className="text-sm text-neutral-600">{metric.label}</p>
@@ -212,8 +212,8 @@ export function Dashboard() {
 
         {/* Recent Documents */}
         <div>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-neutral-900">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+            <h2 className="text-xl sm:text-2xl font-bold text-neutral-900">
               Documentos Recientes
             </h2>
             <Link to="/history">
@@ -225,7 +225,7 @@ export function Dashboard() {
           </div>
 
           {recentDocuments.length === 0 ? (
-            <Card className="p-12">
+            <Card className="p-6 sm:p-12">
               <div className="text-center space-y-3">
                 <div className="w-16 h-16 bg-neutral-100 rounded-full flex items-center justify-center mx-auto">
                   <FileText className="w-8 h-8 text-neutral-400" />
@@ -283,10 +283,10 @@ export function Dashboard() {
 
         {/* Activity Feed (Placeholder) */}
         <div>
-          <h2 className="text-2xl font-bold text-neutral-900 mb-4">
+          <h2 className="text-xl sm:text-2xl font-bold text-neutral-900 mb-4">
             Actividad Reciente
           </h2>
-          <Card className="p-6">
+          <Card className="p-4 sm:p-6">
             <div className="text-center text-neutral-600">
               <Clock className="w-12 h-12 mx-auto mb-3 text-neutral-400" />
               <p>No hay actividad reciente</p>

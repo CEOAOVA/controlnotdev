@@ -112,7 +112,7 @@ export function UnifiedUploader({ onTemplateSelected, onFilesChange }: UnifiedUp
     <div className="space-y-6">
       {/* ========== SECCION 1: TEMPLATE ========== */}
       <Card>
-        <CardContent className="p-6">
+        <CardContent className="p-4 sm:p-6">
           <div className="space-y-4">
             {/* Header */}
             <div className="flex items-center gap-3">
@@ -160,7 +160,7 @@ export function UnifiedUploader({ onTemplateSelected, onFilesChange }: UnifiedUp
             <div
               {...templateDropzone.getRootProps()}
               className={cn(
-                'border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all',
+                'border-2 border-dashed rounded-lg p-4 sm:p-6 text-center cursor-pointer transition-all',
                 'hover:border-blue-400 hover:bg-blue-50/50',
                 templateDropzone.isDragActive && 'border-blue-500 bg-blue-50',
                 isUploading && 'opacity-50 cursor-not-allowed'
@@ -192,7 +192,7 @@ export function UnifiedUploader({ onTemplateSelected, onFilesChange }: UnifiedUp
 
             {/* Available templates */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                 <p className="text-sm font-medium text-muted-foreground">
                   O selecciona una plantilla existente:
                 </p>
@@ -200,7 +200,7 @@ export function UnifiedUploader({ onTemplateSelected, onFilesChange }: UnifiedUp
                   value={filterType}
                   onValueChange={(value) => setFilterType(value as DocumentType | 'all')}
                 >
-                  <SelectTrigger className="w-[180px]">
+                  <SelectTrigger className="w-full sm:w-[180px]">
                     <SelectValue placeholder="Filtrar por tipo" />
                   </SelectTrigger>
                   <SelectContent>
@@ -246,7 +246,7 @@ export function UnifiedUploader({ onTemplateSelected, onFilesChange }: UnifiedUp
       {/* ========== SECCION 2: DOCUMENTOS ========== */}
       {documentType && (
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-4 sm:p-6">
             <div className="space-y-4">
               {/* Header */}
               <div className="flex items-center gap-3">

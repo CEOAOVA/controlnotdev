@@ -16,10 +16,10 @@ import {
   ChevronRight,
   X,
 } from 'lucide-react';
-import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks';
+import { useSidebarStore } from '@/store';
 
 interface NavItem {
   label: string;
@@ -64,7 +64,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const { isCollapsed, toggleCollapse } = useSidebarStore();
   const { signOut, userName, userEmail, tenantName } = useAuth();
 
   const handleSignOut = async () => {
@@ -97,7 +97,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
       <aside
         className={cn(
           'fixed left-0 top-0 h-screen bg-neutral-900 text-white z-50 flex flex-col',
-          'transition-transform duration-300 ease-in-out',
+          'transition-all duration-300 ease-in-out',
           // Desktop: always visible, respects collapse state
           'md:translate-x-0',
           isCollapsed ? 'md:w-20' : 'md:w-64',
@@ -134,7 +134,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setIsCollapsed(!isCollapsed)}
+              onClick={toggleCollapse}
               className="text-white hover:bg-neutral-800 hidden md:flex"
             >
               {isCollapsed ? (
