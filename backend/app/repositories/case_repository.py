@@ -52,7 +52,7 @@ class CaseRepository(BaseRepository):
             'client_id': str(client_id),
             'case_number': case_number.upper(),
             'document_type': document_type,
-            'status': 'draft',
+            'status': 'borrador',
             'parties': parties or [],
             'metadata': metadata or {}
         }
@@ -93,6 +93,9 @@ class CaseRepository(BaseRepository):
                 .eq('id', str(case_id))\
                 .single()\
                 .execute()
+
+            if result.data and 'clients' in result.data:
+                result.data['client'] = result.data.pop('clients')
 
             return result.data if result.data else None
 
@@ -181,7 +184,7 @@ class CaseRepository(BaseRepository):
 
         Args:
             tenant_id: UUID de la notaría
-            status: Estado a filtrar (draft, documents_uploaded, etc.)
+            status: Estado a filtrar (borrador, en_revision, etc.)
             limit: Número máximo de resultados
             offset: Offset para paginación
 
@@ -242,10 +245,10 @@ class CaseRepository(BaseRepository):
         """
         updates = {'status': new_status}
 
-        # Si el estado es 'completed', marcar la fecha de completado
-        if new_status == 'completed':
+        # Si el estado es terminal, marcar la fecha de cierre
+        if new_status in ('cerrado', 'cancelado'):
             from datetime import datetime, timezone
-            updates['completed_at'] = datetime.now(timezone.utc).isoformat()
+            updates['fecha_cierre'] = datetime.now(timezone.utc).isoformat()
 
         return await self.update(case_id, updates)
 
@@ -299,10 +302,11 @@ class CaseRepository(BaseRepository):
             # Total de casos
             total = await self.count_by_tenant(tenant_id)
 
-            # Por estado
+            # Por estado (workflow CRM)
             stats_by_status = {}
-            statuses = ['draft', 'documents_uploaded', 'ocr_processing', 'data_extracted',
-                       'validated', 'document_generated', 'signed', 'completed', 'cancelled']
+            statuses = ['borrador', 'en_revision', 'checklist_pendiente', 'presupuesto',
+                       'calculo_impuestos', 'en_firma', 'postfirma', 'tramites_gobierno',
+                       'inscripcion', 'facturacion', 'entrega', 'cerrado', 'cancelado', 'suspendido']
 
             for status in statuses:
                 count = await self.count_by_tenant(tenant_id, {'status': status})

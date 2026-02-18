@@ -3,15 +3,23 @@ ControlNot v2 - API Router Principal
 Integra todos los endpoints de la API
 
 Estructura de rutas:
-- /api/clients/*          - Gestión de clientes
-- /api/cases/*            - Gestión de casos/expedientes
-- /api/templates/*        - Templates Word
-- /api/documents/*        - Documentos y generación
-- /api/extraction/*       - OCR y AI
-- /api/health             - Health checks
-- /api/models/*           - Modelos AI y tipos
-- /api/cancelaciones/*    - Cancelaciones de hipotecas
-- /api/auth/*             - Logging de eventos de autenticación
+- /api/clients/*              - Gestión de clientes
+- /api/cases/*                - Gestión de casos/expedientes con workflow CRM
+- /api/cases/{id}/parties/*   - Partes normalizadas
+- /api/cases/{id}/checklist/* - Checklist documental
+- /api/cases/{id}/tramites/*  - Trámites gubernamentales
+- /api/cases/{id}/timeline    - Timeline de actividad
+- /api/cases/{id}/notes       - Notas del caso
+- /api/tramites/overdue       - Trámites vencidos
+- /api/tramites/upcoming      - Trámites próximos
+- /api/catalogos/*            - Catálogos de configuración
+- /api/templates/*            - Templates Word
+- /api/documents/*            - Documentos y generación
+- /api/extraction/*           - OCR y AI
+- /api/health                 - Health checks
+- /api/models/*               - Modelos AI y tipos
+- /api/cancelaciones/*        - Cancelaciones de hipotecas
+- /api/auth/*                 - Logging de eventos de autenticación
 """
 from fastapi import APIRouter
 import structlog
@@ -27,7 +35,12 @@ from app.api.endpoints import (
     cancelaciones_router,
     auth_router,
     notary_profile_router,
-    template_versions_router
+    template_versions_router,
+    case_parties_router,
+    case_checklist_router,
+    case_tramites_router,
+    case_activity_router,
+    catalogos_router,
 )
 
 logger = structlog.get_logger()
@@ -132,7 +145,47 @@ def include_all_routers():
     )
     logger.debug("Router de template-versions incluido")
 
-    logger.info("Todos los routers incluidos exitosamente")
+    # 12. Case Parties - Partes normalizadas de un caso
+    api_router.include_router(
+        case_parties_router,
+        # prefix: /cases/{case_id}/parties
+        # tags: ["Case Parties"]
+    )
+    logger.debug("Router de case-parties incluido")
+
+    # 13. Case Checklist - Checklist documental de un caso
+    api_router.include_router(
+        case_checklist_router,
+        # prefix: /cases/{case_id}/checklist
+        # tags: ["Case Checklist"]
+    )
+    logger.debug("Router de case-checklist incluido")
+
+    # 14. Case Tramites - Trámites gubernamentales
+    api_router.include_router(
+        case_tramites_router,
+        # prefix: routes defined inline (case-scoped + top-level)
+        # tags: ["Tramites"]
+    )
+    logger.debug("Router de case-tramites incluido")
+
+    # 15. Case Activity - Timeline y notas
+    api_router.include_router(
+        case_activity_router,
+        # prefix: /cases/{case_id}
+        # tags: ["Case Activity"]
+    )
+    logger.debug("Router de case-activity incluido")
+
+    # 16. Catalogos - Catálogos de configuración
+    api_router.include_router(
+        catalogos_router,
+        # prefix: /catalogos
+        # tags: ["Catalogos"]
+    )
+    logger.debug("Router de catalogos incluido")
+
+    logger.info("Todos los routers incluidos exitosamente (16 routers)")
 
 
 # Incluir todos los routers al importar este módulo
@@ -149,43 +202,39 @@ async def api_root():
     """
     return {
         "name": "ControlNot v2 API",
-        "version": "2.0.0",
-        "description": "API para procesamiento de documentos notariales con IA",
+        "version": "2.1.0",
+        "description": "API para procesamiento de documentos notariales con IA y CRM de expedientes",
         "docs": "/docs",
         "redoc": "/redoc",
         "health": "/api/health",
         "endpoints": {
             "clients": "/api/clients",
             "cases": "/api/cases",
+            "cases_dashboard": "/api/cases/dashboard",
             "templates": "/api/templates",
             "documents": "/api/documents",
             "extraction": "/api/extraction",
             "models": "/api/models",
-            "cancelaciones": "/api/cancelaciones"
+            "cancelaciones": "/api/cancelaciones",
+            "tramites_overdue": "/api/tramites/overdue",
+            "tramites_upcoming": "/api/tramites/upcoming",
+            "catalogos": "/api/catalogos/checklist-templates",
         },
         "features": [
             "Gestión completa de clientes (personas físicas y morales)",
-            "Gestión de casos/expedientes con seguimiento de estado",
+            "CRM de expedientes con state machine (14 estados de workflow)",
+            "Partes normalizadas por caso con roles",
+            "Checklist documental configurable por tipo de documento",
+            "Trámites gubernamentales con semáforo de vencimiento",
+            "Timeline de actividad por caso",
+            "Dashboard con semáforo global y trámites vencidos",
             "Upload y procesamiento de templates Word",
             "Auto-detección de tipo de documento",
             "OCR paralelo asíncrono (5-10x más rápido)",
             "Extracción con IA multi-provider (OpenRouter + OpenAI)",
             "Generación automática de documentos",
-            "Soporte para 6 tipos de documentos notariales (incluyendo cancelaciones)",
-            "Procesamiento especializado de cancelaciones de hipotecas (50 campos)",
+            "Soporte para 6 tipos de documentos notariales",
             "Base de datos PostgreSQL con Supabase",
             "Multi-tenancy con Row Level Security"
         ],
-        "migrated_from": "por_partes.py (2,550 líneas)",
-        "improvements": [
-            "Arquitectura modular con FastAPI",
-            "PostgreSQL con Supabase para persistencia",
-            "Repository pattern para acceso a datos",
-            "Multi-tenancy con RLS",
-            "OCR async paralelo",
-            "OpenRouter multi-provider (GPT-4o, Claude, Gemini, Llama)",
-            "Almacenamiento dual (Drive + Local)",
-            "Type hints completos",
-            "Logging estructurado"
-        ]
     }

@@ -1,6 +1,6 @@
 /**
  * Dashboard Page
- * Main landing page with metrics, recent documents, and quick actions
+ * Main landing page with CRM metrics, recent cases, and quick actions
  */
 
 import { useEffect, useState } from 'react';
@@ -13,6 +13,7 @@ import {
   ArrowRight,
   Plus,
   AlertCircle,
+  Briefcase,
 } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card } from '@/components/ui/card';
@@ -20,7 +21,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useAuth, useCases } from '@/hooks';
-import { format } from 'date-fns';
+import { STATUS_LABELS, STATUS_COLORS } from '@/api/types/cases-types';
 
 interface MetricCard {
   label: string;
@@ -30,28 +31,19 @@ interface MetricCard {
   trend?: 'up' | 'down' | 'neutral';
 }
 
-interface RecentDocument {
-  id: string;
-  name: string;
-  type: string;
-  date: string;
-  status: 'completed' | 'processing' | 'error';
-}
-
 export function Dashboard() {
   const { userName, tenantName } = useAuth();
-  const { cases, stats, isLoading: _isLoading, error, fetchCases, fetchStats } = useCases();
+  const { cases, dashboard, isLoading: _isLoading, error, fetchCases, fetchDashboard } = useCases();
   const [metrics, setMetrics] = useState<MetricCard[]>([]);
 
-  // Fetch dashboard data - solo al montar (sin dependencias para evitar loop)
   useEffect(() => {
     let isMounted = true;
 
     const loadDashboardData = async () => {
       try {
         await Promise.all([
-          fetchStats(),
-          fetchCases({ page: 1, per_page: 5, sort_by: 'created_at', sort_order: 'desc' }),
+          fetchDashboard(),
+          fetchCases({ page: 1, page_size: 5 }),
         ]);
       } catch (err) {
         if (isMounted) {
@@ -68,67 +60,38 @@ export function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Update metrics when stats change
   useEffect(() => {
-    if (stats) {
+    if (dashboard) {
+      const activeCount = Object.entries(dashboard.by_status)
+        .filter(([key]) => key !== 'cerrado' && key !== 'cancelado')
+        .reduce((sum, [, count]) => sum + count, 0);
+
       setMetrics([
         {
-          label: 'Total Casos',
-          value: stats.total_cases,
-          icon: FileText,
+          label: 'Total Expedientes',
+          value: dashboard.total_cases,
+          icon: Briefcase,
         },
         {
           label: 'En Progreso',
-          value: stats.in_progress,
+          value: activeCount,
           icon: Clock,
         },
         {
-          label: 'Completados Este Mes',
-          value: stats.completed_this_month,
-          change: `${stats.completed_this_month} documentos`,
-          icon: TrendingUp,
-          trend: 'up',
+          label: 'Tramites Vencidos',
+          value: dashboard.overdue_tramites,
+          change: dashboard.overdue_tramites > 0 ? 'Requieren atencion' : 'Todo al dia',
+          icon: AlertCircle,
+          trend: dashboard.overdue_tramites > 0 ? 'down' : 'up',
         },
         {
-          label: 'Borradores',
-          value: stats.by_status.draft || 0,
-          icon: FolderOpen,
+          label: 'Proximos a Vencer',
+          value: dashboard.upcoming_tramites,
+          icon: TrendingUp,
         },
       ]);
     }
-  }, [stats]);
-
-  // Convert cases to recent documents format
-  const recentDocuments: RecentDocument[] = cases.slice(0, 5).map((caseItem) => ({
-    id: caseItem.id,
-    name: caseItem.title,
-    type: caseItem.type,
-    date: format(new Date(caseItem.created_at), 'dd/MM/yyyy HH:mm'),
-    status: caseItem.status === 'completed' ? 'completed' :
-            caseItem.status === 'in_progress' ? 'processing' : 'error',
-  }));
-
-  const getStatusColor = (status: RecentDocument['status']) => {
-    switch (status) {
-      case 'completed':
-        return 'bg-success/10 text-success-700 border-success/20';
-      case 'processing':
-        return 'bg-warning/10 text-warning-700 border-warning/20';
-      case 'error':
-        return 'bg-error/10 text-error-700 border-error/20';
-    }
-  };
-
-  const getStatusLabel = (status: RecentDocument['status']) => {
-    switch (status) {
-      case 'completed':
-        return 'Completado';
-      case 'processing':
-        return 'Procesando';
-      case 'error':
-        return 'Error';
-    }
-  };
+  }, [dashboard]);
 
   const getTrendColor = (trend?: 'up' | 'down' | 'neutral') => {
     switch (trend) {
@@ -172,6 +135,12 @@ export function Dashboard() {
               Nuevo Documento
             </Button>
           </Link>
+          <Link to="/cases">
+            <Button variant="outline" size="lg" className="gap-2">
+              <Briefcase className="w-5 h-5" />
+              Ver Expedientes
+            </Button>
+          </Link>
           <Link to="/templates">
             <Button variant="outline" size="lg" className="gap-2">
               <FolderOpen className="w-5 h-5" />
@@ -210,13 +179,38 @@ export function Dashboard() {
           ))}
         </div>
 
-        {/* Recent Documents */}
+        {/* Semaforo Global */}
+        {dashboard?.semaforo_global && (
+          <Card className="p-4 sm:p-6">
+            <h2 className="text-lg font-semibold text-neutral-900 mb-4">Semaforo Global de Tramites</h2>
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-green-500" />
+                <span className="text-sm text-neutral-700">{dashboard.semaforo_global.verde} en tiempo</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-yellow-500" />
+                <span className="text-sm text-neutral-700">{dashboard.semaforo_global.amarillo} por vencer</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-red-500" />
+                <span className="text-sm text-neutral-700">{dashboard.semaforo_global.rojo} vencidos</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-gray-400" />
+                <span className="text-sm text-neutral-700">{dashboard.semaforo_global.gris} sin fecha</span>
+              </div>
+            </div>
+          </Card>
+        )}
+
+        {/* Recent Cases */}
         <div>
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
             <h2 className="text-xl sm:text-2xl font-bold text-neutral-900">
-              Documentos Recientes
+              Expedientes Recientes
             </h2>
-            <Link to="/history">
+            <Link to="/cases">
               <Button variant="ghost" className="gap-2">
                 Ver todos
                 <ArrowRight className="w-4 h-4" />
@@ -224,24 +218,24 @@ export function Dashboard() {
             </Link>
           </div>
 
-          {recentDocuments.length === 0 ? (
+          {cases.length === 0 ? (
             <Card className="p-6 sm:p-12">
               <div className="text-center space-y-3">
                 <div className="w-16 h-16 bg-neutral-100 rounded-full flex items-center justify-center mx-auto">
-                  <FileText className="w-8 h-8 text-neutral-400" />
+                  <Briefcase className="w-8 h-8 text-neutral-400" />
                 </div>
                 <div>
                   <h3 className="text-lg font-semibold text-neutral-900">
-                    No hay documentos recientes
+                    No hay expedientes recientes
                   </h3>
                   <p className="text-neutral-600 mt-1">
-                    Comienza generando tu primer documento
+                    Comienza creando tu primer expediente
                   </p>
                 </div>
-                <Link to="/generate">
+                <Link to="/cases">
                   <Button className="gap-2 mt-4">
                     <Plus className="w-4 h-4" />
-                    Generar Documento
+                    Nuevo Expediente
                   </Button>
                 </Link>
               </div>
@@ -249,10 +243,11 @@ export function Dashboard() {
           ) : (
             <Card>
               <div className="divide-y divide-neutral-200">
-                {recentDocuments.map((doc) => (
-                  <div
-                    key={doc.id}
-                    className="p-4 hover:bg-neutral-50 transition-colors"
+                {cases.slice(0, 5).map((caseItem) => (
+                  <Link
+                    key={caseItem.id}
+                    to={`/cases/${caseItem.id}`}
+                    className="block p-4 hover:bg-neutral-50 transition-colors"
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-4 flex-1">
@@ -261,38 +256,46 @@ export function Dashboard() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-neutral-900 truncate">
-                            {doc.name}
+                            {caseItem.case_number}
                           </p>
                           <p className="text-sm text-neutral-600">
-                            {doc.type} • {doc.date}
+                            {caseItem.document_type} {caseItem.description ? `- ${caseItem.description}` : ''}
                           </p>
                         </div>
                       </div>
-                      <Badge
-                        className={getStatusColor(doc.status)}
-                      >
-                        {getStatusLabel(doc.status)}
+                      <Badge className={STATUS_COLORS[caseItem.status]}>
+                        {STATUS_LABELS[caseItem.status]}
                       </Badge>
                     </div>
-                  </div>
+                  </Link>
                 ))}
               </div>
             </Card>
           )}
         </div>
 
-        {/* Activity Feed (Placeholder) */}
-        <div>
-          <h2 className="text-xl sm:text-2xl font-bold text-neutral-900 mb-4">
-            Actividad Reciente
-          </h2>
-          <Card className="p-4 sm:p-6">
-            <div className="text-center text-neutral-600">
-              <Clock className="w-12 h-12 mx-auto mb-3 text-neutral-400" />
-              <p>No hay actividad reciente</p>
-            </div>
-          </Card>
-        </div>
+        {/* Status Breakdown */}
+        {dashboard && Object.keys(dashboard.by_status).length > 0 && (
+          <div>
+            <h2 className="text-xl sm:text-2xl font-bold text-neutral-900 mb-4">
+              Por Estado
+            </h2>
+            <Card className="p-4 sm:p-6">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                {Object.entries(dashboard.by_status)
+                  .filter(([, count]) => count > 0)
+                  .map(([status, count]) => (
+                    <div key={status} className="flex items-center justify-between p-2 rounded-lg bg-neutral-50">
+                      <Badge className={STATUS_COLORS[status as keyof typeof STATUS_COLORS] || 'bg-gray-100 text-gray-700'}>
+                        {STATUS_LABELS[status as keyof typeof STATUS_LABELS] || status}
+                      </Badge>
+                      <span className="font-semibold text-neutral-900">{count}</span>
+                    </div>
+                  ))}
+              </div>
+            </Card>
+          </div>
+        )}
       </div>
     </MainLayout>
   );

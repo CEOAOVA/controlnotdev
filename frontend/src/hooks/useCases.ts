@@ -1,171 +1,203 @@
 /**
  * useCases Hook
- * Custom hook for cases/expedientes management
+ * Custom hook for CRM cases/expedientes management
  */
 
 import { useState, useCallback } from 'react';
-import * as casesApi from '@/api/endpoints/cases';
+import { casesApi } from '@/api/endpoints/cases';
 import type {
-  CaseBase,
+  Case,
   CaseDetail,
-  CaseListRequest,
-  CaseStatsResponse,
+  CaseListParams,
   CaseCreateRequest,
   CaseUpdateRequest,
-} from '@/api/types';
+  CaseStatistics,
+  CaseDashboard,
+} from '@/api/types/cases-types';
 
 export function useCases() {
-  const [cases, setCases] = useState<CaseBase[]>([]);
+  const [cases, setCases] = useState<Case[]>([]);
   const [selectedCase, setSelectedCase] = useState<CaseDetail | null>(null);
-  const [stats, setStats] = useState<CaseStatsResponse | null>(null);
+  const [statistics, setStatistics] = useState<CaseStatistics | null>(null);
+  const [dashboard, setDashboard] = useState<CaseDashboard | null>(null);
+  const [totalItems, setTotalItems] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch cases list
-  const fetchCases = useCallback(async (params?: CaseListRequest) => {
+  const fetchCases = useCallback(async (params?: CaseListParams) => {
     try {
       setIsLoading(true);
       setError(null);
-      const response = await casesApi.listCases(params);
+      const response = await casesApi.list(params);
       setCases(response.cases);
+      setTotalItems(response.total);
+      setCurrentPage(response.page);
+      setPageSize(response.page_size);
       return response;
     } catch (err: any) {
-      setError(err.message || 'Error al cargar casos');
+      const msg = err.response?.data?.detail || err.message || 'Error al cargar expedientes';
+      setError(msg);
       throw err;
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  // Fetch case by ID
   const fetchCaseById = useCallback(async (caseId: string) => {
     try {
       setIsLoading(true);
       setError(null);
-      const caseDetail = await casesApi.getCaseById(caseId);
+      const caseDetail = await casesApi.get(caseId);
       setSelectedCase(caseDetail);
       return caseDetail;
     } catch (err: any) {
-      setError(err.message || 'Error al cargar caso');
+      const msg = err.response?.data?.detail || err.message || 'Error al cargar expediente';
+      setError(msg);
       throw err;
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  // Fetch case statistics
-  const fetchStats = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      const statsData = await casesApi.getCaseStats();
-      setStats(statsData);
-      return statsData;
-    } catch (err: any) {
-      setError(err.message || 'Error al cargar estadísticas');
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  // Create new case
   const createCase = useCallback(async (data: CaseCreateRequest) => {
     try {
       setIsLoading(true);
       setError(null);
-      const newCase = await casesApi.createCase(data);
-      setCases((prev) => [newCase, ...prev]);
+      const newCase = await casesApi.create(data);
       return newCase;
     } catch (err: any) {
-      setError(err.message || 'Error al crear caso');
+      const msg = err.response?.data?.detail || err.message || 'Error al crear expediente';
+      setError(msg);
       throw err;
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  // Update case
-  const updateCase = useCallback(
-    async (caseId: string, data: CaseUpdateRequest) => {
-      try {
-        setIsLoading(true);
-        setError(null);
-        const updatedCase = await casesApi.updateCase(caseId, data);
-        setCases((prev) =>
-          prev.map((c) => (c.id === caseId ? updatedCase : c))
-        );
-        return updatedCase;
-      } catch (err: any) {
-        setError(err.message || 'Error al actualizar caso');
-        throw err;
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    []
-  );
-
-  // Delete case
-  const deleteCase = useCallback(async (caseId: string) => {
+  const updateCase = useCallback(async (caseId: string, data: CaseUpdateRequest) => {
     try {
       setIsLoading(true);
       setError(null);
-      await casesApi.deleteCase(caseId);
-      setCases((prev) => prev.filter((c) => c.id !== caseId));
+      const updated = await casesApi.update(caseId, data);
+      setCases((prev) => prev.map((c) => (c.id === caseId ? updated : c)));
+      return updated;
     } catch (err: any) {
-      setError(err.message || 'Error al eliminar caso');
+      const msg = err.response?.data?.detail || err.message || 'Error al actualizar expediente';
+      setError(msg);
       throw err;
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  // Change case status
-  const changeCaseStatus = useCallback(
-    async (caseId: string, status: CaseBase['status']) => {
-      try {
-        setIsLoading(true);
-        setError(null);
-        const updatedCase = await casesApi.changeCaseStatus(caseId, status);
-        setCases((prev) =>
-          prev.map((c) => (c.id === caseId ? updatedCase : c))
-        );
-        return updatedCase;
-      } catch (err: any) {
-        setError(err.message || 'Error al cambiar estado del caso');
-        throw err;
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    []
-  );
+  const transitionCase = useCallback(async (caseId: string, status: string, notes?: string) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const updated = await casesApi.transition(caseId, status, notes);
+      setCases((prev) => prev.map((c) => (c.id === caseId ? updated : c)));
+      return updated;
+    } catch (err: any) {
+      const msg = err.response?.data?.detail || err.message || 'Error en transicion';
+      setError(msg);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
-  // Clear error
+  const suspendCase = useCallback(async (caseId: string, reason: string) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const updated = await casesApi.suspend(caseId, reason);
+      setCases((prev) => prev.map((c) => (c.id === caseId ? updated : c)));
+      return updated;
+    } catch (err: any) {
+      const msg = err.response?.data?.detail || err.message || 'Error al suspender expediente';
+      setError(msg);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const resumeCase = useCallback(async (caseId: string) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const updated = await casesApi.resume(caseId);
+      setCases((prev) => prev.map((c) => (c.id === caseId ? updated : c)));
+      return updated;
+    } catch (err: any) {
+      const msg = err.response?.data?.detail || err.message || 'Error al reanudar expediente';
+      setError(msg);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const fetchStatistics = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const stats = await casesApi.getStatistics();
+      setStatistics(stats);
+      return stats;
+    } catch (err: any) {
+      const msg = err.response?.data?.detail || err.message || 'Error al cargar estadisticas';
+      setError(msg);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const fetchDashboard = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const data = await casesApi.getDashboard();
+      setDashboard(data);
+      return data;
+    } catch (err: any) {
+      const msg = err.response?.data?.detail || err.message || 'Error al cargar dashboard';
+      setError(msg);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
   const clearError = useCallback(() => {
     setError(null);
   }, []);
 
   return {
-    // State
     cases,
     selectedCase,
-    stats,
+    statistics,
+    dashboard,
+    totalItems,
+    currentPage,
+    pageSize,
     isLoading,
     error,
 
-    // Actions
     fetchCases,
     fetchCaseById,
-    fetchStats,
     createCase,
     updateCase,
-    deleteCase,
-    changeCaseStatus,
+    transitionCase,
+    suspendCase,
+    resumeCase,
+    fetchStatistics,
+    fetchDashboard,
     clearError,
 
-    // Helpers
     setSelectedCase,
   };
 }

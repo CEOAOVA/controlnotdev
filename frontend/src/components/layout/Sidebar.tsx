@@ -15,6 +15,7 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
+  Briefcase,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -38,6 +39,11 @@ const navItems: NavItem[] = [
     label: 'Generar Documento',
     icon: FileText,
     path: '/generate',
+  },
+  {
+    label: 'Expedientes',
+    icon: Briefcase,
+    path: '/cases',
   },
   {
     label: 'Templates',

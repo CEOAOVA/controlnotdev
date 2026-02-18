@@ -4,7 +4,7 @@ Exports de todos los routers de endpoints
 
 Endpoints disponibles:
 1. clients - Gestión de clientes (personas físicas y morales)
-2. cases - Gestión de casos/expedientes
+2. cases - Gestión de casos/expedientes con workflow CRM
 3. templates - Upload y procesamiento de templates Word
 4. documents - Categorización y generación de documentos
 5. extraction - OCR y extracción con IA
@@ -13,6 +13,12 @@ Endpoints disponibles:
 8. cancelaciones - Procesamiento especializado de cancelaciones de hipotecas
 9. auth - Logging de eventos de autenticación
 10. notary_profile - Perfil de notaría (datos del instrumento)
+11. template_versions - Versionamiento de templates
+12. case_parties - Partes normalizadas de un caso
+13. case_checklist - Checklist documental de un caso
+14. case_tramites - Trámites gubernamentales de un caso
+15. case_activity - Timeline de actividad de un caso
+16. catalogos - Catálogos de configuración (checklist templates)
 """
 
 from app.api.endpoints.clients import router as clients_router
@@ -26,6 +32,11 @@ from app.api.endpoints.cancelaciones import router as cancelaciones_router
 from app.api.endpoints.auth import router as auth_router
 from app.api.endpoints.notary_profile import router as notary_profile_router
 from app.api.endpoints.template_versions import router as template_versions_router
+from app.api.endpoints.case_parties import router as case_parties_router
+from app.api.endpoints.case_checklist import router as case_checklist_router
+from app.api.endpoints.case_tramites import router as case_tramites_router
+from app.api.endpoints.case_activity import router as case_activity_router
+from app.api.endpoints.catalogos import router as catalogos_router
 
 
 __all__ = [
@@ -40,4 +51,9 @@ __all__ = [
     "auth_router",
     "notary_profile_router",
     "template_versions_router",
+    "case_parties_router",
+    "case_checklist_router",
+    "case_tramites_router",
+    "case_activity_router",
+    "catalogos_router",
 ]

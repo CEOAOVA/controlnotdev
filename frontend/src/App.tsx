@@ -6,6 +6,8 @@ import { Templates } from './pages/Templates';
 import { History } from './pages/History';
 import { Settings } from './pages/Settings';
 import { Login } from './pages/Login';
+import { CasesPage } from './pages/CasesPage';
+import { CaseDetailPage } from './pages/CaseDetailPage';
 import { AuthGuard } from './components/auth/AuthGuard';
 
 function App() {
@@ -78,6 +80,22 @@ function App() {
           element={
             <AuthGuard>
               <Settings />
+            </AuthGuard>
+          }
+        />
+        <Route
+          path="/cases"
+          element={
+            <AuthGuard>
+              <CasesPage />
+            </AuthGuard>
+          }
+        />
+        <Route
+          path="/cases/:caseId"
+          element={
+            <AuthGuard>
+              <CaseDetailPage />
             </AuthGuard>
           }
         />
