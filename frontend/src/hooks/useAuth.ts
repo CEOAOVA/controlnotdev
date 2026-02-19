@@ -69,5 +69,6 @@ export function useAuth() {
     userEmail: user?.email || null,
     userName: profile?.full_name || user?.email?.split('@')[0] || 'Usuario',
     userAvatar: profile?.avatar_url || null,
+    userRole: profile?.rol || 'asistente',
   };
 }

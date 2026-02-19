@@ -16,10 +16,15 @@ import {
   ChevronRight,
   X,
   Briefcase,
+  Calendar,
+  BarChart3,
+  ShieldAlert,
+  MessageCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks';
+import { usePermissions } from '@/hooks/usePermissions';
 import { useSidebarStore } from '@/store';
 
 interface NavItem {
@@ -27,6 +32,8 @@ interface NavItem {
   icon: React.ComponentType<{ className?: string }>;
   path: string;
   badge?: string;
+  /** Module name for RBAC filtering */
+  module?: string;
 }
 
 const navItems: NavItem[] = [
@@ -39,26 +46,55 @@ const navItems: NavItem[] = [
     label: 'Generar Documento',
     icon: FileText,
     path: '/generate',
+    module: 'documents',
   },
   {
     label: 'Expedientes',
     icon: Briefcase,
     path: '/cases',
+    module: 'cases',
+  },
+  {
+    label: 'Calendario',
+    icon: Calendar,
+    path: '/calendario',
+    module: 'calendar',
+  },
+  {
+    label: 'Reportes',
+    icon: BarChart3,
+    path: '/reportes',
+    module: 'reports',
+  },
+  {
+    label: 'UIF/PLD',
+    icon: ShieldAlert,
+    path: '/uif',
+    module: 'uif',
+  },
+  {
+    label: 'WhatsApp',
+    icon: MessageCircle,
+    path: '/whatsapp',
+    module: 'whatsapp',
   },
   {
     label: 'Templates',
     icon: FolderOpen,
     path: '/templates',
+    module: 'documents',
   },
   {
     label: 'Historial',
     icon: History,
     path: '/history',
+    module: 'history',
   },
   {
     label: 'Configuración',
     icon: Settings,
     path: '/settings',
+    module: 'settings',
   },
 ];
 
@@ -72,6 +108,15 @@ interface SidebarProps {
 export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const { isCollapsed, toggleCollapse } = useSidebarStore();
   const { signOut, userName, userEmail, tenantName } = useAuth();
+  const { canAccess, hasFullAccess, canAccessSettings, canAccessUIF } = usePermissions();
+
+  // Filter nav items by user permissions
+  const filteredNavItems = navItems.filter((item) => {
+    if (!item.module) return true; // No restriction
+    if (item.module === 'uif') return canAccessUIF;
+    if (item.module === 'settings') return canAccessSettings;
+    return canAccess(item.module);
+  });
 
   const handleSignOut = async () => {
     try {
@@ -173,7 +218,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto p-4">
           <ul className="space-y-2">
-            {navItems.map((item) => (
+            {filteredNavItems.map((item) => (
               <li key={item.path}>
                 <NavLink
                   to={item.path}

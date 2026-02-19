@@ -30,6 +30,7 @@ import {
   tramitesApi,
   timelineApi,
 } from '@/api/endpoints/cases';
+import { paymentsApi } from '@/api/endpoints/payments';
 import type {
   CaseParty,
   ChecklistItem,
@@ -40,6 +41,9 @@ import type {
   TramiteCreateRequest,
   ChecklistStatus,
 } from '@/api/types/cases-types';
+import type { CasePayment, PaymentTotals, PaymentCreateRequest } from '@/api/types/payments-types';
+import { PaymentList } from '@/components/payments/PaymentList';
+import { UIFAlert } from '@/components/uif/UIFAlert';
 
 export function CaseDetailPage() {
   const { caseId } = useParams<{ caseId: string }>();
@@ -52,6 +56,8 @@ export function CaseDetailPage() {
   const [tramites, setTramites] = useState<Tramite[]>([]);
   const [timeline, setTimeline] = useState<CaseTimeline | null>(null);
   const [caseDocuments, setCaseDocuments] = useState<any[]>([]);
+  const [payments, setPayments] = useState<CasePayment[]>([]);
+  const [paymentTotals, setPaymentTotals] = useState<PaymentTotals | null>(null);
 
   const [activeTab, setActiveTab] = useState('resumen');
 
@@ -82,6 +88,11 @@ export function CaseDetailPage() {
       timelineApi.get(caseId).then(setTimeline).catch(console.error);
     } else if (activeTab === 'documentos') {
       casesApi.getDocuments(caseId).then((r) => setCaseDocuments(r.documents || [])).catch(console.error);
+    } else if (activeTab === 'pagos') {
+      paymentsApi.list(caseId).then((r) => {
+        setPayments(r.payments);
+        setPaymentTotals(r.totals);
+      }).catch(console.error);
     }
   }, [activeTab, caseId]);
 
@@ -198,6 +209,25 @@ export function CaseDetailPage() {
     toast.success('Tramite eliminado');
   };
 
+  // Payments
+  const handleAddPayment = async (data: PaymentCreateRequest) => {
+    if (!caseId) return;
+    await paymentsApi.create(caseId, data);
+    toast.success('Pago registrado');
+    const r = await paymentsApi.list(caseId);
+    setPayments(r.payments);
+    setPaymentTotals(r.totals);
+  };
+
+  const handleRemovePayment = async (paymentId: string) => {
+    if (!caseId) return;
+    await paymentsApi.remove(caseId, paymentId);
+    toast.success('Pago eliminado');
+    const r = await paymentsApi.list(caseId);
+    setPayments(r.payments);
+    setPaymentTotals(r.totals);
+  };
+
   // Timeline
   const handleAddNote = async (note: string) => {
     if (!caseId) return;
@@ -263,6 +293,9 @@ export function CaseDetailPage() {
           </div>
         </div>
 
+        {/* UIF Alert */}
+        {caseId && <UIFAlert caseId={caseId} />}
+
         {/* Workflow Bar */}
         <Card className="p-4">
           <WorkflowBar currentStatus={selectedCase.status} />
@@ -285,12 +318,13 @@ export function CaseDetailPage() {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-3 md:grid-cols-6">
+          <TabsList className="grid w-full grid-cols-4 md:grid-cols-7">
             <TabsTrigger value="resumen">Resumen</TabsTrigger>
             <TabsTrigger value="partes">Partes</TabsTrigger>
             <TabsTrigger value="checklist">Checklist</TabsTrigger>
             <TabsTrigger value="tramites">Tramites</TabsTrigger>
             <TabsTrigger value="documentos">Documentos</TabsTrigger>
+            <TabsTrigger value="pagos">Pagos</TabsTrigger>
             <TabsTrigger value="timeline">Timeline</TabsTrigger>
           </TabsList>
 
@@ -352,6 +386,15 @@ export function CaseDetailPage() {
                 </div>
               </Card>
             )}
+          </TabsContent>
+
+          <TabsContent value="pagos" className="mt-6">
+            <PaymentList
+              payments={payments}
+              totals={paymentTotals}
+              onAdd={handleAddPayment}
+              onRemove={handleRemovePayment}
+            />
           </TabsContent>
 
           <TabsContent value="timeline" className="mt-6 space-y-4">

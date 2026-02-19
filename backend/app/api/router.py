@@ -41,6 +41,11 @@ from app.api.endpoints import (
     case_tramites_router,
     case_activity_router,
     catalogos_router,
+    case_payments_router,
+    calendar_router,
+    reports_router,
+    uif_router,
+    whatsapp_router,
 )
 
 logger = structlog.get_logger()
@@ -185,7 +190,47 @@ def include_all_routers():
     )
     logger.debug("Router de catalogos incluido")
 
-    logger.info("Todos los routers incluidos exitosamente (16 routers)")
+    # 17. Case Payments - Pagos de un expediente
+    api_router.include_router(
+        case_payments_router,
+        # prefix: /cases/{case_id}/payments
+        # tags: ["Case Payments"]
+    )
+    logger.debug("Router de case-payments incluido")
+
+    # 18. Calendar - Calendario de eventos
+    api_router.include_router(
+        calendar_router,
+        # prefix: /calendar
+        # tags: ["Calendar"]
+    )
+    logger.debug("Router de calendar incluido")
+
+    # 19. Reports - Reportes y análisis
+    api_router.include_router(
+        reports_router,
+        # prefix: /reports
+        # tags: ["Reports"]
+    )
+    logger.debug("Router de reports incluido")
+
+    # 20. UIF/PLD - Operaciones vulnerables
+    api_router.include_router(
+        uif_router,
+        # prefix: /uif
+        # tags: ["UIF/PLD"]
+    )
+    logger.debug("Router de uif incluido")
+
+    # 21. WhatsApp - Integracion WhatsApp Business
+    api_router.include_router(
+        whatsapp_router,
+        # prefix: /whatsapp
+        # tags: ["WhatsApp"]
+    )
+    logger.debug("Router de whatsapp incluido")
+
+    logger.info("Todos los routers incluidos exitosamente (21 routers)")
 
 
 # Incluir todos los routers al importar este módulo

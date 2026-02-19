@@ -47,6 +47,7 @@ interface UserProfile {
   tenant_id: string;
   tenant_name?: string;
   notary_number?: string;
+  rol?: string;
 }
 
 interface AuthState {
@@ -308,6 +309,7 @@ export const useAuthStore = create<AuthState>()(
                   tenant_id: data.tenant_id,
                   tenant_name: data.tenants?.nombre,
                   notary_number: data.tenants?.numero_notaria?.toString(),
+                  rol: data.rol,
                 },
               });
             }

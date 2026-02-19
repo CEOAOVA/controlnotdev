@@ -19,6 +19,11 @@ Endpoints disponibles:
 14. case_tramites - Trámites gubernamentales de un caso
 15. case_activity - Timeline de actividad de un caso
 16. catalogos - Catálogos de configuración (checklist templates)
+17. case_payments - Pagos de un expediente
+18. calendar - Calendario de eventos
+19. reports - Reportes y análisis
+20. uif - UIF/PLD Operaciones vulnerables
+21. whatsapp - WhatsApp Business integration
 """
 
 from app.api.endpoints.clients import router as clients_router
@@ -37,6 +42,11 @@ from app.api.endpoints.case_checklist import router as case_checklist_router
 from app.api.endpoints.case_tramites import router as case_tramites_router
 from app.api.endpoints.case_activity import router as case_activity_router
 from app.api.endpoints.catalogos import router as catalogos_router
+from app.api.endpoints.case_payments import router as case_payments_router
+from app.api.endpoints.calendar import router as calendar_router
+from app.api.endpoints.reports import router as reports_router
+from app.api.endpoints.uif import router as uif_router
+from app.api.endpoints.whatsapp import router as whatsapp_router
 
 
 __all__ = [
@@ -56,4 +66,9 @@ __all__ = [
     "case_tramites_router",
     "case_activity_router",
     "catalogos_router",
+    "case_payments_router",
+    "calendar_router",
+    "reports_router",
+    "uif_router",
+    "whatsapp_router",
 ]

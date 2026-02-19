@@ -8,6 +8,10 @@ import { Settings } from './pages/Settings';
 import { Login } from './pages/Login';
 import { CasesPage } from './pages/CasesPage';
 import { CaseDetailPage } from './pages/CaseDetailPage';
+import { CalendarPage } from './pages/CalendarPage';
+import { ReportsPage } from './pages/ReportsPage';
+import { UIFPage } from './pages/UIFPage';
+import { WhatsAppPage } from './pages/WhatsAppPage';
 import { AuthGuard } from './components/auth/AuthGuard';
 
 function App() {
@@ -96,6 +100,38 @@ function App() {
           element={
             <AuthGuard>
               <CaseDetailPage />
+            </AuthGuard>
+          }
+        />
+        <Route
+          path="/calendario"
+          element={
+            <AuthGuard>
+              <CalendarPage />
+            </AuthGuard>
+          }
+        />
+        <Route
+          path="/reportes"
+          element={
+            <AuthGuard>
+              <ReportsPage />
+            </AuthGuard>
+          }
+        />
+        <Route
+          path="/uif"
+          element={
+            <AuthGuard>
+              <UIFPage />
+            </AuthGuard>
+          }
+        />
+        <Route
+          path="/whatsapp"
+          element={
+            <AuthGuard>
+              <WhatsAppPage />
             </AuthGuard>
           }
         />

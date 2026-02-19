@@ -174,6 +174,15 @@ class Settings(BaseSettings):
     VISION_TEMPERATURE: float = 0.0  # OpenAI best practice: 0 para extracción
 
     # ==========================================
+    # WHATSAPP (Meta Cloud API)
+    # ==========================================
+    WHATSAPP_API_URL: str = "https://graph.facebook.com/v18.0"
+    WHATSAPP_PHONE_ID: Optional[str] = None
+    WHATSAPP_ACCESS_TOKEN: Optional[str] = None
+    WHATSAPP_VERIFY_TOKEN: str = "controlnot_verify"
+    WHATSAPP_WEBHOOK_SECRET: Optional[str] = None
+
+    # ==========================================
     # AI PROVIDER STRATEGY
     # ==========================================
     @property
