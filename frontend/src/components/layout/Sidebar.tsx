@@ -108,7 +108,7 @@ interface SidebarProps {
 export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const { isCollapsed, toggleCollapse } = useSidebarStore();
   const { signOut, userName, userEmail, tenantName } = useAuth();
-  const { canAccess, hasFullAccess, canAccessSettings, canAccessUIF } = usePermissions();
+  const { canAccess, canAccessSettings, canAccessUIF } = usePermissions();
 
   // Filter nav items by user permissions
   const filteredNavItems = navItems.filter((item) => {

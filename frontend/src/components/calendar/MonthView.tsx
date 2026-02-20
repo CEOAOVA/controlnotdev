@@ -98,10 +98,7 @@ export function MonthView({ year, month, events, onDayClick, onEventClick }: Mon
                   <EventCard
                     key={event.id}
                     event={event}
-                    onClick={(e) => {
-                      e.stopPropagation?.();
-                      onEventClick(event);
-                    }}
+                    onClick={() => onEventClick(event)}
                   />
                 ))}
                 {dayEvents.length > 3 && (
