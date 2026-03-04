@@ -174,6 +174,11 @@ class Settings(BaseSettings):
     VISION_TEMPERATURE: float = 0.0  # OpenAI best practice: 0 para extracción
 
     # ==========================================
+    # VALIDATION & AUTO-APPROVAL
+    # ==========================================
+    AUTO_APPROVAL_THRESHOLD: float = 0.85  # Minimum overall confidence for auto-approval
+
+    # ==========================================
     # WHATSAPP (Meta Cloud API)
     # ==========================================
     WHATSAPP_API_URL: str = "https://graph.facebook.com/v18.0"
@@ -181,6 +186,7 @@ class Settings(BaseSettings):
     WHATSAPP_ACCESS_TOKEN: Optional[str] = None
     WHATSAPP_VERIFY_TOKEN: str = "controlnot_verify"
     WHATSAPP_WEBHOOK_SECRET: Optional[str] = None
+    DEFAULT_TENANT_ID: Optional[str] = None  # For webhook routing (single-tenant MVP)
 
     # ==========================================
     # AI PROVIDER STRATEGY

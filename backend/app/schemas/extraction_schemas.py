@@ -4,7 +4,7 @@ Schemas para OCR y extracción con IA
 
 Basado en por_partes.py líneas 1745-1789, 1856-1866, 2293-2335
 """
-from typing import List, Dict, Optional
+from typing import Any, List, Dict, Optional
 from pydantic import BaseModel, Field
 
 from app.schemas.template_schemas import DocumentTypeEnum
@@ -236,6 +236,10 @@ class AIExtractionResponse(BaseModel):
         ...,
         description="Tiempo de procesamiento",
         ge=0
+    )
+    validation_report: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Weighted confidence scoring report with per-field details"
     )
 
     model_config = {
@@ -513,6 +517,10 @@ class VisionExtractionResponse(BaseModel):
     cache_hit: bool = Field(
         ...,
         description="Si se uso prompt caching de Anthropic"
+    )
+    validation_report: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Weighted confidence scoring report with per-field details"
     )
 
     model_config = {

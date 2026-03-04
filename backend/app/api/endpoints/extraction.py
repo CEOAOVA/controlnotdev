@@ -41,6 +41,7 @@ from app.repositories.uploaded_file_repository import uploaded_file_repository
 from app.repositories.session_repository import session_repository
 from app.database import get_current_tenant_id, supabase_admin
 from app.utils.number_conversion import convertir_si_es_numero
+from app.services.validation_service import get_validation_service
 from uuid import UUID
 
 logger = structlog.get_logger()
@@ -408,6 +409,15 @@ async def extract_with_ai(
                 session_id=request.session_id
             )
 
+        # Run weighted confidence scoring
+        validation_svc = get_validation_service()
+        source_text = request.text if request.text else None
+        confidence_report = validation_svc.calculate_weighted_confidence(
+            extracted_data=complete_data,
+            document_type=request.document_type,
+            source_text=source_text,
+        )
+
         return AIExtractionResponse(
             session_id=request.session_id,
             extracted_data=complete_data,
@@ -418,7 +428,8 @@ async def extract_with_ai(
             completeness_percent=validation_stats['completeness'] * 100,
             model_used=anthropic_service.model,
             tokens_used=anthropic_service.last_tokens_used,
-            processing_time_seconds=processing_time
+            processing_time_seconds=processing_time,
+            validation_report=confidence_report,
         )
 
     except Exception as e:
@@ -715,6 +726,13 @@ async def extract_with_vision(
             cache_hit=cache_stats['cache_hit']
         )
 
+        # Run weighted confidence scoring
+        validation_svc = get_validation_service()
+        confidence_report = validation_svc.calculate_weighted_confidence(
+            extracted_data=complete_data,
+            document_type=request.document_type,
+        )
+
         return VisionExtractionResponse(
             session_id=request.session_id,
             extracted_data=complete_data,
@@ -725,7 +743,8 @@ async def extract_with_vision(
             model_used=anthropic_service.model,
             tokens_used=anthropic_service.last_tokens_used,
             processing_time_seconds=processing_time,
-            cache_hit=cache_stats['cache_hit']
+            cache_hit=cache_stats['cache_hit'],
+            validation_report=confidence_report,
         )
 
     except Exception as e:

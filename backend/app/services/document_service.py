@@ -404,8 +404,13 @@ class DocumentGenerator:
             size_bytes=len(template_content))
 
         try:
-            # Abrir template
-            doc = Document(temp_template_path)
+            # Abrir template (puede fallar si no es .docx válido)
+            try:
+                doc = Document(temp_template_path)
+            except Exception as doc_err:
+                raise ValueError(
+                    f"El template no es un archivo .docx válido: {type(doc_err).__name__}: {doc_err}"
+                )
 
             logger.debug("template_opened",
                 paragraphs=len(doc.paragraphs),

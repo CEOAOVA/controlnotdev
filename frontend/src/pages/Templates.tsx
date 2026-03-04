@@ -26,6 +26,7 @@ import { TemplateUpload } from '@/components/templates/TemplateUpload';
 import { TemplateEditor } from '@/components/templates/TemplateEditor';
 import { PlaceholderMappingEditor } from '@/components/templates/PlaceholderMappingEditor';
 import { useTemplates, useToast } from '@/hooks';
+import { templatesApi } from '@/api/endpoints/templates';
 import type { DocumentType, TemplateInfo } from '@/store';
 
 type ViewMode = 'grid' | 'upload';
@@ -110,15 +111,31 @@ export function Templates() {
   };
 
   const handleDuplicate = async (template: TemplateInfo) => {
-    // TODO: Implement duplicate functionality
-    console.log('Duplicate template:', template);
-    toast.error('Funcionalidad de duplicar en desarrollo');
+    try {
+      const result = await templatesApi.duplicate(template.id);
+      toast.success(result.message || `Template "${template.name}" duplicado`);
+      fetchTemplates(); // Refresh list
+    } catch (err: any) {
+      toast.error(`Error al duplicar template: ${err.message}`);
+    }
   };
 
   const handleDownload = async (template: TemplateInfo) => {
-    // TODO: Implement download functionality
-    console.log('Download template:', template);
-    toast.error('Funcionalidad de descarga en desarrollo');
+    try {
+      const blob = await templatesApi.download(template.id);
+      // Trigger browser download
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = template.name || `template_${template.id}.docx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      toast.success(`Template "${template.name}" descargado`);
+    } catch (err: any) {
+      toast.error(`Error al descargar template: ${err.message}`);
+    }
   };
 
   const handleEditMapping = (template: TemplateInfo) => {

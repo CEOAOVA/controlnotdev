@@ -86,7 +86,12 @@ class CaseWorkflowService:
         Raises:
             ValueError: Si la transición no es válida
         """
-        case = await case_repository.get_by_id(case_id)
+        try:
+            case = await case_repository.get_by_id(case_id)
+        except Exception as e:
+            logger.error("case_fetch_failed", case_id=str(case_id), error=str(e))
+            raise ValueError(f"Error al obtener caso: {e}")
+
         if not case:
             raise ValueError("Caso no encontrado")
 
@@ -105,24 +110,31 @@ class CaseWorkflowService:
         if new_status == 'cancelado':
             updates['fecha_cierre'] = datetime.now(timezone.utc).isoformat()
 
-        updated_case = await case_repository.update(case_id, updates)
+        try:
+            updated_case = await case_repository.update(case_id, updates)
+        except Exception as e:
+            logger.error("case_update_failed", case_id=str(case_id), error=str(e))
+            raise ValueError(f"Error al actualizar caso: {e}")
 
         # Registrar en activity log
         description = f"Estado cambiado de {STATUS_LABELS.get(current_status, current_status)} a {STATUS_LABELS.get(new_status, new_status)}"
         if notes:
             description += f". Nota: {notes}"
 
-        await case_activity_repository.log(
-            tenant_id=tenant_id,
-            case_id=case_id,
-            action='status_change',
-            description=description,
-            user_id=user_id,
-            entity_type='case',
-            entity_id=case_id,
-            old_value={'status': current_status},
-            new_value={'status': new_status},
-        )
+        try:
+            await case_activity_repository.log(
+                tenant_id=tenant_id,
+                case_id=case_id,
+                action='status_change',
+                description=description,
+                user_id=user_id,
+                entity_type='case',
+                entity_id=case_id,
+                old_value={'status': current_status},
+                new_value={'status': new_status},
+            )
+        except Exception as e:
+            logger.warning("case_activity_log_failed", case_id=str(case_id), error=str(e))
 
         logger.info(
             "case_transitioned",
@@ -131,7 +143,56 @@ class CaseWorkflowService:
             to_status=new_status
         )
 
+        # Send WhatsApp notification to client (non-blocking, never fails the transition)
+        try:
+            await self._notify_client_of_status_change(
+                case_id=case_id,
+                tenant_id=tenant_id,
+                new_status=new_status,
+                old_status=current_status,
+            )
+        except Exception as e:
+            logger.warning("wa_notification_on_transition_failed", case_id=str(case_id), error=str(e))
+
         return updated_case
+
+    async def _notify_client_of_status_change(
+        self,
+        case_id: UUID,
+        tenant_id: UUID,
+        new_status: str,
+        old_status: str,
+    ) -> None:
+        """Look up client phone from case_parties and send WhatsApp notification"""
+        from app.database import get_supabase_admin_client
+        from app.services.wa_notification_service import wa_notification_service
+
+        client = get_supabase_admin_client()
+
+        # Find parties linked to this case with a phone number
+        result = client.table('case_parties')\
+            .select('telefono, nombre')\
+            .eq('case_id', str(case_id))\
+            .neq('telefono', '')\
+            .execute()
+
+        if not result.data:
+            return
+
+        new_label = STATUS_LABELS.get(new_status, new_status)
+        message = f"Su expediente ha sido actualizado a: {new_label}"
+
+        for party in result.data:
+            phone = party.get('telefono')
+            if not phone:
+                continue
+            await wa_notification_service.notify_case_event(
+                tenant_id=tenant_id,
+                event_type='status_change',
+                case_id=case_id,
+                phone=phone,
+                message=message,
+            )
 
     async def suspend(
         self,

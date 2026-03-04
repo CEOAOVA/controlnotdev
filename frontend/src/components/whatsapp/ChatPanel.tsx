@@ -1,10 +1,11 @@
 /**
  * ChatPanel
- * Main chat panel showing messages for a conversation
+ * Main chat panel showing messages for a conversation with AI suggestions
  */
 
 import { useState, useEffect, useRef } from 'react';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { MessageBubble } from './MessageBubble';
 import { MessageInput } from './MessageInput';
 import { whatsappApi } from '@/api/endpoints/whatsapp';
@@ -19,6 +20,7 @@ export function ChatPanel({ conversation }: ChatPanelProps) {
   const toast = useToast();
   const [messages, setMessages] = useState<WAMessage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [suggestion, setSuggestion] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const loadMessages = async () => {
@@ -33,9 +35,26 @@ export function ChatPanel({ conversation }: ChatPanelProps) {
     }
   };
 
+  const loadSuggestion = async () => {
+    try {
+      const result = await whatsappApi.getSuggestedReply(conversation.id);
+      setSuggestion(result.suggestion || null);
+    } catch {
+      setSuggestion(null);
+    }
+  };
+
   useEffect(() => {
     loadMessages();
+    setSuggestion(null);
   }, [conversation.id]);
+
+  // Load suggestion after messages are loaded
+  useEffect(() => {
+    if (!isLoading && messages.length > 0) {
+      loadSuggestion();
+    }
+  }, [isLoading, messages.length]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -46,9 +65,16 @@ export function ChatPanel({ conversation }: ChatPanelProps) {
       const sent = await whatsappApi.sendMessage(conversation.id, content);
       if (sent) {
         setMessages((prev) => [...prev, sent]);
+        setSuggestion(null);
       }
     } catch (err: any) {
       toast.error(err.response?.data?.detail || 'Error al enviar mensaje');
+    }
+  };
+
+  const handleUseSuggestion = () => {
+    if (suggestion) {
+      handleSend(suggestion);
     }
   };
 
@@ -89,6 +115,22 @@ export function ChatPanel({ conversation }: ChatPanelProps) {
         )}
         <div ref={messagesEndRef} />
       </div>
+
+      {/* AI Suggestion Chip */}
+      {suggestion && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-purple-50 border-t border-purple-100">
+          <span className="text-xs font-medium text-purple-700 shrink-0">IA sugiere:</span>
+          <span className="text-sm text-purple-900 truncate flex-1">{suggestion}</span>
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-purple-700 border-purple-300 hover:bg-purple-100 shrink-0"
+            onClick={handleUseSuggestion}
+          >
+            Usar
+          </Button>
+        </div>
+      )}
 
       {/* Input */}
       <MessageInput onSend={handleSend} />

@@ -100,7 +100,7 @@ class OCRService:
             response = self.vision_client.document_text_detection(image=image)
 
             # Verificar errores
-            if response.error.message:
+            if getattr(response.error, 'message', ''):
                 logger.error(
                     "Error en Vision API",
                     error_message=response.error.message
@@ -149,7 +149,7 @@ class OCRService:
             response = self.vision_client.document_text_detection(image=image)
 
             # Verificar errores
-            if response.error.message:
+            if getattr(response.error, 'message', ''):
                 logger.error(
                     "Error en Vision API",
                     error_message=response.error.message

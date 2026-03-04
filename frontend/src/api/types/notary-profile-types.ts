@@ -23,6 +23,10 @@ export interface NotaryProfileResponse {
   // Computed fields for templates
   notario_completo: string | null;
   lugar_instrumento: string | null;
+
+  // User preferences
+  preferences: Record<string, string> | null;
+  notifications: Record<string, boolean> | null;
 }
 
 export interface NotaryProfileUpdate {
@@ -33,6 +37,8 @@ export interface NotaryProfileUpdate {
   ciudad?: string;
   estado?: string;
   direccion?: string;
+  preferences?: Record<string, string>;
+  notifications?: Record<string, boolean>;
 }
 
 export interface IncrementInstrumentResponse {

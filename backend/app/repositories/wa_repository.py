@@ -205,7 +205,59 @@ class WARepository:
             logger.error("wa_message_create_failed", error=str(e))
             raise
 
+    async def update_message_status(
+        self,
+        whatsapp_message_id: str,
+        status: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Update message status by WhatsApp message ID (for delivery/read callbacks)"""
+        try:
+            result = self.client.table('wa_messages')\
+                .update({'status': status})\
+                .eq('whatsapp_message_id', whatsapp_message_id)\
+                .execute()
+            return result.data[0] if result.data else None
+        except APIError as e:
+            logger.warning("wa_message_status_update_failed", wa_msg_id=whatsapp_message_id, error=str(e))
+            return None
+
+    async def increment_unread(self, conversation_id: UUID) -> None:
+        """Increment unread_count for a conversation"""
+        try:
+            conv = self.client.table('wa_conversations')\
+                .select('unread_count')\
+                .eq('id', str(conversation_id))\
+                .limit(1)\
+                .execute()
+            current = conv.data[0]['unread_count'] if conv.data else 0
+            self.client.table('wa_conversations')\
+                .update({'unread_count': current + 1})\
+                .eq('id', str(conversation_id))\
+                .execute()
+        except APIError as e:
+            logger.warning("wa_increment_unread_failed", error=str(e))
+
     # === Templates ===
+
+    # === Notification Rules ===
+
+    async def get_notification_rules(
+        self,
+        tenant_id: UUID,
+        event_type: str,
+    ) -> List[Dict[str, Any]]:
+        """Get active notification rules for a given event type"""
+        try:
+            result = self.client.table('wa_notification_rules')\
+                .select('*')\
+                .eq('tenant_id', str(tenant_id))\
+                .eq('event_type', event_type)\
+                .eq('is_active', True)\
+                .execute()
+            return result.data if result.data else []
+        except APIError as e:
+            logger.warning("wa_notification_rules_failed", event_type=event_type, error=str(e))
+            return []
 
     async def list_templates(
         self, tenant_id: UUID
@@ -222,6 +274,282 @@ class WARepository:
         except APIError as e:
             logger.error("wa_templates_list_failed", error=str(e))
             raise
+
+    # === Staff Phones ===
+
+    async def get_staff_by_phone(
+        self, tenant_id: UUID, phone: str
+    ) -> Optional[Dict[str, Any]]:
+        """Get active staff record by phone number"""
+        try:
+            result = self.client.table('wa_staff_phones')\
+                .select('*')\
+                .eq('tenant_id', str(tenant_id))\
+                .eq('phone', phone)\
+                .eq('is_active', True)\
+                .limit(1)\
+                .execute()
+            return result.data[0] if result.data else None
+        except APIError as e:
+            logger.warning("wa_staff_by_phone_failed", phone=phone, error=str(e))
+            return None
+
+    async def list_staff_phones(
+        self, tenant_id: UUID
+    ) -> List[Dict[str, Any]]:
+        """List all staff phones for a tenant"""
+        try:
+            result = self.client.table('wa_staff_phones')\
+                .select('*')\
+                .eq('tenant_id', str(tenant_id))\
+                .order('created_at', desc=True)\
+                .execute()
+            return result.data if result.data else []
+        except APIError as e:
+            logger.error("wa_staff_phones_list_failed", error=str(e))
+            raise
+
+    async def create_staff_phone(
+        self, tenant_id: UUID, phone: str, display_name: str,
+        user_id: Optional[UUID] = None, role: str = 'asistente'
+    ) -> Dict[str, Any]:
+        """Register a staff phone number"""
+        try:
+            data: Dict[str, Any] = {
+                'tenant_id': str(tenant_id),
+                'phone': phone,
+                'display_name': display_name,
+                'role': role,
+            }
+            if user_id:
+                data['user_id'] = str(user_id)
+            result = self.client.table('wa_staff_phones').insert(data).execute()
+            return result.data[0]
+        except APIError as e:
+            logger.error("wa_staff_phone_create_failed", error=str(e))
+            raise
+
+    async def update_staff_phone(
+        self, staff_id: UUID, updates: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """Update a staff phone record"""
+        try:
+            result = self.client.table('wa_staff_phones')\
+                .update(updates)\
+                .eq('id', str(staff_id))\
+                .execute()
+            return result.data[0] if result.data else None
+        except APIError as e:
+            logger.error("wa_staff_phone_update_failed", error=str(e))
+            raise
+
+    async def delete_staff_phone(self, staff_id: UUID) -> bool:
+        """Delete a staff phone record"""
+        try:
+            self.client.table('wa_staff_phones')\
+                .delete()\
+                .eq('id', str(staff_id))\
+                .execute()
+            return True
+        except APIError as e:
+            logger.error("wa_staff_phone_delete_failed", error=str(e))
+            return False
+
+    async def update_staff_session(
+        self, tenant_id: UUID, phone: str, session_state: Dict[str, Any]
+    ) -> None:
+        """Update the session_state JSONB for a staff phone"""
+        try:
+            self.client.table('wa_staff_phones')\
+                .update({'session_state': session_state})\
+                .eq('tenant_id', str(tenant_id))\
+                .eq('phone', phone)\
+                .execute()
+        except APIError as e:
+            logger.warning("wa_staff_session_update_failed", error=str(e))
+
+    # === Command Log ===
+
+    async def log_command(
+        self, tenant_id: UUID, staff_phone: str,
+        command: str, user_id: Optional[UUID] = None,
+        payload: Optional[Dict[str, Any]] = None,
+        result: Optional[str] = None,
+        response_preview: Optional[str] = None,
+    ) -> None:
+        """Log a staff command execution"""
+        try:
+            data: Dict[str, Any] = {
+                'tenant_id': str(tenant_id),
+                'staff_phone': staff_phone,
+                'command': command,
+            }
+            if user_id:
+                data['user_id'] = str(user_id)
+            if payload:
+                data['payload'] = payload
+            if result:
+                data['result'] = result
+            if response_preview:
+                data['response_preview'] = response_preview[:200]
+            self.client.table('wa_command_log').insert(data).execute()
+        except APIError as e:
+            logger.warning("wa_command_log_failed", error=str(e))
+
+    async def list_command_log(
+        self, tenant_id: UUID, limit: int = 50, offset: int = 0,
+        staff_phone: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """List command log entries"""
+        try:
+            query = self.client.table('wa_command_log')\
+                .select('*')\
+                .eq('tenant_id', str(tenant_id))
+            if staff_phone:
+                query = query.eq('staff_phone', staff_phone)
+            result = query\
+                .order('created_at', desc=True)\
+                .range(offset, offset + limit - 1)\
+                .execute()
+            return result.data if result.data else []
+        except APIError as e:
+            logger.error("wa_command_log_list_failed", error=str(e))
+            raise
+
+    # === Notification Rules CRUD ===
+
+    async def list_notification_rules(
+        self, tenant_id: UUID
+    ) -> List[Dict[str, Any]]:
+        """List all notification rules for a tenant"""
+        try:
+            result = self.client.table('wa_notification_rules')\
+                .select('*')\
+                .eq('tenant_id', str(tenant_id))\
+                .order('created_at', desc=True)\
+                .execute()
+            return result.data if result.data else []
+        except APIError as e:
+            logger.error("wa_notification_rules_list_failed", error=str(e))
+            raise
+
+    async def create_notification_rule(
+        self, tenant_id: UUID, event_type: str,
+        is_active: bool = True, notify_staff: bool = False,
+        template_id: Optional[UUID] = None,
+        message_text: Optional[str] = None,
+        conditions: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Create a notification rule"""
+        try:
+            data: Dict[str, Any] = {
+                'tenant_id': str(tenant_id),
+                'event_type': event_type,
+                'is_active': is_active,
+                'notify_staff': notify_staff,
+            }
+            if template_id:
+                data['template_id'] = str(template_id)
+            if message_text:
+                data['message_text'] = message_text
+            if conditions:
+                data['conditions'] = conditions
+            result = self.client.table('wa_notification_rules').insert(data).execute()
+            return result.data[0]
+        except APIError as e:
+            logger.error("wa_notification_rule_create_failed", error=str(e))
+            raise
+
+    async def update_notification_rule(
+        self, rule_id: UUID, updates: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """Update a notification rule"""
+        try:
+            result = self.client.table('wa_notification_rules')\
+                .update(updates)\
+                .eq('id', str(rule_id))\
+                .execute()
+            return result.data[0] if result.data else None
+        except APIError as e:
+            logger.error("wa_notification_rule_update_failed", error=str(e))
+            raise
+
+    async def delete_notification_rule(self, rule_id: UUID) -> bool:
+        """Delete a notification rule"""
+        try:
+            self.client.table('wa_notification_rules')\
+                .delete()\
+                .eq('id', str(rule_id))\
+                .execute()
+            return True
+        except APIError as e:
+            logger.error("wa_notification_rule_delete_failed", error=str(e))
+            return False
+
+    # === Phone-Tenant Map (Multi-tenant routing) ===
+
+    async def get_tenant_by_phone_number_id(self, phone_number_id: str) -> Optional[str]:
+        """Buscar tenant_id en wa_phone_tenant_map por phone_number_id de Meta"""
+        try:
+            result = self.client.table('wa_phone_tenant_map')\
+                .select('tenant_id')\
+                .eq('phone_number_id', phone_number_id)\
+                .maybe_single()\
+                .execute()
+            return result.data['tenant_id'] if result.data else None
+        except APIError as e:
+            logger.warning("wa_phone_tenant_map_lookup_failed", phone_number_id=phone_number_id, error=str(e))
+            return None
+
+    async def list_phone_tenant_map(self) -> List[Dict[str, Any]]:
+        """List all phone-tenant mappings"""
+        try:
+            result = self.client.table('wa_phone_tenant_map')\
+                .select('*')\
+                .order('created_at', desc=True)\
+                .execute()
+            return result.data if result.data else []
+        except APIError as e:
+            logger.error("wa_phone_tenant_map_list_failed", error=str(e))
+            raise
+
+    async def create_phone_tenant_map(
+        self, phone_number_id: str, tenant_id: str
+    ) -> Dict[str, Any]:
+        """Create a phone_number_id → tenant_id mapping"""
+        try:
+            result = self.client.table('wa_phone_tenant_map').insert({
+                'phone_number_id': phone_number_id,
+                'tenant_id': tenant_id,
+            }).execute()
+            return result.data[0]
+        except APIError as e:
+            logger.error("wa_phone_tenant_map_create_failed", error=str(e))
+            raise
+
+    async def delete_phone_tenant_map(self, map_id: UUID) -> bool:
+        """Delete a phone-tenant mapping"""
+        try:
+            self.client.table('wa_phone_tenant_map')\
+                .delete()\
+                .eq('id', str(map_id))\
+                .execute()
+            return True
+        except APIError as e:
+            logger.error("wa_phone_tenant_map_delete_failed", error=str(e))
+            return False
+
+    # === Message Media Update ===
+
+    async def update_message_media(self, message_id: UUID, media_path: str):
+        """Update a message record with the stored media path"""
+        try:
+            self.client.table('wa_messages')\
+                .update({'media_url': media_path})\
+                .eq('id', str(message_id))\
+                .execute()
+        except APIError as e:
+            logger.warning("wa_message_media_update_failed", message_id=str(message_id), error=str(e))
 
 
 # Singleton

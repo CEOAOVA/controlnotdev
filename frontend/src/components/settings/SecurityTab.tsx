@@ -9,9 +9,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { useToast } from '@/hooks';
+import { useAuth, useToast } from '@/hooks';
 
 export function SecurityTab() {
+  const { updatePassword } = useAuth();
   const toast = useToast();
 
   const [isChangingPassword, setIsChangingPassword] = useState(false);
@@ -67,8 +68,7 @@ export function SecurityTab() {
 
     try {
       setIsSaving(true);
-      // TODO: Implement password change API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await updatePassword(passwords.new);
 
       toast.success('Contraseña actualizada exitosamente');
       setPasswords({ current: '', new: '', confirm: '' });

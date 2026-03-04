@@ -5,9 +5,10 @@
  */
 
 import { useState, useEffect, useMemo } from 'react';
-import { ArrowRight, ArrowLeft, PlayCircle, RotateCcw } from 'lucide-react';
+import { ArrowRight, ArrowLeft, PlayCircle, RotateCcw, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 
 // Layout
@@ -45,7 +46,7 @@ export function ProcessPage() {
   const { getTotalFilesCount, areAllCategoriesPopulated } = useCategories();
 
   // Stores
-  const { extractedData, editedData, reset, processingStep, documentType } = useDocumentStore();
+  const { extractedData, editedData, reset, processingStep, documentType, validationReport } = useDocumentStore();
   const { selectedTemplate } = useTemplateStore();
   const { clearAll } = useCategoryStore();
   const { fields: fieldMetadata } = useFieldMetadata(documentType);
@@ -237,6 +238,24 @@ export function ProcessPage() {
           {/* STEP 2: EDIT */}
           {currentStep === 'edit' && (
             <>
+              {/* Auto-approval badge */}
+              {validationReport?.auto_approved && (
+                <div className="flex items-center gap-3 p-4 bg-green-50 border border-green-200 rounded-lg">
+                  <ShieldCheck className="w-6 h-6 text-green-600 flex-shrink-0" />
+                  <div className="flex-1">
+                    <p className="font-medium text-green-900">
+                      Datos auto-aprobados
+                    </p>
+                    <p className="text-sm text-green-700">
+                      Confianza general: {Math.round((validationReport.overall_confidence || 0) * 100)}% — Los datos cumplen el umbral de calidad para aprobacion automatica.
+                    </p>
+                  </div>
+                  <Badge className="bg-green-600 text-white">
+                    Auto-aprobado
+                  </Badge>
+                </div>
+              )}
+
               <Card className="p-4 sm:p-6">
                 <DataEditor />
               </Card>

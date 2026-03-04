@@ -322,8 +322,35 @@ export const useAuthStore = create<AuthState>()(
         // Create user profile in database
         createProfile: async (userId: string, email: string, fullName: string) => {
           try {
-            // TODO: Get or create tenant_id
-            const tenantId = 'default-tenant'; // Replace with actual tenant creation logic
+            // Look up existing tenant or create one for the new user
+            let tenantId: string;
+
+            // Check if there's an existing tenant (e.g., invited user)
+            const { data: existingTenant } = await supabase
+              .from('tenants')
+              .select('id')
+              .limit(1)
+              .single();
+
+            if (existingTenant?.id) {
+              tenantId = existingTenant.id;
+            } else {
+              // Create a new tenant for this user
+              const { data: newTenant, error: tenantError } = await supabase
+                .from('tenants')
+                .insert({
+                  nombre: `Notaría de ${fullName}`,
+                  rfc: 'PENDIENTE',
+                  estado: 'PENDIENTE',
+                })
+                .select('id')
+                .single();
+
+              if (tenantError || !newTenant) {
+                throw new Error(`Error al crear notaría: ${tenantError?.message || 'Sin respuesta'}`);
+              }
+              tenantId = newTenant.id;
+            }
 
             const { error } = await supabase.from('users').insert({
               id: userId,

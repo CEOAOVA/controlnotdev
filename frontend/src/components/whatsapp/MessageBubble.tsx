@@ -1,10 +1,10 @@
 /**
  * MessageBubble
- * Chat message bubble component
+ * Chat message bubble component with media support
  */
 
 import { cn } from '@/lib/utils';
-import { Check, CheckCheck } from 'lucide-react';
+import { Check, CheckCheck, FileText } from 'lucide-react';
 import type { WAMessage } from '@/api/types/whatsapp-types';
 
 interface MessageBubbleProps {
@@ -20,6 +20,45 @@ function formatTime(dateStr: string): string {
 
 export function MessageBubble({ message }: MessageBubbleProps) {
   const isOutgoing = message.sender_type === 'agent' || message.sender_type === 'system';
+
+  const renderContent = () => {
+    if (message.message_type === 'image' && message.media_url) {
+      return (
+        <div className="space-y-1">
+          <a href={message.media_url} target="_blank" rel="noopener noreferrer">
+            <img
+              src={message.media_url}
+              alt="Imagen"
+              className="max-w-full rounded-md cursor-pointer hover:opacity-90 transition-opacity"
+              style={{ maxHeight: 300 }}
+            />
+          </a>
+          {message.content && (
+            <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+          )}
+        </div>
+      );
+    }
+
+    if (message.message_type === 'document') {
+      const filename = message.content || 'Documento';
+      return (
+        <a
+          href={message.media_url || '#'}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-2 p-2 rounded bg-white/50 hover:bg-white/80 transition-colors"
+        >
+          <FileText className="w-5 h-5 text-blue-600 shrink-0" />
+          <span className="text-sm text-blue-700 underline truncate">{filename}</span>
+        </a>
+      );
+    }
+
+    return (
+      <p className="text-sm whitespace-pre-wrap">{message.content || '[Media]'}</p>
+    );
+  };
 
   return (
     <div className={cn('flex', isOutgoing ? 'justify-end' : 'justify-start')}>
@@ -37,7 +76,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         )}
 
         {/* Content */}
-        <p className="text-sm whitespace-pre-wrap">{message.content || '[Media]'}</p>
+        {renderContent()}
 
         {/* Timestamp + Status */}
         <div className={cn('flex items-center gap-1 justify-end')}>

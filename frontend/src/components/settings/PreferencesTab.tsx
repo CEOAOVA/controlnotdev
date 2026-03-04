@@ -3,7 +3,7 @@
  * System preferences and customization
  */
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Save, X, Globe, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -15,24 +15,45 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useToast } from '@/hooks';
+import { notaryProfileApi } from '@/api/endpoints/notary-profile';
+
+const DEFAULTS = {
+  language: 'es',
+  timezone: 'America/Mexico_City',
+  dateFormat: 'DD/MM/YYYY',
+  timeFormat: '24h',
+};
 
 export function PreferencesTab() {
   const toast = useToast();
 
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [formData, setFormData] = useState({
-    language: 'es',
-    timezone: 'America/Mexico_City',
-    dateFormat: 'DD/MM/YYYY',
-    timeFormat: '24h',
-  });
+  const savedDataRef = useRef(DEFAULTS);
+  const [formData, setFormData] = useState({ ...DEFAULTS });
+
+  // Load preferences on mount
+  useEffect(() => {
+    const loadPreferences = async () => {
+      try {
+        const profile = await notaryProfileApi.getProfile();
+        if (profile.preferences) {
+          const loaded = { ...DEFAULTS, ...profile.preferences };
+          setFormData(loaded);
+          savedDataRef.current = loaded;
+        }
+      } catch (err) {
+        console.error('Error loading preferences:', err);
+      }
+    };
+    loadPreferences();
+  }, []);
 
   const handleSave = async () => {
     try {
       setIsSaving(true);
-      // TODO: Implement preferences update API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await notaryProfileApi.updateProfile({ preferences: formData } as any);
+      savedDataRef.current = { ...formData };
 
       toast.success('Preferencias actualizadas');
       setIsEditing(false);
@@ -44,12 +65,7 @@ export function PreferencesTab() {
   };
 
   const handleCancel = () => {
-    setFormData({
-      language: 'es',
-      timezone: 'America/Mexico_City',
-      dateFormat: 'DD/MM/YYYY',
-      timeFormat: '24h',
-    });
+    setFormData({ ...savedDataRef.current });
     setIsEditing(false);
   };
 

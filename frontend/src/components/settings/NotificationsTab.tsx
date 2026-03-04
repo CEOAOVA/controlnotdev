@@ -3,12 +3,13 @@
  * Email and notification preferences
  */
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Save, X, Mail, Bell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks';
+import { notaryProfileApi } from '@/api/endpoints/notary-profile';
 
 interface NotificationSettings {
   emailNotifications: boolean;
@@ -20,26 +21,46 @@ interface NotificationSettings {
   monthlyReport: boolean;
 }
 
+const DEFAULTS: NotificationSettings = {
+  emailNotifications: true,
+  documentGenerated: true,
+  documentShared: true,
+  systemUpdates: false,
+  securityAlerts: true,
+  weeklyReport: false,
+  monthlyReport: true,
+};
+
 export function NotificationsTab() {
   const toast = useToast();
 
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [settings, setSettings] = useState<NotificationSettings>({
-    emailNotifications: true,
-    documentGenerated: true,
-    documentShared: true,
-    systemUpdates: false,
-    securityAlerts: true,
-    weeklyReport: false,
-    monthlyReport: true,
-  });
+  const savedSettingsRef = useRef<NotificationSettings>(DEFAULTS);
+  const [settings, setSettings] = useState<NotificationSettings>({ ...DEFAULTS });
+
+  // Load notification settings on mount
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const profile = await notaryProfileApi.getProfile();
+        if (profile.notifications) {
+          const loaded = { ...DEFAULTS, ...profile.notifications } as NotificationSettings;
+          setSettings(loaded);
+          savedSettingsRef.current = loaded;
+        }
+      } catch (err) {
+        console.error('Error loading notification settings:', err);
+      }
+    };
+    loadSettings();
+  }, []);
 
   const handleSave = async () => {
     try {
       setIsSaving(true);
-      // TODO: Implement notification settings update API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await notaryProfileApi.updateProfile({ notifications: settings } as any);
+      savedSettingsRef.current = { ...settings };
 
       toast.success('Preferencias de notificaciones actualizadas');
       setIsEditing(false);
@@ -51,15 +72,7 @@ export function NotificationsTab() {
   };
 
   const handleCancel = () => {
-    setSettings({
-      emailNotifications: true,
-      documentGenerated: true,
-      documentShared: true,
-      systemUpdates: false,
-      securityAlerts: true,
-      weeklyReport: false,
-      monthlyReport: true,
-    });
+    setSettings({ ...savedSettingsRef.current });
     setIsEditing(false);
   };
 

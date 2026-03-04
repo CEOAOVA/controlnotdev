@@ -124,4 +124,24 @@ export const templatesApi = {
     );
     return data;
   },
+
+  /**
+   * GET /templates/{templateId}/download
+   * Download template .docx file
+   */
+  download: async (templateId: string): Promise<Blob> => {
+    const { data } = await apiClient.get(`/templates/${templateId}/download`, {
+      responseType: 'blob',
+    });
+    return data;
+  },
+
+  /**
+   * POST /templates/{templateId}/duplicate
+   * Duplicate a template
+   */
+  duplicate: async (templateId: string): Promise<{ template_id: string; template_name: string; message: string }> => {
+    const { data } = await apiClient.post(`/templates/${templateId}/duplicate`);
+    return data;
+  },
 };

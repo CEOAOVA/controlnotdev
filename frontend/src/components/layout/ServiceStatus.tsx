@@ -13,6 +13,7 @@
 import React, { useEffect, useState } from 'react';
 import { StatusPillWithIcon, StatusVariant } from '@/components/shared/StatusPill';
 import { Card } from '@/components/ui/card';
+import { env } from '@/config/env';
 
 interface Service {
   name: string;
@@ -65,42 +66,58 @@ export const ServiceStatus: React.FC = () => {
     try {
       setIsLoading(true);
 
-      // TODO: Replace with actual health check API call
-      // const response = await fetch('/api/health');
-      // const data = await response.json();
+      const response = await fetch(`${env.apiUrl}/api/health`);
+      const data = await response.json();
 
-      // Mock data for now - replace with real API
-      const mockData: ServiceStatusResponse = {
+      // Map backend response to frontend ServiceStatusResponse
+      // Backend returns: { status, version, services: { openrouter/openai, google_vision, google_drive, smtp } }
+      const svcMap = data.services || {};
+
+      const mapStatus = (key: string): Service['status'] => {
+        const val = svcMap[key];
+        if (val === 'ok') return 'healthy';
+        if (val === 'not_configured') return 'degraded';
+        if (val === 'error') return 'down';
+        return 'unknown';
+      };
+
+      // Determine AI provider name
+      const aiKey = svcMap.openrouter !== undefined ? 'openrouter' : 'openai';
+      const aiName = aiKey === 'openrouter' ? 'OpenRouter AI' : 'OpenAI GPT-4';
+
+      const mapped: ServiceStatusResponse = {
         vision: {
           name: 'Google Vision API',
-          status: 'healthy',
+          status: mapStatus('google_vision'),
+          message: svcMap.google_vision === 'not_configured' ? 'No configurado' : undefined,
         },
         drive: {
           name: 'Google Drive',
-          status: 'degraded',
-          message: 'Limitado',
+          status: mapStatus('google_drive'),
+          message: svcMap.google_drive === 'not_configured' ? 'No configurado' : undefined,
         },
         ai: {
-          name: 'OpenAI GPT-4',
-          status: 'healthy',
+          name: aiName,
+          status: mapStatus(aiKey),
+          message: svcMap[aiKey] === 'not_configured' ? 'No configurado' : undefined,
         },
         supabase: {
-          name: 'Supabase',
-          status: 'healthy',
+          name: 'Email SMTP',
+          status: mapStatus('smtp'),
+          message: svcMap.smtp === 'not_configured' ? 'No configurado' : undefined,
         },
       };
 
-      setServices(mockData);
+      setServices(mapped);
       setLastUpdate(new Date());
     } catch (error) {
       console.error('Error checking service status:', error);
 
-      // Set all services to unknown on error
       setServices({
         vision: { name: 'Google Vision API', status: 'down' },
         drive: { name: 'Google Drive', status: 'down' },
-        ai: { name: 'OpenAI GPT-4', status: 'down' },
-        supabase: { name: 'Supabase', status: 'down' },
+        ai: { name: 'AI Provider', status: 'down' },
+        supabase: { name: 'Email SMTP', status: 'down' },
       });
     } finally {
       setIsLoading(false);

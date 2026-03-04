@@ -546,6 +546,75 @@ class SupabaseStorageService:
             )
             raise
 
+    # ==========================================
+    # MÉTODOS PARA WHATSAPP MEDIA
+    # ==========================================
+
+    async def store_whatsapp_media(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        msg_id: str,
+        content: bytes,
+        mime_type: str,
+    ) -> str:
+        """
+        Almacena media recibido por WhatsApp en Supabase Storage.
+
+        Path: documentos/{tenant_id}/whatsapp/{conversation_id}/{msg_id}.{ext}
+
+        Returns:
+            str: Storage path del archivo guardado
+        """
+        ext_map = {
+            'image/jpeg': '.jpg',
+            'image/png': '.png',
+            'image/webp': '.webp',
+            'application/pdf': '.pdf',
+            'audio/ogg': '.ogg',
+            'audio/ogg; codecs=opus': '.ogg',
+            'audio/mpeg': '.mp3',
+            'video/mp4': '.mp4',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
+        }
+        ext = ext_map.get(mime_type, '.bin')
+        path = f"{tenant_id}/whatsapp/{conversation_id}/{msg_id}{ext}"
+
+        start_time = time.time()
+        logger.debug(
+            "storage_store_wa_media_starting",
+            tenant_id=tenant_id,
+            path=path,
+            mime_type=mime_type,
+            size_bytes=len(content),
+        )
+
+        try:
+            self.admin_client.storage.from_(self.DOCUMENTS_BUCKET).upload(
+                path, content, {'content-type': mime_type}
+            )
+            duration_ms = (time.time() - start_time) * 1000
+
+            logger.info(
+                "storage_store_wa_media_complete",
+                path=path,
+                size_bytes=len(content),
+                duration_ms=round(duration_ms, 2),
+            )
+            return path
+
+        except Exception as e:
+            duration_ms = (time.time() - start_time) * 1000
+            logger.error(
+                "storage_store_wa_media_failed",
+                path=path,
+                error=str(e),
+                error_type=type(e).__name__,
+                duration_ms=round(duration_ms, 2),
+            )
+            raise
+
     async def delete_document(self, path: str) -> bool:
         """
         Elimina un documento de Supabase Storage

@@ -67,6 +67,16 @@ export interface ValidationReport {
   invalid_fields: number;
   overall_confidence: number;  // 0.0 - 1.0 (average)
   field_validations: FieldValidation[];
+  // Weighted confidence scoring (from calculate_weighted_confidence)
+  filled_fields?: number;
+  auto_approved?: boolean;
+  breakdown?: {
+    completeness: number;
+    format: number;
+    consistency: number;
+    llm_confidence: number;
+  };
+  per_field?: Record<string, { confidence: number; status: string; issues: string[] }>;
 }
 
 // ============================================

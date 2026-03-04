@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { useAuth, useToast } from '@/hooks';
 
 export function ProfileTab() {
-  const { userName, userEmail } = useAuth();
+  const { userName, userEmail, updateProfile } = useAuth();
   const toast = useToast();
 
   const [isEditing, setIsEditing] = useState(false);
@@ -35,8 +35,10 @@ export function ProfileTab() {
   const handleSave = async () => {
     try {
       setIsSaving(true);
-      // TODO: Implement profile update API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await updateProfile({
+        full_name: formData.name,
+        email: formData.email,
+      } as any);
 
       toast.success('Perfil actualizado exitosamente');
       setIsEditing(false);

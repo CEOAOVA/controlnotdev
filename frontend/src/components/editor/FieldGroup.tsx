@@ -3,6 +3,7 @@
  * Group of related form fields with label, input, and validation
  */
 
+import { useState, useCallback } from 'react';
 import { HelpCircle, Info, AlertTriangle, XCircle, CheckCircle2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -24,6 +25,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { getFieldValidator } from '@/lib/validators';
 
 interface FieldGroupProps {
   fieldName: string;
@@ -98,6 +100,23 @@ export function FieldGroup({
   validationIssues,
 }: FieldGroupProps) {
   const displayValue = value?.toString() || '';
+
+  // Real-time frontend validation for RFC, CURP, dates, etc.
+  const [localError, setLocalError] = useState<string | undefined>();
+  const validator = getFieldValidator(fieldName);
+
+  const handleChange = useCallback((newValue: string) => {
+    onChange(newValue);
+    if (validator && newValue) {
+      const result = validator(newValue);
+      setLocalError(result.valid ? undefined : result.message);
+    } else {
+      setLocalError(undefined);
+    }
+  }, [onChange, validator]);
+
+  // Combine backend validation error with local validation
+  const displayError = error || localError;
 
   // Mensaje para campos opcionales
   const optionalTooltip = source === 'boleta_rpp'
@@ -206,12 +225,12 @@ export function FieldGroup({
         <Textarea
           id={fieldName}
           value={displayValue}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => handleChange(e.target.value)}
           placeholder={placeholder || `Ingresa ${label.toLowerCase()}`}
           rows={3}
           className={cn(
-            error && 'border-destructive focus-visible:ring-destructive',
-            !error && getInputBorderClass(validationStatus)
+            displayError && 'border-destructive focus-visible:ring-destructive',
+            !displayError && getInputBorderClass(validationStatus)
           )}
         />
       ) : (
@@ -219,22 +238,22 @@ export function FieldGroup({
           id={fieldName}
           type={type}
           value={displayValue}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => handleChange(e.target.value)}
           placeholder={placeholder || `Ingresa ${label.toLowerCase()}`}
           className={cn(
-            error && 'border-destructive focus-visible:ring-destructive',
-            !error && getInputBorderClass(validationStatus)
+            displayError && 'border-destructive focus-visible:ring-destructive',
+            !displayError && getInputBorderClass(validationStatus)
           )}
         />
       )}
 
       {/* Error message */}
-      {error && (
-        <p className="text-sm text-destructive">{error}</p>
+      {displayError && (
+        <p className="text-sm text-destructive">{displayError}</p>
       )}
 
       {/* Helper text */}
-      {!error && description && (
+      {!displayError && description && (
         <p className="text-xs text-muted-foreground line-clamp-1">
           {description}
         </p>

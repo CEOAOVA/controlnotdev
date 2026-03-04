@@ -29,6 +29,10 @@ class NotaryProfileResponse(BaseModel):
     notario_completo: Optional[str] = Field(None, description="Título + Nombre del notario")
     lugar_instrumento: Optional[str] = Field(None, description="Ciudad, Estado para el instrumento")
 
+    # User preferences
+    preferences: Optional[dict] = Field(None, description="User preferences (language, timezone, etc.)")
+    notifications: Optional[dict] = Field(None, description="Notification settings")
+
     class Config:
         from_attributes = True
 
@@ -43,6 +47,9 @@ class NotaryProfileUpdate(BaseModel):
     ciudad: Optional[str] = Field(None, description="Ciudad")
     estado: Optional[str] = Field(None, description="Estado")
     direccion: Optional[str] = Field(None, description="Dirección completa")
+    # Preferences (stored as JSONB in tenants.preferences column)
+    preferences: Optional[dict] = Field(None, description="User preferences (language, timezone, etc.)")
+    notifications: Optional[dict] = Field(None, description="Notification settings")
 
 
 class IncrementInstrumentResponse(BaseModel):

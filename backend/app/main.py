@@ -22,6 +22,8 @@ import time
 import uuid
 import logging
 
+from collections import defaultdict
+
 from app.core.config import settings
 from app.api.router import api_router
 from app.middleware.audit import audit_middleware
@@ -140,6 +142,18 @@ app = FastAPI(
 )
 
 
+# In-memory rate limiter (per IP, per route)
+_rate_limit_buckets: dict = defaultdict(list)
+
+# Rate limits: path prefix → max requests per 60s window
+RATE_LIMIT_RULES: dict[str, int] = {
+    "/api/extraction/ocr": 10,
+    "/api/extraction/vision": 10,
+    "/api/extraction/ai": 20,
+    "/whatsapp/send-template": 20,
+    "/whatsapp/send": 30,
+}
+
 # CORS Middleware
 # Permitir requests desde el frontend
 app.add_middleware(
@@ -154,6 +168,38 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+
+# Middleware para rate limiting en endpoints costosos
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    """Simple in-memory rate limiter for expensive endpoints (per IP, 60s window)"""
+    if request.method == "POST":
+        path = request.url.path
+        for rule_path, max_requests in RATE_LIMIT_RULES.items():
+            if path.startswith(rule_path):
+                client_ip = request.client.host if request.client else "unknown"
+                bucket_key = f"{client_ip}:{rule_path}"
+                now = time.time()
+                # Prune old entries (older than 60s)
+                _rate_limit_buckets[bucket_key] = [
+                    t for t in _rate_limit_buckets[bucket_key] if now - t < 60
+                ]
+                if len(_rate_limit_buckets[bucket_key]) >= max_requests:
+                    return JSONResponse(
+                        status_code=429,
+                        content={
+                            "success": False,
+                            "error": "Rate limit exceeded",
+                            "detail": f"Demasiadas solicitudes. Límite: {max_requests}/minuto",
+                            "error_code": "RATE_LIMIT_EXCEEDED",
+                            "status_code": 429,
+                        }
+                    )
+                _rate_limit_buckets[bucket_key].append(now)
+                break
+    return await call_next(request)
 
 
 # Middleware para logging de requests (con filtrado inteligente)

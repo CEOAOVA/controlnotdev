@@ -11,9 +11,10 @@ Rutas:
 import time
 from typing import List, Optional
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 import structlog
 import uuid
+import io
 
 from app.schemas import (
     TemplateUploadResponse,
@@ -662,6 +663,176 @@ async def delete_template(
             status_code=500,
             detail=f"Error al eliminar template: {str(e)}"
         )
+
+
+# ============================================================
+# DOWNLOAD & DUPLICATE
+# ============================================================
+
+@router.get("/{template_id}/download")
+async def download_template(
+    template_id: str,
+    tenant_id: str = Depends(get_user_tenant_id),
+    supabase_storage: SupabaseStorageService = Depends(get_supabase_storage)
+):
+    """
+    Descarga el archivo .docx de un template
+
+    Returns:
+        StreamingResponse con el archivo .docx
+    """
+    logger.info("download_template_starting", template_id=template_id, tenant_id=tenant_id)
+
+    try:
+        # Get template record
+        template_result = supabase_admin.table('templates').select(
+            'id, nombre, storage_path, active_version_id, tenant_id'
+        ).eq('id', template_id).single().execute()
+
+        if not template_result.data:
+            raise HTTPException(status_code=404, detail="Template no encontrado")
+
+        template = template_result.data
+
+        # Get storage path from active version or template itself
+        storage_path = None
+        if template.get('active_version_id'):
+            version_result = supabase_admin.table('template_versions').select(
+                'storage_path'
+            ).eq('id', template['active_version_id']).single().execute()
+            if version_result.data:
+                storage_path = version_result.data.get('storage_path')
+
+        if not storage_path:
+            storage_path = template.get('storage_path')
+
+        if not storage_path:
+            raise HTTPException(status_code=404, detail="Archivo del template no encontrado en storage")
+
+        # Download from storage
+        content = supabase_storage.client.storage.from_(
+            supabase_storage.TEMPLATES_BUCKET
+        ).download(storage_path)
+
+        filename = template.get('nombre', f'template_{template_id}.docx')
+
+        logger.info("download_template_complete", template_id=template_id, size_bytes=len(content))
+
+        return StreamingResponse(
+            io.BytesIO(content),
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("download_template_failed", template_id=template_id, error=str(e))
+        raise HTTPException(status_code=500, detail=f"Error al descargar template: {str(e)}")
+
+
+@router.post("/{template_id}/duplicate")
+async def duplicate_template(
+    template_id: str,
+    tenant_id: str = Depends(get_user_tenant_id),
+    supabase_storage: SupabaseStorageService = Depends(get_supabase_storage)
+):
+    """
+    Duplica un template existente con un nuevo nombre
+
+    Creates a copy of the template record and its active version file.
+    """
+    logger.info("duplicate_template_starting", template_id=template_id, tenant_id=tenant_id)
+
+    try:
+        # Get original template
+        template_result = supabase_admin.table('templates').select('*').eq(
+            'id', template_id
+        ).single().execute()
+
+        if not template_result.data:
+            raise HTTPException(status_code=404, detail="Template no encontrado")
+
+        original = template_result.data
+        original_name = original.get('nombre', 'template')
+
+        # Generate copy name
+        base_name = original_name.replace('.docx', '')
+        copy_name = f"{base_name} (copia).docx"
+
+        # Download original file
+        storage_path = None
+        placeholder_mapping = {}
+
+        if original.get('active_version_id'):
+            version_result = supabase_admin.table('template_versions').select(
+                'storage_path, placeholder_mapping'
+            ).eq('id', original['active_version_id']).single().execute()
+            if version_result.data:
+                storage_path = version_result.data.get('storage_path')
+                placeholder_mapping = version_result.data.get('placeholder_mapping', {})
+
+        if not storage_path:
+            storage_path = original.get('storage_path')
+
+        content = None
+        if storage_path:
+            try:
+                content = supabase_storage.client.storage.from_(
+                    supabase_storage.TEMPLATES_BUCKET
+                ).download(storage_path)
+            except Exception as dl_err:
+                logger.warning("duplicate_download_failed", error=str(dl_err))
+
+        # Create new template record
+        new_template = supabase_admin.table('templates').insert({
+            'tenant_id': tenant_id,
+            'tipo_documento': original.get('tipo_documento'),
+            'nombre': copy_name,
+            'storage_path': None,
+            'placeholders': original.get('placeholders', []),
+            'total_placeholders': original.get('total_placeholders', 0),
+        }).execute()
+
+        if not new_template.data:
+            raise HTTPException(status_code=500, detail="Error al crear copia del template")
+
+        new_id = str(new_template.data[0]['id'])
+
+        # Upload file copy and create version if we have the content
+        if content:
+            try:
+                version_service = TemplateVersionService(storage_service=supabase_storage)
+                await version_service.create_version(
+                    template_id=new_id,
+                    content=content,
+                    placeholders=original.get('placeholders', []),
+                    placeholder_mapping=placeholder_mapping,
+                    tenant_id=tenant_id,
+                    notas=f"Copia de {original_name}"
+                )
+            except Exception as ver_err:
+                logger.warning("duplicate_version_create_failed", error=str(ver_err))
+
+        logger.info(
+            "duplicate_template_complete",
+            original_id=template_id,
+            new_id=new_id,
+            copy_name=copy_name
+        )
+
+        return {
+            "template_id": new_id,
+            "template_name": copy_name,
+            "duplicated_from": template_id,
+            "message": f"Template duplicado como '{copy_name}'"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("duplicate_template_failed", template_id=template_id, error=str(e))
+        raise HTTPException(status_code=500, detail=f"Error al duplicar template: {str(e)}")
 
 
 # ============================================================

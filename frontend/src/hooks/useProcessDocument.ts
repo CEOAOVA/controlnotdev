@@ -112,6 +112,9 @@ export function useProcessDocument() {
       if (data.completeness_percent !== undefined) {
         setConfidence(data.completeness_percent / 100);
       }
+      if (data.validation_report) {
+        setValidationReport(data.validation_report);
+      }
       setProcessing(false, 'complete');
     },
     onError: (error: any) => {

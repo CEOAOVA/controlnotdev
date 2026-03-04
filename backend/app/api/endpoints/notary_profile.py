@@ -112,7 +112,9 @@ async def get_notary_profile(
             notario_titulo=tenant.get('notario_titulo', 'Licenciado'),
             ultimo_numero_instrumento=tenant.get('ultimo_numero_instrumento', 0),
             notario_completo=notario_completo,
-            lugar_instrumento=lugar_instrumento
+            lugar_instrumento=lugar_instrumento,
+            preferences=tenant.get('preferences'),
+            notifications=tenant.get('notifications'),
         )
 
     except HTTPException:

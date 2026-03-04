@@ -557,12 +557,130 @@ class ValidationService:
 
         return best_ratio
 
+    @staticmethod
+    def _get_auto_approval_threshold() -> float:
+        """Get the auto-approval threshold from settings, with fallback."""
+        try:
+            from app.core.config import settings
+            return getattr(settings, 'AUTO_APPROVAL_THRESHOLD', 0.85)
+        except Exception:
+            return 0.85
+
     def get_suspicious_fields(self, report: ValidationReport) -> List[str]:
         """Obtiene lista de campos sospechosos para revision manual."""
         return [
             fv.field for fv in report.field_validations
             if fv.status in [ValidationStatus.SUSPICIOUS, ValidationStatus.INVALID]
         ]
+
+    def calculate_weighted_confidence(
+        self,
+        extracted_data: Dict[str, Any],
+        document_type: str,
+        source_text: Optional[str] = None,
+        llm_confidence: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """
+        Calculate weighted confidence score using multi-factor formula:
+        - Completeness (30%): How many required fields are filled
+        - Format (40%): Format validation results
+        - Consistency (20%): Cross-verification with source text
+        - LLM confidence (10%): Model's self-reported confidence
+
+        Returns:
+            Dict with overall score, per-field scores, and breakdown
+        """
+        # Run full validation
+        report = self.validate_extraction(
+            extracted_data, document_type, source_text, strict_mode=False
+        )
+
+        total = max(len(extracted_data), 1)
+
+        # 1. Completeness score (30%)
+        filled_count = sum(
+            1 for v in extracted_data.values()
+            if v and str(v).strip() and not self._is_not_found(str(v))
+        )
+        completeness = filled_count / total
+
+        # 2. Format score (40%) - from validation results
+        format_scores = []
+        for fv in report.field_validations:
+            if fv.status == ValidationStatus.VALID:
+                format_scores.append(1.0)
+            elif fv.status == ValidationStatus.SUSPICIOUS:
+                format_scores.append(0.5)
+            elif fv.status == ValidationStatus.INVALID:
+                format_scores.append(0.0)
+            else:
+                format_scores.append(0.7)  # NOT_VALIDATED = neutral
+        format_score = sum(format_scores) / max(len(format_scores), 1)
+
+        # 3. Consistency score (20%) - cross-verification
+        if source_text:
+            consistent_count = sum(
+                1 for fv in report.field_validations
+                if "no encontrado en texto original" not in " ".join(fv.issues)
+            )
+            consistency = consistent_count / total
+        else:
+            consistency = 0.7  # Without source text, assume moderate consistency
+
+        # 4. LLM confidence (10%)
+        llm_conf = llm_confidence if llm_confidence is not None else 0.8
+
+        # Weighted formula
+        overall = (
+            completeness * 0.30 +
+            format_score * 0.40 +
+            consistency * 0.20 +
+            llm_conf * 0.10
+        )
+
+        # Per-field confidence scores
+        per_field = {}
+        for fv in report.field_validations:
+            per_field[fv.field] = {
+                "confidence": round(fv.confidence, 3),
+                "status": fv.status.value,
+                "issues": fv.issues,
+            }
+
+        result = {
+            "overall_confidence": round(overall, 3),
+            "breakdown": {
+                "completeness": round(completeness, 3),
+                "format": round(format_score, 3),
+                "consistency": round(consistency, 3),
+                "llm_confidence": round(llm_conf, 3),
+            },
+            "weights": {
+                "completeness": 0.30,
+                "format": 0.40,
+                "consistency": 0.20,
+                "llm_confidence": 0.10,
+            },
+            "per_field": per_field,
+            "total_fields": total,
+            "filled_fields": filled_count,
+            "valid_fields": report.valid_fields,
+            "suspicious_fields": report.suspicious_fields,
+            "invalid_fields": report.invalid_fields,
+            "auto_approved": overall >= self._get_auto_approval_threshold(),
+        }
+
+        logger.info(
+            "Weighted confidence calculated",
+            doc_type=document_type,
+            overall=f"{overall:.2%}",
+            completeness=f"{completeness:.2%}",
+            format=f"{format_score:.2%}",
+            consistency=f"{consistency:.2%}",
+            auto_approved=result["auto_approved"],
+        )
+
+        return result
 
     def get_confidence_summary(self, report: ValidationReport) -> Dict:
         """Obtiene resumen de confianza por categoria de campo."""

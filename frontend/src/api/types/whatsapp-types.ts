@@ -61,3 +61,42 @@ export interface WATemplate {
   is_active: boolean;
   created_at: string;
 }
+
+export type StaffRole = 'notario' | 'asistente' | 'abogado' | 'admin';
+
+export interface WAStaffPhone {
+  id: string;
+  tenant_id: string;
+  phone: string;
+  user_id?: string;
+  display_name: string;
+  role: StaffRole;
+  is_active: boolean;
+  session_state?: Record<string, any>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WANotificationRule {
+  id: string;
+  tenant_id: string;
+  event_type: string;
+  template_id?: string;
+  message_text?: string;
+  is_active: boolean;
+  notify_staff: boolean;
+  conditions?: Record<string, any>;
+  created_at: string;
+}
+
+export interface WACommandLog {
+  id: string;
+  tenant_id: string;
+  staff_phone: string;
+  user_id?: string;
+  command: string;
+  payload?: Record<string, any>;
+  result?: string;
+  response_preview?: string;
+  created_at: string;
+}
