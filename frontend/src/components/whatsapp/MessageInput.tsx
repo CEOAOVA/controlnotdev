@@ -6,15 +6,16 @@
 import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Send, Paperclip } from 'lucide-react';
+import { Send, Paperclip, LayoutTemplate } from 'lucide-react';
 
 interface MessageInputProps {
   onSend: (content: string) => Promise<void>;
   onAttachFile?: (file: File) => Promise<void>;
+  onTemplateClick?: () => void;
   disabled?: boolean;
 }
 
-export function MessageInput({ onSend, onAttachFile, disabled }: MessageInputProps) {
+export function MessageInput({ onSend, onAttachFile, onTemplateClick, disabled }: MessageInputProps) {
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -70,6 +71,17 @@ export function MessageInput({ onSend, onAttachFile, disabled }: MessageInputPro
             onChange={handleFileChange}
           />
         </>
+      )}
+      {onTemplateClick && (
+        <Button
+          size="icon"
+          variant="ghost"
+          onClick={onTemplateClick}
+          disabled={disabled || sending}
+          title="Enviar plantilla"
+        >
+          <LayoutTemplate className="w-4 h-4" />
+        </Button>
       )}
       <Input
         value={message}

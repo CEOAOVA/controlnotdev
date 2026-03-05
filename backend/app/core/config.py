@@ -181,11 +181,12 @@ class Settings(BaseSettings):
     # ==========================================
     # WHATSAPP (Meta Cloud API)
     # ==========================================
-    WHATSAPP_API_URL: str = "https://graph.facebook.com/v18.0"
+    WHATSAPP_API_URL: str = "https://graph.facebook.com/v21.0"
     WHATSAPP_PHONE_ID: Optional[str] = None
     WHATSAPP_ACCESS_TOKEN: Optional[str] = None
     WHATSAPP_VERIFY_TOKEN: str = "controlnot_verify"
     WHATSAPP_WEBHOOK_SECRET: Optional[str] = None
+    WHATSAPP_BUSINESS_ACCOUNT_ID: Optional[str] = None  # WABA ID for subscribed_apps
     DEFAULT_TENANT_ID: Optional[str] = None  # For webhook routing (single-tenant MVP)
 
     # ==========================================

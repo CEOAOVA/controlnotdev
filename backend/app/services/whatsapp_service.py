@@ -17,6 +17,7 @@ class WhatsAppService:
         self._phone_id: Optional[str] = None
         self._access_token: Optional[str] = None
         self._verify_token: Optional[str] = None
+        self._waba_id: Optional[str] = None
 
     def _load_config(self):
         """Lazy load config to avoid import-time settings validation"""
@@ -25,15 +26,17 @@ class WhatsAppService:
 
         try:
             from app.core.config import settings
-            self._api_url = getattr(settings, 'WHATSAPP_API_URL', 'https://graph.facebook.com/v18.0')
+            self._api_url = getattr(settings, 'WHATSAPP_API_URL', 'https://graph.facebook.com/v21.0')
             self._phone_id = getattr(settings, 'WHATSAPP_PHONE_ID', '')
             self._access_token = getattr(settings, 'WHATSAPP_ACCESS_TOKEN', '')
             self._verify_token = getattr(settings, 'WHATSAPP_VERIFY_TOKEN', 'controlnot_verify')
+            self._waba_id = getattr(settings, 'WHATSAPP_BUSINESS_ACCOUNT_ID', '')
         except Exception:
-            self._api_url = 'https://graph.facebook.com/v18.0'
+            self._api_url = 'https://graph.facebook.com/v21.0'
             self._phone_id = ''
             self._access_token = ''
             self._verify_token = 'controlnot_verify'
+            self._waba_id = ''
 
     @property
     def _headers(self) -> Dict[str, str]:
@@ -221,6 +224,31 @@ class WhatsAppService:
         except Exception as e:
             logger.error("whatsapp_media_download_failed", media_id=media_id, error=str(e))
             return None
+
+    async def subscribe_waba(self) -> Dict[str, Any]:
+        """Subscribe WABA to webhook so Meta actually sends message events."""
+        self._load_config()
+
+        if not self._waba_id:
+            return {"success": False, "error": "WHATSAPP_BUSINESS_ACCOUNT_ID not configured"}
+        if not self._access_token:
+            return {"success": False, "error": "WHATSAPP_ACCESS_TOKEN not configured"}
+
+        url = f"{self._api_url}/{self._waba_id}/subscribed_apps"
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(url, headers=self._headers, timeout=30)
+                data = response.json()
+                logger.info("waba_subscribe_result", waba_id=self._waba_id, status=response.status_code, data=data)
+
+                if response.status_code == 200 and data.get('success'):
+                    return {"success": True, "data": data}
+                else:
+                    return {"success": False, "error": data.get('error', {}).get('message', str(data))}
+        except Exception as e:
+            logger.error("waba_subscribe_failed", waba_id=self._waba_id, error=str(e))
+            return {"success": False, "error": str(e)}
 
     def verify_webhook(self, mode: str, token: str, challenge: str) -> Optional[str]:
         """Verify webhook subscription from Meta"""

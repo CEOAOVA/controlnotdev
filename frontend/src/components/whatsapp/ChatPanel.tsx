@@ -6,21 +6,26 @@
 import { useState, useEffect, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { XCircle } from 'lucide-react';
 import { MessageBubble } from './MessageBubble';
 import { MessageInput } from './MessageInput';
+import { TemplateSendDialog } from './TemplateSendDialog';
 import { whatsappApi } from '@/api/endpoints/whatsapp';
 import { useToast } from '@/hooks';
 import type { WAConversation, WAMessage } from '@/api/types/whatsapp-types';
 
 interface ChatPanelProps {
   conversation: WAConversation;
+  onConversationUpdated?: () => void;
 }
 
-export function ChatPanel({ conversation }: ChatPanelProps) {
+export function ChatPanel({ conversation, onConversationUpdated }: ChatPanelProps) {
   const toast = useToast();
   const [messages, setMessages] = useState<WAMessage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [suggestion, setSuggestion] = useState<string | null>(null);
+  const [showTemplateDialog, setShowTemplateDialog] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const loadMessages = async () => {
@@ -47,6 +52,18 @@ export function ChatPanel({ conversation }: ChatPanelProps) {
   useEffect(() => {
     loadMessages();
     setSuggestion(null);
+
+    // Mark conversation as read when opened
+    whatsappApi.markAsRead(conversation.id).catch(() => {});
+
+    // Silent poll every 10s (no loading spinner)
+    const interval = setInterval(() => {
+      whatsappApi.getMessages(conversation.id)
+        .then(setMessages)
+        .catch(() => {});
+    }, 10_000);
+
+    return () => clearInterval(interval);
   }, [conversation.id]);
 
   // Load suggestion after messages are loaded
@@ -78,8 +95,25 @@ export function ChatPanel({ conversation }: ChatPanelProps) {
     }
   };
 
+  const handleCloseConversation = async () => {
+    try {
+      await whatsappApi.closeConversation(conversation.id);
+      toast.success('Conversacion cerrada');
+      onConversationUpdated?.();
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Error al cerrar conversacion');
+    }
+  };
+
   const contact = conversation.wa_contacts;
   const displayName = contact?.name || contact?.phone || 'Conversacion';
+
+  const statusConfig = {
+    open: { label: 'Abierta', className: 'border-green-300 text-green-700 bg-green-50' },
+    closed: { label: 'Cerrada', className: 'border-gray-300 text-gray-600 bg-gray-50' },
+    pending: { label: 'Pendiente', className: 'border-yellow-300 text-yellow-700 bg-yellow-50' },
+  };
+  const statusInfo = statusConfig[conversation.status] || statusConfig.pending;
 
   return (
     <Card className="flex flex-col h-full">
@@ -88,12 +122,20 @@ export function ChatPanel({ conversation }: ChatPanelProps) {
         <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center text-green-700 font-semibold">
           {displayName.charAt(0).toUpperCase()}
         </div>
-        <div>
+        <div className="flex-1 min-w-0">
           <p className="font-medium text-neutral-900">{displayName}</p>
           {contact?.phone && (
             <p className="text-xs text-neutral-500">{contact.phone}</p>
           )}
         </div>
+        <Badge variant="outline" className={statusInfo.className}>
+          {statusInfo.label}
+        </Badge>
+        {conversation.status !== 'closed' && (
+          <Button size="sm" variant="ghost" onClick={handleCloseConversation} title="Cerrar conversacion">
+            <XCircle className="w-4 h-4" />
+          </Button>
+        )}
       </div>
 
       {/* Messages */}
@@ -133,7 +175,14 @@ export function ChatPanel({ conversation }: ChatPanelProps) {
       )}
 
       {/* Input */}
-      <MessageInput onSend={handleSend} />
+      <MessageInput onSend={handleSend} onTemplateClick={() => setShowTemplateDialog(true)} />
+
+      {/* Template Dialog */}
+      <TemplateSendDialog
+        open={showTemplateDialog}
+        onOpenChange={setShowTemplateDialog}
+        phone={contact?.phone}
+      />
     </Card>
   );
 }

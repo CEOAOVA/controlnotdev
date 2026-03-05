@@ -58,13 +58,17 @@ def _get_default_tenant_id() -> Optional[str]:
         return None
 
 
-async def _resolve_tenant_id(phone_number_id: str) -> Optional[str]:
-    """Resolve tenant: wa_phone_tenant_map lookup → fallback DEFAULT_TENANT_ID"""
+async def _resolve_tenant_id(phone_number_id: str) -> tuple[Optional[str], bool]:
+    """Resolve tenant from phone_number_id.
+    Returns (tenant_id, is_platform).
+    is_platform=True means this is the shared AuriNot number → staff routing across all tenants.
+    """
     if phone_number_id:
-        tenant = await wa_repository.get_tenant_by_phone_number_id(phone_number_id)
-        if tenant:
-            return tenant
-    return _get_default_tenant_id()
+        mapping = await wa_repository.get_phone_tenant_mapping(phone_number_id)
+        if mapping:
+            return mapping['tenant_id'], mapping.get('is_platform', False)
+    default = _get_default_tenant_id()
+    return default, False
 
 
 async def _process_incoming_message(
@@ -77,13 +81,46 @@ async def _process_incoming_message(
     contact_name: Optional[str] = None,
     interactive_id: Optional[str] = None,
     interactive_type: Optional[str] = None,
+    is_platform: bool = False,
 ):
     """Background task: process a single incoming WhatsApp message"""
     try:
         tid = UUID(tenant_id)
 
-        # Check if this is a staff phone → route to staff menu
+        # --- Hybrid routing for platform number ---
         from app.services.wa_staff_router import wa_staff_router
+
+        if is_platform:
+            # Platform number: look up staff across ALL tenants
+            staff = await wa_repository.get_staff_by_phone_any_tenant(phone)
+            if staff:
+                # Override tenant_id with the staff's actual tenant
+                tenant_id = staff['tenant_id']
+                tid = UUID(tenant_id)
+                handled = await wa_staff_router.route_message(
+                    tenant_id=tenant_id,
+                    phone=phone,
+                    message_payload={
+                        'content': content,
+                        'msg_type': msg_type,
+                        'interactive_id': interactive_id,
+                        'interactive_type': interactive_type,
+                    },
+                )
+                if handled:
+                    return
+            else:
+                # Unknown sender on platform number → welcome message
+                from app.services.whatsapp_service import whatsapp_service
+                await whatsapp_service.send_text(
+                    phone,
+                    "Hola! Este numero es exclusivo para staff de AuriNot. "
+                    "Si eres cliente de una notaria, contacta directamente al numero de tu notaria."
+                )
+                logger.info("wa_platform_unknown_sender", phone=phone)
+                return
+
+        # Check if this is a staff phone → route to staff menu (per-tenant number)
         handled = await wa_staff_router.route_message(
             tenant_id=tenant_id,
             phone=phone,
@@ -224,7 +261,7 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
 
                 # Resolve tenant from phone_number_id (multi-tenant) or DEFAULT_TENANT_ID
                 phone_number_id = value.get('metadata', {}).get('phone_number_id', '')
-                tenant_id = await _resolve_tenant_id(phone_number_id)
+                tenant_id, is_platform = await _resolve_tenant_id(phone_number_id)
                 if not tenant_id:
                     logger.warning("whatsapp_webhook_no_tenant", phone_number_id=phone_number_id)
                     continue
@@ -281,6 +318,7 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
                         contact_name=contact_name,
                         interactive_id=interactive_id,
                         interactive_type=interactive_type,
+                        is_platform=is_platform,
                     )
 
                 # Process status updates (delivered, read)
@@ -301,6 +339,19 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
     except Exception as e:
         logger.error("whatsapp_webhook_error", error=str(e))
         return {"status": "error"}
+
+
+# === WABA Subscription (authenticated) ===
+
+@router.post("/subscribe-waba")
+async def subscribe_waba(
+    tenant_id: str = Depends(get_current_tenant_id)
+):
+    """Subscribe WABA to webhook so Meta sends message events"""
+    result = await whatsapp_service.subscribe_waba()
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "Subscription failed"))
+    return result
 
 
 # === Conversations (authenticated) ===
@@ -853,6 +904,7 @@ async def trigger_daily_digest(
 class PhoneTenantMapRequest(BaseModel):
     phone_number_id: str = Field(..., description="Meta phone_number_id del WABA")
     tenant_id: str = Field(..., description="UUID del tenant a asociar")
+    is_platform: bool = Field(False, description="True si es el numero compartido de plataforma AuriNot")
 
 
 @router.get("/phone-tenant-map")
@@ -878,6 +930,7 @@ async def create_phone_tenant_map(
         mapping = await wa_repository.create_phone_tenant_map(
             phone_number_id=request.phone_number_id,
             tenant_id=request.tenant_id,
+            is_platform=request.is_platform,
         )
         return {"message": "Mapeo creado", "mapping": mapping}
     except Exception as e:

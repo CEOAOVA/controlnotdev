@@ -488,17 +488,37 @@ class WARepository:
 
     # === Phone-Tenant Map (Multi-tenant routing) ===
 
-    async def get_tenant_by_phone_number_id(self, phone_number_id: str) -> Optional[str]:
-        """Buscar tenant_id en wa_phone_tenant_map por phone_number_id de Meta"""
+    async def get_phone_tenant_mapping(self, phone_number_id: str) -> Optional[Dict[str, Any]]:
+        """Buscar mapeo completo en wa_phone_tenant_map por phone_number_id de Meta.
+        Returns dict with tenant_id and is_platform, or None."""
         try:
             result = self.client.table('wa_phone_tenant_map')\
-                .select('tenant_id')\
+                .select('tenant_id, is_platform')\
                 .eq('phone_number_id', phone_number_id)\
                 .maybe_single()\
                 .execute()
-            return result.data['tenant_id'] if result.data else None
+            return result.data if result.data else None
         except APIError as e:
             logger.warning("wa_phone_tenant_map_lookup_failed", phone_number_id=phone_number_id, error=str(e))
+            return None
+
+    async def get_tenant_by_phone_number_id(self, phone_number_id: str) -> Optional[str]:
+        """Buscar tenant_id en wa_phone_tenant_map por phone_number_id de Meta (compat)"""
+        mapping = await self.get_phone_tenant_mapping(phone_number_id)
+        return mapping['tenant_id'] if mapping else None
+
+    async def get_staff_by_phone_any_tenant(self, phone: str) -> Optional[Dict[str, Any]]:
+        """Search for a staff phone across ALL tenants (used for platform number routing)"""
+        try:
+            result = self.client.table('wa_staff_phones')\
+                .select('*')\
+                .eq('phone', phone)\
+                .eq('is_active', True)\
+                .limit(1)\
+                .execute()
+            return result.data[0] if result.data else None
+        except APIError as e:
+            logger.warning("wa_staff_by_phone_any_tenant_failed", phone=phone, error=str(e))
             return None
 
     async def list_phone_tenant_map(self) -> List[Dict[str, Any]]:
@@ -514,13 +534,14 @@ class WARepository:
             raise
 
     async def create_phone_tenant_map(
-        self, phone_number_id: str, tenant_id: str
+        self, phone_number_id: str, tenant_id: str, is_platform: bool = False
     ) -> Dict[str, Any]:
         """Create a phone_number_id → tenant_id mapping"""
         try:
             result = self.client.table('wa_phone_tenant_map').insert({
                 'phone_number_id': phone_number_id,
                 'tenant_id': tenant_id,
+                'is_platform': is_platform,
             }).execute()
             return result.data[0]
         except APIError as e:

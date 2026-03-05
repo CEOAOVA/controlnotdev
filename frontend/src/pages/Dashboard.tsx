@@ -14,6 +14,7 @@ import {
   Plus,
   AlertCircle,
   Briefcase,
+  MessageCircle,
 } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card } from '@/components/ui/card';
@@ -22,6 +23,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useAuth, useCases } from '@/hooks';
 import { STATUS_LABELS, STATUS_COLORS } from '@/api/types/cases-types';
+import { whatsappApi } from '@/api/endpoints/whatsapp';
 
 interface MetricCard {
   label: string;
@@ -35,6 +37,7 @@ export function Dashboard() {
   const { userName, tenantName } = useAuth();
   const { cases, dashboard, isLoading: _isLoading, error, fetchCases, fetchDashboard } = useCases();
   const [metrics, setMetrics] = useState<MetricCard[]>([]);
+  const [waStats, setWaStats] = useState<{ total: number; open: number; unread: number } | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -44,6 +47,13 @@ export function Dashboard() {
         await Promise.all([
           fetchDashboard(),
           fetchCases({ page: 1, page_size: 5 }),
+          whatsappApi.listConversations().then((convs) => {
+            setWaStats({
+              total: convs.length,
+              open: convs.filter(c => c.status === 'open').length,
+              unread: convs.reduce((sum, c) => sum + c.unread_count, 0),
+            });
+          }).catch(() => {}),
         ]);
       } catch (err) {
         if (isMounted) {
@@ -178,6 +188,35 @@ export function Dashboard() {
             </Card>
           ))}
         </div>
+
+        {/* WhatsApp Stats */}
+        {waStats && (
+          <Card className="p-4 sm:p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <MessageCircle className="w-5 h-5 text-green-600" />
+                <h2 className="text-lg font-semibold">WhatsApp</h2>
+              </div>
+              <Link to="/whatsapp">
+                <Button variant="ghost" size="sm">Ver todo &rarr;</Button>
+              </Link>
+            </div>
+            <div className="grid grid-cols-3 gap-4 text-center">
+              <div>
+                <p className="text-2xl font-bold">{waStats.total}</p>
+                <p className="text-xs text-neutral-500">Conversaciones</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-green-600">{waStats.open}</p>
+                <p className="text-xs text-neutral-500">Abiertas</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-red-600">{waStats.unread}</p>
+                <p className="text-xs text-neutral-500">Sin leer</p>
+              </div>
+            </div>
+          </Card>
+        )}
 
         {/* Semaforo Global */}
         {dashboard?.semaforo_global && (

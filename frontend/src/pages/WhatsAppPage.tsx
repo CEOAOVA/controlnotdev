@@ -5,6 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { MessageCircle, RefreshCw, Send } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -17,16 +18,24 @@ import { CommandLogViewer } from '@/components/whatsapp/CommandLogViewer';
 import { whatsappApi } from '@/api/endpoints/whatsapp';
 import type { WAConversation } from '@/api/types/whatsapp-types';
 
+const STATUS_TABS = [
+  { label: 'Todas', value: undefined },
+  { label: 'Abiertas', value: 'open' },
+  { label: 'Pendientes', value: 'pending' },
+  { label: 'Cerradas', value: 'closed' },
+] as const;
+
 export function WhatsAppPage() {
   const [conversations, setConversations] = useState<WAConversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<WAConversation | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSendingDigest, setIsSendingDigest] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
 
-  const loadConversations = async () => {
+  const loadConversations = async (status?: string) => {
     setIsLoading(true);
     try {
-      const data = await whatsappApi.listConversations();
+      const data = await whatsappApi.listConversations({ status });
       setConversations(data);
     } catch (err) {
       console.error('Error loading conversations:', err);
@@ -47,8 +56,28 @@ export function WhatsAppPage() {
   };
 
   useEffect(() => {
-    loadConversations();
-  }, []);
+    loadConversations(statusFilter);
+
+    // Silent poll every 15s
+    const interval = setInterval(() => {
+      whatsappApi.listConversations({ status: statusFilter })
+        .then((data) => {
+          setConversations(data);
+          // Keep selectedConversation in sync
+          if (selectedConversation) {
+            const updated = data.find(c => c.id === selectedConversation.id);
+            if (updated) setSelectedConversation(updated);
+          }
+        })
+        .catch(() => {});
+    }, 15_000);
+
+    return () => clearInterval(interval);
+  }, [statusFilter]);
+
+  const handleConversationUpdated = () => {
+    loadConversations(statusFilter);
+  };
 
   return (
     <MainLayout>
@@ -70,7 +99,7 @@ export function WhatsAppPage() {
               <Send className={`w-4 h-4 ${isSendingDigest ? 'animate-pulse' : ''}`} />
               Resumen Diario
             </Button>
-            <Button variant="outline" onClick={loadConversations} disabled={isLoading} className="gap-2">
+            <Button variant="outline" onClick={() => loadConversations(statusFilter)} disabled={isLoading} className="gap-2">
               <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
               Actualizar
             </Button>
@@ -90,26 +119,49 @@ export function WhatsAppPage() {
             {/* Chat Layout */}
             <div className="flex gap-4" style={{ height: 'calc(100vh - 280px)' }}>
               {/* Conversation List */}
-              <Card className="w-80 flex-shrink-0 overflow-y-auto">
-                {isLoading && conversations.length === 0 ? (
-                  <div className="p-4 space-y-3">
-                    {[1, 2, 3].map((i) => (
-                      <div key={i} className="h-16 bg-neutral-200 rounded animate-pulse" />
-                    ))}
-                  </div>
-                ) : (
-                  <ConversationList
-                    conversations={conversations}
-                    selectedId={selectedConversation?.id}
-                    onSelect={setSelectedConversation}
-                  />
-                )}
+              <Card className="w-80 flex-shrink-0 overflow-hidden flex flex-col">
+                {/* Status filter tabs */}
+                <div className="flex border-b text-xs">
+                  {STATUS_TABS.map((opt) => (
+                    <button
+                      key={opt.label}
+                      className={cn(
+                        'flex-1 py-2 text-center transition-colors hover:bg-neutral-50',
+                        statusFilter === opt.value
+                          ? 'bg-green-50 text-green-700 font-medium border-b-2 border-green-500'
+                          : 'text-neutral-600'
+                      )}
+                      onClick={() => setStatusFilter(opt.value)}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex-1 overflow-y-auto">
+                  {isLoading && conversations.length === 0 ? (
+                    <div className="p-4 space-y-3">
+                      {[1, 2, 3].map((i) => (
+                        <div key={i} className="h-16 bg-neutral-200 rounded animate-pulse" />
+                      ))}
+                    </div>
+                  ) : (
+                    <ConversationList
+                      conversations={conversations}
+                      selectedId={selectedConversation?.id}
+                      onSelect={setSelectedConversation}
+                    />
+                  )}
+                </div>
               </Card>
 
               {/* Chat Panel */}
               <div className="flex-1 min-w-0">
                 {selectedConversation ? (
-                  <ChatPanel conversation={selectedConversation} />
+                  <ChatPanel
+                    conversation={selectedConversation}
+                    onConversationUpdated={handleConversationUpdated}
+                  />
                 ) : (
                   <Card className="h-full flex items-center justify-center">
                     <div className="text-center space-y-2">
