@@ -48,6 +48,7 @@ class WAMenuHandler:
             'search': self._handle_search,
             'notify_select': self._handle_notify_select,
             'alerts': self._handle_alerts,
+            'ai': self._handle_ai_chat,
         }
 
         handler = handlers.get(current_menu, self._handle_main_menu)
@@ -79,6 +80,7 @@ class WAMenuHandler:
                     {"id": "main_search", "title": "Buscar Expediente", "description": "Buscar por numero"},
                     {"id": "main_alerts", "title": "Alertas", "description": "Vencidos y urgentes"},
                     {"id": "main_notify", "title": "Notificar Cliente", "description": "Enviar actualizacion"},
+                    {"id": "main_ai", "title": "Asistente IA", "description": "Preguntas en lenguaje natural"},
                 ],
             }],
         )
@@ -112,9 +114,32 @@ class WAMenuHandler:
             await self._show_alerts(tenant_id, phone, staff, session)
         elif input_id == 'main_notify' or text == '5':
             await self._show_notify_select(tenant_id, phone, staff, session)
+        elif input_id == 'main_ai' or text == '6':
+            await self._save_session(tenant_id, phone, {'menu': 'ai'})
+            await whatsapp_service.send_text(
+                phone,
+                "Asistente IA activado. Pregúntame sobre expedientes, clientes, trámites, pagos o calendario.\n\nEscribe 'menu' para volver.",
+            )
         else:
-            # Unrecognized input → show main menu
-            await self._show_main_menu(phone, staff)
+            # If it looks like a question/query, route to AI directly
+            raw = user_input.get('raw', text)
+            if len(raw) > 10 or '?' in raw:
+                await self._handle_ai_chat(tenant_id, phone, staff, user_input, session)
+            else:
+                await self._show_main_menu(phone, staff)
+
+    # ── AI Chat ──
+
+    async def _handle_ai_chat(
+        self, tenant_id: UUID, phone: str, staff: Dict[str, Any],
+        user_input: Dict[str, Any], session: Dict[str, Any],
+    ) -> None:
+        from app.services.wa_admin_ai_service import wa_admin_ai_service
+        raw_text = user_input.get('raw', user_input.get('text', '')).strip()
+        if not raw_text:
+            await whatsapp_service.send_text(phone, "Escribe tu pregunta.")
+            return
+        await wa_admin_ai_service.handle_message(tenant_id, phone, staff, raw_text, session)
 
     # ── Cases List ──
 
