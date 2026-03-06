@@ -103,6 +103,7 @@ async def _process_incoming_message(
                     message_payload={
                         'content': content,
                         'msg_type': msg_type,
+                        'media_id': media_id,
                         'interactive_id': interactive_id,
                         'interactive_type': interactive_type,
                     },
@@ -127,6 +128,7 @@ async def _process_incoming_message(
             message_payload={
                 'content': content,
                 'msg_type': msg_type,
+                'media_id': media_id,
                 'interactive_id': interactive_id,
                 'interactive_type': interactive_type,
             },

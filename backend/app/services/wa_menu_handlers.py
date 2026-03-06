@@ -49,6 +49,7 @@ class WAMenuHandler:
             'notify_select': self._handle_notify_select,
             'alerts': self._handle_alerts,
             'ai': self._handle_ai_chat,
+            'generate_doc': self._handle_generate_doc,
         }
 
         handler = handlers.get(current_menu, self._handle_main_menu)
@@ -81,6 +82,7 @@ class WAMenuHandler:
                     {"id": "main_alerts", "title": "Alertas", "description": "Vencidos y urgentes"},
                     {"id": "main_notify", "title": "Notificar Cliente", "description": "Enviar actualizacion"},
                     {"id": "main_ai", "title": "Asistente IA", "description": "Preguntas en lenguaje natural"},
+                    {"id": "main_gendoc", "title": "Generar Documento", "description": "Crear escritura desde fotos"},
                 ],
             }],
         )
@@ -120,6 +122,9 @@ class WAMenuHandler:
                 phone,
                 "Asistente IA activado. Pregúntame sobre expedientes, clientes, trámites, pagos o calendario.\n\nEscribe 'menu' para volver.",
             )
+        elif input_id == 'main_gendoc' or text == '7':
+            await self._handle_generate_doc(tenant_id, phone, staff, user_input, {'menu': 'generate_doc', 'docgen_step': 'select_type'})
+            return
         else:
             # If it looks like a question/query, route to AI directly
             raw = user_input.get('raw', text)
@@ -863,6 +868,582 @@ class WAMenuHandler:
             )
 
         await self._save_session(tenant_id, phone, {**session, 'menu': 'case_detail', 'case_id': str(case_id)})
+
+    # ── Document Generation Wizard ──
+
+    async def _handle_generate_doc(
+        self, tenant_id: UUID, phone: str, staff: Dict[str, Any],
+        user_input: Dict[str, Any], session: Dict[str, Any],
+    ) -> None:
+        step = session.get('docgen_step', 'select_type')
+        input_id = user_input.get('id', '')
+        text = user_input.get('text', '')
+
+        if step == 'select_type':
+            await self._docgen_select_type(tenant_id, phone, staff, user_input, session)
+        elif step == 'select_template':
+            await self._docgen_select_template(tenant_id, phone, staff, user_input, session)
+        elif step == 'collect_images':
+            await self._docgen_collect_images(tenant_id, phone, staff, user_input, session)
+        elif step == 'completeness_report':
+            await self._docgen_completeness_report(tenant_id, phone, staff, user_input, session)
+        elif step == 'review_data':
+            await self._docgen_review_data(tenant_id, phone, staff, user_input, session)
+        else:
+            # Unknown step — restart
+            await self._docgen_show_type_list(tenant_id, phone, session)
+
+    async def _docgen_show_type_list(
+        self, tenant_id: UUID, phone: str, session: Dict[str, Any],
+    ) -> None:
+        from app.services.wa_docgen_service import DOC_TYPES
+
+        rows = [
+            {"id": f"dtype_{key}", "title": label[:24], "description": f"Tipo: {label}"}
+            for key, label in DOC_TYPES.items()
+        ]
+
+        await whatsapp_service.send_interactive_list(
+            to_phone=phone,
+            header="Generar Documento",
+            body_text="Selecciona el tipo de documento a generar:",
+            button_text="Ver tipos",
+            sections=[{"title": "Tipos de documento", "rows": rows}],
+            footer="Envia 'menu' para cancelar",
+        )
+
+        await self._save_session(tenant_id, phone, {
+            'menu': 'generate_doc',
+            'docgen_step': 'select_type',
+        })
+
+    async def _docgen_select_type(
+        self, tenant_id: UUID, phone: str, staff: Dict[str, Any],
+        user_input: Dict[str, Any], session: Dict[str, Any],
+    ) -> None:
+        input_id = user_input.get('id', '')
+
+        if not input_id.startswith('dtype_'):
+            # First entry — show type list
+            await self._docgen_show_type_list(tenant_id, phone, session)
+            return
+
+        doc_type = input_id.replace('dtype_', '')
+        from app.services.wa_docgen_service import DOC_TYPES
+        if doc_type not in DOC_TYPES:
+            await whatsapp_service.send_text(phone, "Tipo no valido. Selecciona de la lista.")
+            await self._docgen_show_type_list(tenant_id, phone, session)
+            return
+
+        # Fetch templates for this type
+        from app.services.wa_docgen_service import wa_docgen_service
+        templates = await wa_docgen_service.get_templates_for_type(tenant_id, doc_type)
+
+        if not templates:
+            await whatsapp_service.send_text(
+                phone, f"No hay plantillas disponibles para '{DOC_TYPES[doc_type]}'. Sube una plantilla desde la plataforma web."
+            )
+            await self._show_main_menu(phone, staff)
+            return
+
+        new_session = {
+            'menu': 'generate_doc',
+            'docgen_step': 'select_template',
+            'docgen_type': doc_type,
+        }
+
+        if len(templates) == 1:
+            # Auto-select the only template
+            t = templates[0]
+            new_session['docgen_step'] = 'collect_images'
+            new_session['docgen_template_id'] = t['id']
+            new_session['docgen_template_name'] = t.get('name', 'Plantilla')
+            new_session['docgen_images'] = []
+            new_session['docgen_prev_image_count'] = 0
+
+            await self._save_session(tenant_id, phone, new_session)
+            await whatsapp_service.send_text(
+                phone,
+                f"Plantilla seleccionada: *{t.get('name', 'Plantilla')}*\n\n"
+                "Envia las fotos de los documentos fuente.\n"
+                "Cuando termines, presiona *Listo*."
+            )
+            await whatsapp_service.send_interactive_buttons(
+                to_phone=phone,
+                body_text="Esperando fotos...",
+                buttons=[{"id": "docgen_done_images", "title": "Listo"}],
+            )
+            return
+
+        # Multiple templates — show list
+        rows = [
+            {
+                "id": f"tmpl_{t['id']}",
+                "title": (t.get('name', 'Plantilla'))[:24],
+                "description": (t.get('document_type', ''))[:72],
+            }
+            for t in templates[:10]
+        ]
+
+        await whatsapp_service.send_interactive_list(
+            to_phone=phone,
+            header="Seleccionar Plantilla",
+            body_text=f"Plantillas disponibles para {DOC_TYPES[doc_type]}:",
+            button_text="Ver plantillas",
+            sections=[{"title": "Plantillas", "rows": rows}],
+        )
+
+        await self._save_session(tenant_id, phone, new_session)
+
+    async def _docgen_select_template(
+        self, tenant_id: UUID, phone: str, staff: Dict[str, Any],
+        user_input: Dict[str, Any], session: Dict[str, Any],
+    ) -> None:
+        input_id = user_input.get('id', '')
+
+        if not input_id.startswith('tmpl_'):
+            await whatsapp_service.send_text(phone, "Selecciona una plantilla de la lista.")
+            return
+
+        template_id = input_id.replace('tmpl_', '')
+
+        from app.services.wa_docgen_service import wa_docgen_service
+        template = await wa_docgen_service.get_template_by_id(template_id)
+        if not template:
+            await whatsapp_service.send_text(phone, "Plantilla no encontrada. Intenta de nuevo.")
+            return
+
+        session['docgen_step'] = 'collect_images'
+        session['docgen_template_id'] = template_id
+        session['docgen_template_name'] = template.get('nombre', 'Plantilla')
+        session['docgen_images'] = []
+        session['docgen_prev_image_count'] = 0
+
+        await self._save_session(tenant_id, phone, session)
+
+        await whatsapp_service.send_text(
+            phone,
+            f"Plantilla seleccionada: *{template.get('nombre', 'Plantilla')}*\n\n"
+            "Envia las fotos de los documentos fuente.\n"
+            "Cuando termines, presiona *Listo*."
+        )
+        await whatsapp_service.send_interactive_buttons(
+            to_phone=phone,
+            body_text="Esperando fotos...",
+            buttons=[{"id": "docgen_done_images", "title": "Listo"}],
+        )
+
+    async def _docgen_collect_images(
+        self, tenant_id: UUID, phone: str, staff: Dict[str, Any],
+        user_input: Dict[str, Any], session: Dict[str, Any],
+    ) -> None:
+        input_type = user_input.get('type', '')
+        input_id = user_input.get('id', '')
+
+        # Received an image — store progressively + evaluate
+        if input_type == 'media' and user_input.get('media_id'):
+            from app.services.wa_docgen_service import wa_docgen_service
+
+            images = session.get('docgen_images', [])
+            image_index = len(images)
+            media_id = user_input['media_id']
+
+            # Download + store in Supabase
+            store_result = await wa_docgen_service.store_image_progressively(
+                tenant_id=str(tenant_id),
+                phone=phone,
+                media_id=media_id,
+                image_index=image_index,
+            )
+
+            if not store_result:
+                await whatsapp_service.send_text(
+                    phone, f"Foto {image_index + 1}: Error al descargar. Intenta enviarla de nuevo."
+                )
+                return
+
+            # Save image record to session
+            images.append({
+                'storage_path': store_result['storage_path'],
+                'mime_type': store_result['mime_type'],
+            })
+            session['docgen_images'] = images
+            await self._save_session(tenant_id, phone, session)
+
+            # Quick evaluation with Claude
+            doc_type = session.get('docgen_type', 'compraventa')
+            evaluation = await wa_docgen_service.evaluate_image_quick(
+                image_bytes=store_result['content_bytes'],
+                mime_type=store_result['mime_type'],
+                doc_type=doc_type,
+            )
+
+            # Format feedback message
+            quality = evaluation.get('quality', '?')
+            readable = evaluation.get('readable', 'unknown')
+            doc_label = evaluation.get('document_type', 'No evaluado')
+            fields = evaluation.get('fields_contributed', [])
+
+            if quality == 'Mala' or readable == 'no':
+                feedback = (
+                    f"*Foto {image_index + 1}* recibida pero con problemas:\n"
+                    f"  Tipo: {doc_label}\n"
+                    f"  Calidad: {quality}\n"
+                    f"  Legible: {readable}\n"
+                    f"  Sugerencia: Toma la foto con mejor iluminacion y enfoque.\n"
+                    f"  Puedes enviar otra foto del mismo documento."
+                )
+            else:
+                fields_str = ', '.join(fields[:5]) if fields else '-'
+                feedback = (
+                    f"*Foto {image_index + 1}* recibida y guardada:\n"
+                    f"  Tipo: {doc_label}\n"
+                    f"  Calidad: {quality}\n"
+                    f"  Legible: {readable}\n"
+                    f"  Campos: {fields_str}"
+                )
+
+            await whatsapp_service.send_text(phone, feedback)
+            await whatsapp_service.send_interactive_buttons(
+                to_phone=phone,
+                body_text=f"{len(images)} foto(s) recibida(s). Envia mas o presiona Listo.",
+                buttons=[{"id": "docgen_done_images", "title": "Listo"}],
+            )
+            return
+
+        # "Listo" button pressed — extract + validate + show completeness report
+        if input_id == 'docgen_done_images':
+            images = session.get('docgen_images', [])
+            if not images:
+                await whatsapp_service.send_text(
+                    phone, "No has enviado fotos. Envia al menos una foto antes de presionar Listo."
+                )
+                return
+
+            prev_count = session.get('docgen_prev_image_count', 0)
+            new_images = images[prev_count:]
+
+            if not new_images:
+                await whatsapp_service.send_text(
+                    phone, "No hay fotos nuevas. Envia mas fotos o escribe 'menu' para cancelar."
+                )
+                return
+
+            await whatsapp_service.send_text(
+                phone, f"Procesando {len(new_images)} foto(s) nueva(s)... esto puede tardar unos segundos."
+            )
+
+            try:
+                from app.services.wa_docgen_service import wa_docgen_service
+                from app.services.anthropic_service import AnthropicExtractionService
+
+                # Load only new images from storage
+                downloaded = await wa_docgen_service.load_stored_images(new_images)
+                if not downloaded:
+                    await whatsapp_service.send_text(
+                        phone, "Error: no se pudieron cargar las fotos. Intenta de nuevo."
+                    )
+                    return
+
+                doc_type = session.get('docgen_type', 'compraventa')
+
+                # Extract data from new images
+                new_extracted = await wa_docgen_service.extract_from_images(
+                    images=downloaded,
+                    doc_type=doc_type,
+                    tenant_id=tenant_id,
+                )
+
+                # Merge with existing if this is an "add more" round
+                existing_extracted = session.get('docgen_extracted', {})
+                if existing_extracted:
+                    extracted = wa_docgen_service.merge_extracted_data(existing_extracted, new_extracted)
+                else:
+                    extracted = new_extracted
+
+                # Validate completeness
+                extraction_service = AnthropicExtractionService()
+                validation = extraction_service.validate_extracted_data(extracted, doc_type)
+
+                # Get field sources for tips
+                field_sources = wa_docgen_service.get_field_sources(doc_type)
+
+                # Save to session
+                session['docgen_step'] = 'completeness_report'
+                session['docgen_extracted'] = extracted
+                session['docgen_validation'] = validation
+                session['docgen_prev_image_count'] = len(images)
+                await self._save_session(tenant_id, phone, session)
+
+                # Format and send completeness report
+                report = self._format_completeness_report(
+                    extracted, validation, field_sources
+                )
+                await whatsapp_service.send_text(phone, report)
+
+                await whatsapp_service.send_interactive_buttons(
+                    to_phone=phone,
+                    body_text="Selecciona una opcion:",
+                    buttons=[
+                        {"id": "docgen_generate_anyway", "title": "Generar asi"},
+                        {"id": "docgen_add_more", "title": "Agregar fotos"},
+                        {"id": "docgen_cancel", "title": "Cancelar"},
+                    ],
+                )
+
+            except Exception as e:
+                logger.error("wa_docgen_extraction_error", error=str(e))
+                await whatsapp_service.send_text(
+                    phone, "Error al procesar las fotos. Intenta de nuevo o envia 'menu'."
+                )
+            return
+
+        # Unrecognized input while collecting images
+        await whatsapp_service.send_text(
+            phone, "Envia fotos de los documentos o presiona *Listo* cuando termines."
+        )
+        await whatsapp_service.send_interactive_buttons(
+            to_phone=phone,
+            body_text="Esperando fotos...",
+            buttons=[{"id": "docgen_done_images", "title": "Listo"}],
+        )
+
+    async def _docgen_completeness_report(
+        self, tenant_id: UUID, phone: str, staff: Dict[str, Any],
+        user_input: Dict[str, Any], session: Dict[str, Any],
+    ) -> None:
+        """Handle buttons from the completeness report step."""
+        input_id = user_input.get('id', '')
+
+        if input_id == 'docgen_cancel':
+            await whatsapp_service.send_text(phone, "Generacion cancelada.")
+            await self._save_session(tenant_id, phone, {})
+            await self._show_main_menu(phone, staff)
+            return
+
+        if input_id == 'docgen_add_more':
+            # Go back to collect_images, keeping existing data
+            session['docgen_step'] = 'collect_images'
+            await self._save_session(tenant_id, phone, session)
+
+            await whatsapp_service.send_text(
+                phone,
+                "Envia las fotos adicionales de los documentos faltantes.\n"
+                "Cuando termines, presiona *Listo*."
+            )
+            await whatsapp_service.send_interactive_buttons(
+                to_phone=phone,
+                body_text="Esperando fotos adicionales...",
+                buttons=[{"id": "docgen_done_images", "title": "Listo"}],
+            )
+            return
+
+        if input_id == 'docgen_generate_anyway':
+            # Proceed to generate (same as _docgen_review_data generate flow)
+            await whatsapp_service.send_text(phone, "Generando documento...")
+
+            try:
+                from app.services.wa_docgen_service import wa_docgen_service
+
+                document = await wa_docgen_service.generate_and_store(
+                    tenant_id=tenant_id,
+                    template_id=session.get('docgen_template_id', ''),
+                    extracted_data=session.get('docgen_extracted', {}),
+                    doc_type=session.get('docgen_type', 'compraventa'),
+                )
+
+                if not document:
+                    await whatsapp_service.send_text(phone, "Error al generar documento. Intenta de nuevo.")
+                    await self._save_session(tenant_id, phone, {})
+                    await self._show_main_menu(phone, staff)
+                    return
+
+                storage_path = document.get('storage_path', '')
+                filename = document.get('nombre_documento', 'documento.docx')
+
+                sent = await wa_docgen_service.send_document_via_whatsapp(
+                    phone=phone,
+                    storage_path=storage_path,
+                    filename=filename,
+                    caption=f"Documento generado: {filename}",
+                )
+
+                if sent:
+                    await whatsapp_service.send_text(phone, "Documento generado y enviado exitosamente.")
+                else:
+                    await whatsapp_service.send_text(
+                        phone,
+                        "Documento generado pero no se pudo enviar por WhatsApp. "
+                        "Puedes descargarlo desde la plataforma web."
+                    )
+
+            except Exception as e:
+                logger.error("wa_docgen_generate_error", error=str(e))
+                await whatsapp_service.send_text(phone, "Error al generar documento. Intenta de nuevo.")
+
+            await self._save_session(tenant_id, phone, {})
+            await self._show_main_menu(phone, staff)
+            return
+
+        # Unrecognized input — re-show buttons
+        await whatsapp_service.send_interactive_buttons(
+            to_phone=phone,
+            body_text="Selecciona una opcion:",
+            buttons=[
+                {"id": "docgen_generate_anyway", "title": "Generar asi"},
+                {"id": "docgen_add_more", "title": "Agregar fotos"},
+                {"id": "docgen_cancel", "title": "Cancelar"},
+            ],
+        )
+
+    async def _docgen_review_data(
+        self, tenant_id: UUID, phone: str, staff: Dict[str, Any],
+        user_input: Dict[str, Any], session: Dict[str, Any],
+    ) -> None:
+        input_id = user_input.get('id', '')
+
+        if input_id == 'docgen_cancel':
+            await whatsapp_service.send_text(phone, "Generacion cancelada.")
+            await self._save_session(tenant_id, phone, {})
+            await self._show_main_menu(phone, staff)
+            return
+
+        if input_id == 'docgen_generate':
+            await whatsapp_service.send_text(phone, "Generando documento...")
+
+            try:
+                from app.services.wa_docgen_service import wa_docgen_service
+
+                document = await wa_docgen_service.generate_and_store(
+                    tenant_id=tenant_id,
+                    template_id=session.get('docgen_template_id', ''),
+                    extracted_data=session.get('docgen_extracted', {}),
+                    doc_type=session.get('docgen_type', 'compraventa'),
+                )
+
+                if not document:
+                    await whatsapp_service.send_text(phone, "Error al generar documento. Intenta de nuevo.")
+                    await self._save_session(tenant_id, phone, {})
+                    await self._show_main_menu(phone, staff)
+                    return
+
+                # Send the document via WhatsApp
+                storage_path = document.get('storage_path', '')
+                filename = document.get('nombre_documento', 'documento.docx')
+
+                sent = await wa_docgen_service.send_document_via_whatsapp(
+                    phone=phone,
+                    storage_path=storage_path,
+                    filename=filename,
+                    caption=f"Documento generado: {filename}",
+                )
+
+                if sent:
+                    await whatsapp_service.send_text(phone, "Documento generado y enviado exitosamente.")
+                else:
+                    await whatsapp_service.send_text(
+                        phone,
+                        "Documento generado pero no se pudo enviar por WhatsApp. "
+                        "Puedes descargarlo desde la plataforma web."
+                    )
+
+            except Exception as e:
+                logger.error("wa_docgen_generate_error", error=str(e))
+                await whatsapp_service.send_text(phone, "Error al generar documento. Intenta de nuevo.")
+
+            await self._save_session(tenant_id, phone, {})
+            await self._show_main_menu(phone, staff)
+            return
+
+        # Unrecognized input — show buttons again
+        await whatsapp_service.send_interactive_buttons(
+            to_phone=phone,
+            body_text="Presiona Generar para crear el documento o Cancelar.",
+            buttons=[
+                {"id": "docgen_generate", "title": "Generar"},
+                {"id": "docgen_cancel", "title": "Cancelar"},
+            ],
+        )
+
+    @staticmethod
+    @staticmethod
+    def _format_completeness_report(
+        extracted: Dict[str, str],
+        validation: Dict,
+        field_sources: Dict[str, str],
+    ) -> str:
+        """Format completeness report as a WhatsApp-friendly message."""
+        completeness = validation.get('completeness', 0)
+        pct = int(completeness * 100)
+        total = validation.get('total_fields', 0)
+        found = validation.get('found_fields', 0)
+        critical_missing = validation.get('critical_missing', [])
+        optional_missing = validation.get('optional_missing', [])
+
+        lines = [f"*Extraccion completa — {pct}%*\n"]
+
+        # Found fields (show up to 10)
+        lines.append(f"*Campos encontrados ({found}/{total}):*")
+        shown = 0
+        for key, value in extracted.items():
+            if "NO ENCONTRADO" in str(value):
+                continue
+            if shown >= 10:
+                remaining = found - 10
+                if remaining > 0:
+                    lines.append(f"  ... y {remaining} campos mas")
+                break
+            label = key.replace('_', ' ').title()
+            val = str(value)[:60]
+            lines.append(f"  {label}: {val}")
+            shown += 1
+
+        # Critical missing
+        if critical_missing:
+            lines.append(f"\n*Campos faltantes criticos ({len(critical_missing)}):*")
+            for field in critical_missing[:8]:
+                source = field_sources.get(field, '')
+                source_str = f" ({source})" if source else ''
+                label = field.replace('_', ' ').title()
+                lines.append(f"  - {label}{source_str}")
+            if len(critical_missing) > 8:
+                lines.append(f"  ... y {len(critical_missing) - 8} mas")
+
+        # Optional missing
+        if optional_missing:
+            names = [f.replace('_', ' ').title() for f in optional_missing[:5]]
+            suffix = f"... (+{len(optional_missing) - 5})" if len(optional_missing) > 5 else ""
+            lines.append(f"\n*Opcionales faltantes ({len(optional_missing)}):*")
+            lines.append(f"  {', '.join(names)}{suffix}")
+
+        # Tip: suggest missing document sources
+        missing_sources = set()
+        for field in critical_missing:
+            source = field_sources.get(field, '')
+            if source:
+                missing_sources.add(source)
+        if missing_sources:
+            sources_str = ' y '.join(sorted(missing_sources)[:3])
+            lines.append(f"\nTip: Envia foto de {sources_str} para completar campos faltantes.")
+
+        return '\n'.join(lines)
+
+    @staticmethod
+    def _format_extracted_preview(data: Dict[str, str], max_fields: int = 20) -> str:
+        """Format extracted data as a WhatsApp-friendly preview."""
+        if not data:
+            return "No se extrajeron datos."
+
+        lines = []
+        for i, (key, value) in enumerate(data.items()):
+            if i >= max_fields:
+                lines.append(f"... y {len(data) - max_fields} campos mas")
+                break
+            label = key.replace('_', ' ').title()
+            val = str(value)[:80] if value else '-'
+            lines.append(f"*{label}*: {val}")
+
+        return '\n'.join(lines)
 
 
 # Singleton

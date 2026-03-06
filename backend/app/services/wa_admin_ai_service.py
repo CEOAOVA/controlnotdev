@@ -31,6 +31,7 @@ Reglas:
 - Listas con viñetas (- o •).
 - Respuestas cortas y directas, máximo 1000 caracteres por mensaje.
 - Si el usuario pide algo que no puedes hacer, sugiérele usar el menú normal con 'menu'.
+- Si el usuario pide un documento o que le envíes un archivo, usa send_document_to_me.
 """
 
 ADMIN_AI_TOOLS = [
@@ -150,6 +151,18 @@ ADMIN_AI_TOOLS = [
             "required": ["case_id"],
         },
     },
+    {
+        "name": "send_document_to_me",
+        "description": "Envía un documento generado (.docx) al staff vía WhatsApp. Si no se especifica document_id, envía el más reciente del caso.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "case_id": {"type": "string", "description": "UUID del expediente"},
+                "document_id": {"type": "string", "description": "UUID específico del documento (opcional)"},
+            },
+            "required": ["case_id"],
+        },
+    },
 ]
 
 
@@ -206,7 +219,7 @@ class WAAdminAIService:
                 tool_results = []
                 for tool_use in tool_uses:
                     result = await self._execute_tool(
-                        tenant_id, tool_use.name, tool_use.input
+                        tenant_id, tool_use.name, tool_use.input, phone=phone,
                     )
                     tool_results.append({
                         "type": "tool_result",
@@ -262,7 +275,8 @@ class WAAdminAIService:
             )
 
     async def _execute_tool(
-        self, tenant_id: UUID, tool_name: str, tool_input: Dict[str, Any]
+        self, tenant_id: UUID, tool_name: str, tool_input: Dict[str, Any],
+        phone: str = "",
     ) -> str:
         """Dispatch tool call to the appropriate repository and return JSON string."""
         try:
@@ -384,6 +398,40 @@ class WAAdminAIService:
                     "tramites": tramites,
                     "payments": payments,
                 }, default=str, ensure_ascii=False)
+
+            elif tool_name == "send_document_to_me":
+                from app.repositories import DocumentRepository
+                doc_repo = DocumentRepository()
+                case_id = UUID(tool_input["case_id"])
+
+                document_id = tool_input.get("document_id")
+                if document_id:
+                    doc = await doc_repo.get_by_id(UUID(document_id))
+                else:
+                    docs = await doc_repo.list_by_case(case_id)
+                    doc = docs[0] if docs else None
+
+                if not doc:
+                    return json.dumps({"error": "No se encontró documento para este expediente"})
+
+                if not doc.get('storage_path'):
+                    return json.dumps({"error": "El documento no tiene archivo almacenado"})
+
+                if not phone:
+                    return json.dumps({"error": "No se pudo determinar el teléfono de destino"})
+
+                from app.services.wa_docgen_service import wa_docgen_service
+                sent = await wa_docgen_service.send_document_via_whatsapp(
+                    phone=phone,
+                    storage_path=doc['storage_path'],
+                    filename=doc.get('nombre_documento', 'documento.docx'),
+                    caption=f"Documento: {doc.get('nombre_documento', '')}",
+                )
+
+                if sent:
+                    return json.dumps({"success": True, "message": f"Documento '{doc.get('nombre_documento', '')}' enviado por WhatsApp"})
+                else:
+                    return json.dumps({"error": "No se pudo enviar el documento por WhatsApp"})
 
             else:
                 return json.dumps({"error": f"Herramienta desconocida: {tool_name}"})

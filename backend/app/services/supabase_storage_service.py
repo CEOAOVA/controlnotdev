@@ -615,6 +615,35 @@ class SupabaseStorageService:
             )
             raise
 
+    def read_stored_file(self, path: str, bucket: str = "documentos") -> bytes:
+        """Read a file from Supabase Storage by path.
+
+        Args:
+            path: Storage path (e.g. "tenant_id/whatsapp/docgen_phone/img_0_abc.jpg")
+            bucket: Bucket name (default: documentos)
+
+        Returns:
+            bytes: File content
+        """
+        start_time = time.time()
+        try:
+            content = self.admin_client.storage.from_(bucket).download(path)
+            duration_ms = (time.time() - start_time) * 1000
+            logger.debug(
+                "storage_read_stored_file_complete",
+                bucket=bucket, path=path, size_bytes=len(content),
+                duration_ms=round(duration_ms, 2),
+            )
+            return content
+        except Exception as e:
+            duration_ms = (time.time() - start_time) * 1000
+            logger.error(
+                "storage_read_stored_file_failed",
+                bucket=bucket, path=path, error=str(e),
+                duration_ms=round(duration_ms, 2),
+            )
+            raise
+
     async def delete_document(self, path: str) -> bool:
         """
         Elimina un documento de Supabase Storage

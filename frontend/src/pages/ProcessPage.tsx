@@ -5,6 +5,7 @@
  */
 
 import { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { ArrowRight, ArrowLeft, PlayCircle, RotateCcw, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -31,10 +32,11 @@ import { DownloadButton } from '@/components/document/DownloadButton';
 import { EmailForm } from '@/components/document/EmailForm';
 
 // Hooks and stores
-import { useProcessDocument, useCategories, useFieldMetadata } from '@/hooks';
+import { useProcessDocument, useCategories, useFieldMetadata, useTemplates } from '@/hooks';
 import { useDocumentStore, useTemplateStore, useCategoryStore } from '@/store';
 
 export function ProcessPage() {
+  const [searchParams] = useSearchParams();
   const [currentStep, setCurrentStep] = useState<ProcessStep>('upload');
   const [filesCount, setFilesCount] = useState(0);
   const [hasTemplate, setHasTemplate] = useState(false);
@@ -44,12 +46,24 @@ export function ProcessPage() {
   // Hooks
   const { processFullWorkflow, isProcessing } = useProcessDocument();
   const { getTotalFilesCount, areAllCategoriesPopulated } = useCategories();
+  const { templates, selectTemplate } = useTemplates();
 
   // Stores
   const { extractedData, editedData, reset, processingStep, documentType, validationReport } = useDocumentStore();
   const { selectedTemplate } = useTemplateStore();
   const { clearAll } = useCategoryStore();
   const { fields: fieldMetadata } = useFieldMetadata(documentType);
+
+  // Auto-select template from URL params (e.g. from Reports page)
+  useEffect(() => {
+    const templateId = searchParams.get('templateId');
+    if (templateId && templates.length > 0 && !selectedTemplate) {
+      const match = templates.find((t) => t.id === templateId);
+      if (match) {
+        selectTemplate(match);
+      }
+    }
+  }, [searchParams, templates, selectedTemplate, selectTemplate]);
 
   // Update states
   useEffect(() => {

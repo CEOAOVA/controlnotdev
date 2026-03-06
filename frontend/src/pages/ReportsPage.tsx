@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { BarChart3, RefreshCw } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
@@ -11,34 +12,49 @@ import { Card } from '@/components/ui/card';
 import { CasesReport } from '@/components/reports/CasesReport';
 import { FinancialReport } from '@/components/reports/FinancialReport';
 import { TramitesReport } from '@/components/reports/TramitesReport';
+import { WhatsAppReport } from '@/components/reports/WhatsAppReport';
+import { TemplatesReport } from '@/components/reports/TemplatesReport';
 import {
   reportsApi,
   type CasesSummary,
   type TramitesSummary,
   type FinancialSummary,
   type ProductivitySummary,
+  type WhatsAppSummary,
+  type TemplatesSummary,
 } from '@/api/endpoints/reports';
 
 export function ReportsPage() {
+  const navigate = useNavigate();
   const [casesSummary, setCasesSummary] = useState<CasesSummary | null>(null);
   const [tramitesSummary, setTramitesSummary] = useState<TramitesSummary | null>(null);
   const [financialSummary, setFinancialSummary] = useState<FinancialSummary | null>(null);
   const [productivity, setProductivity] = useState<ProductivitySummary | null>(null);
+  const [whatsappData, setWhatsappData] = useState<WhatsAppSummary | null>(null);
+  const [templatesData, setTemplatesData] = useState<TemplatesSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  const handleGenerate = (templateId: string, tipoDocumento: string) => {
+    navigate(`/generate?templateId=${templateId}&tipoDocumento=${tipoDocumento}`);
+  };
 
   const loadAll = async () => {
     setIsLoading(true);
     try {
-      const [cases, tramites, financial, prod] = await Promise.all([
+      const [cases, tramites, financial, prod, whatsapp, templates] = await Promise.all([
         reportsApi.casesSummary(),
         reportsApi.tramitesSummary(),
         reportsApi.financialSummary(),
         reportsApi.productivity(),
+        reportsApi.whatsappSummary().catch(() => null),
+        reportsApi.templatesSummary().catch(() => null),
       ]);
       setCasesSummary(cases);
       setTramitesSummary(tramites);
       setFinancialSummary(financial);
       setProductivity(prod);
+      setWhatsappData(whatsapp);
+      setTemplatesData(templates);
     } catch (err) {
       console.error('Error loading reports:', err);
     } finally {
@@ -100,6 +116,8 @@ export function ReportsPage() {
         <CasesReport data={casesSummary} />
         <TramitesReport data={tramitesSummary} />
         <FinancialReport data={financialSummary} />
+        <WhatsAppReport data={whatsappData} />
+        <TemplatesReport data={templatesData} onGenerate={handleGenerate} />
       </div>
     </MainLayout>
   );

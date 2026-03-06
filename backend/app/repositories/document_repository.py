@@ -26,7 +26,7 @@ class DocumentRepository(BaseRepository):
     async def create_document(
         self,
         tenant_id: UUID,
-        case_id: UUID,
+        case_id: Optional[UUID],
         session_id: Optional[UUID],
         template_id: Optional[UUID],
         tipo_documento: str,
@@ -60,7 +60,6 @@ class DocumentRepository(BaseRepository):
         """
         doc_data = {
             'tenant_id': str(tenant_id),
-            'case_id': str(case_id),
             'tipo_documento': tipo_documento,
             'nombre_documento': nombre_documento,
             'storage_path': storage_path,
@@ -69,6 +68,8 @@ class DocumentRepository(BaseRepository):
             'metadata': metadata or {}
         }
 
+        if case_id:
+            doc_data['case_id'] = str(case_id)
         if session_id:
             doc_data['session_id'] = str(session_id)
         if template_id:

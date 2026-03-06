@@ -91,6 +91,15 @@ class WAStaffRouter:
                 'text': payload.get('content', ''),
             }
 
+        if msg_type in ('image', 'document'):
+            return {
+                'type': 'media',
+                'media_type': msg_type,
+                'media_id': payload.get('media_id'),
+                'text': (payload.get('content', '') or '').strip().lower(),
+                'raw': payload.get('content', ''),
+            }
+
         # Text message
         text = (payload.get('content', '') or '').strip().lower()
         return {
