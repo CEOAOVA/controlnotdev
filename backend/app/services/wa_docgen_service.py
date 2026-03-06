@@ -318,7 +318,7 @@ class WADocgenService:
         """
         try:
             import anthropic
-            from app.config import settings
+            from app.core.config import settings
 
             client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
 
@@ -395,6 +395,13 @@ class WADocgenService:
                 sources[field_name] = source
 
         return sources
+
+    # ── Category labels for guided wizard ──
+
+    def get_category_labels(self, doc_type: str) -> Optional[Dict[str, str]]:
+        """Returns CATEGORY_LABELS for doc_type, or None if no categories defined."""
+        from app.services.anthropic_service import CATEGORY_LABELS
+        return CATEGORY_LABELS.get(doc_type)
 
     # ── Merge extracted data ──
 

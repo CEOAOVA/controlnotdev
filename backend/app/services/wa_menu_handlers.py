@@ -955,24 +955,17 @@ class WAMenuHandler:
         if len(templates) == 1:
             # Auto-select the only template
             t = templates[0]
-            new_session['docgen_step'] = 'collect_images'
             new_session['docgen_template_id'] = t['id']
             new_session['docgen_template_name'] = t.get('name', 'Plantilla')
             new_session['docgen_images'] = []
             new_session['docgen_prev_image_count'] = 0
 
-            await self._save_session(tenant_id, phone, new_session)
+            await self._docgen_init_categories(new_session, doc_type)
+
             await whatsapp_service.send_text(
-                phone,
-                f"Plantilla seleccionada: *{t.get('name', 'Plantilla')}*\n\n"
-                "Envia las fotos de los documentos fuente.\n"
-                "Cuando termines, presiona *Listo*."
+                phone, f"Plantilla seleccionada: *{t.get('name', 'Plantilla')}*"
             )
-            await whatsapp_service.send_interactive_buttons(
-                to_phone=phone,
-                body_text="Esperando fotos...",
-                buttons=[{"id": "docgen_done_images", "title": "Listo"}],
-            )
+            await self._docgen_enter_collect_images(tenant_id, phone, new_session)
             return
 
         # Multiple templates — show list
@@ -1013,25 +1006,180 @@ class WAMenuHandler:
             await whatsapp_service.send_text(phone, "Plantilla no encontrada. Intenta de nuevo.")
             return
 
-        session['docgen_step'] = 'collect_images'
         session['docgen_template_id'] = template_id
         session['docgen_template_name'] = template.get('nombre', 'Plantilla')
         session['docgen_images'] = []
         session['docgen_prev_image_count'] = 0
 
-        await self._save_session(tenant_id, phone, session)
+        doc_type = session.get('docgen_type', '')
+        await self._docgen_init_categories(session, doc_type)
 
         await whatsapp_service.send_text(
-            phone,
-            f"Plantilla seleccionada: *{template.get('nombre', 'Plantilla')}*\n\n"
-            "Envia las fotos de los documentos fuente.\n"
-            "Cuando termines, presiona *Listo*."
+            phone, f"Plantilla seleccionada: *{template.get('nombre', 'Plantilla')}*"
         )
+        await self._docgen_enter_collect_images(tenant_id, phone, session)
+
+    # ── Category-guided wizard helpers ──
+
+    CATEGORY_ORDER = ["otros", "parte_a", "parte_b"]
+
+    async def _docgen_init_categories(
+        self, session: Dict[str, Any], doc_type: str,
+    ) -> None:
+        """Initialize category session keys if doc_type has CATEGORY_LABELS."""
+        from app.services.wa_docgen_service import wa_docgen_service
+        cat_labels = wa_docgen_service.get_category_labels(doc_type)
+
+        if cat_labels:
+            cats = [c for c in self.CATEGORY_ORDER if c in cat_labels]
+            session['docgen_categories'] = cats
+            session['docgen_current_cat_index'] = 0
+            session['docgen_images_by_cat'] = {c: [] for c in cats}
+            session['docgen_cat_warned'] = False
+        else:
+            # No categories — flat mode
+            session.pop('docgen_categories', None)
+            session.pop('docgen_current_cat_index', None)
+            session.pop('docgen_images_by_cat', None)
+            session.pop('docgen_cat_warned', None)
+
+    async def _docgen_send_category_prompt(
+        self, phone: str, session: Dict[str, Any],
+    ) -> None:
+        """Send the category intro message + Siguiente button."""
+        from app.services.wa_docgen_service import wa_docgen_service
+
+        cats = session['docgen_categories']
+        idx = session['docgen_current_cat_index']
+        doc_type = session.get('docgen_type', '')
+        cat_labels = wa_docgen_service.get_category_labels(doc_type) or {}
+
+        cat_key = cats[idx]
+        label = cat_labels.get(cat_key, cat_key)
+        total = len(cats)
+        step_num = idx + 1
+
+        # Split label into title and document list
+        parts = label.split(' - ', 1)
+        title = parts[0]
+        docs = parts[1] if len(parts) > 1 else ''
+
+        msg = f"*Paso {step_num} de {total} — {title}*\n"
+        if docs:
+            msg += f"Envia fotos de: {docs}\n"
+        msg += "Cuando termines con estos documentos, presiona *Siguiente*."
+
+        await whatsapp_service.send_text(phone, msg)
         await whatsapp_service.send_interactive_buttons(
             to_phone=phone,
             body_text="Esperando fotos...",
-            buttons=[{"id": "docgen_done_images", "title": "Listo"}],
+            buttons=[{"id": "docgen_next_cat", "title": "Siguiente"}],
         )
+
+    async def _docgen_enter_collect_images(
+        self, tenant_id: UUID, phone: str, session: Dict[str, Any],
+    ) -> None:
+        """Enter collect_images step — send category prompt or flat prompt."""
+        session['docgen_step'] = 'collect_images'
+        await self._save_session(tenant_id, phone, session)
+
+        if session.get('docgen_categories'):
+            await self._docgen_send_category_prompt(phone, session)
+        else:
+            await whatsapp_service.send_text(
+                phone,
+                "Envia las fotos de los documentos fuente.\n"
+                "Cuando termines, presiona *Listo*."
+            )
+            await whatsapp_service.send_interactive_buttons(
+                to_phone=phone,
+                body_text="Esperando fotos...",
+                buttons=[{"id": "docgen_done_images", "title": "Listo"}],
+            )
+
+    async def _docgen_finish_collection(
+        self, tenant_id: UUID, phone: str, staff: Dict[str, Any],
+        session: Dict[str, Any],
+    ) -> None:
+        """All categories done (or flat mode Listo) — extract + validate + report."""
+        images = session.get('docgen_images', [])
+        if not images:
+            await whatsapp_service.send_text(
+                phone, "No has enviado fotos. Envia al menos una foto antes de continuar."
+            )
+            return
+
+        prev_count = session.get('docgen_prev_image_count', 0)
+        new_images = images[prev_count:]
+
+        if not new_images:
+            await whatsapp_service.send_text(
+                phone, "No hay fotos nuevas. Envia mas fotos o escribe 'menu' para cancelar."
+            )
+            return
+
+        await whatsapp_service.send_text(
+            phone, f"Procesando {len(new_images)} foto(s) nueva(s)... esto puede tardar unos segundos."
+        )
+
+        try:
+            from app.services.wa_docgen_service import wa_docgen_service
+            from app.services.anthropic_service import AnthropicExtractionService
+
+            downloaded = await wa_docgen_service.load_stored_images(new_images)
+            if not downloaded:
+                await whatsapp_service.send_text(
+                    phone, "Error: no se pudieron cargar las fotos. Intenta de nuevo."
+                )
+                return
+
+            doc_type = session.get('docgen_type', 'compraventa')
+
+            new_extracted = await wa_docgen_service.extract_from_images(
+                images=downloaded,
+                doc_type=doc_type,
+                tenant_id=tenant_id,
+            )
+
+            existing_extracted = session.get('docgen_extracted', {})
+            if existing_extracted:
+                extracted = wa_docgen_service.merge_extracted_data(existing_extracted, new_extracted)
+            else:
+                extracted = new_extracted
+
+            extraction_service = AnthropicExtractionService()
+            validation = extraction_service.validate_extracted_data(extracted, doc_type)
+
+            field_sources = wa_docgen_service.get_field_sources(doc_type)
+
+            session['docgen_step'] = 'completeness_report'
+            session['docgen_extracted'] = extracted
+            session['docgen_validation'] = validation
+            session['docgen_prev_image_count'] = len(images)
+            await self._save_session(tenant_id, phone, session)
+
+            report = self._format_completeness_report(
+                extracted, validation, field_sources
+            )
+            await whatsapp_service.send_text(phone, report)
+
+            await whatsapp_service.send_interactive_buttons(
+                to_phone=phone,
+                body_text="Selecciona una opcion:",
+                buttons=[
+                    {"id": "docgen_generate_anyway", "title": "Generar asi"},
+                    {"id": "docgen_add_more", "title": "Agregar fotos"},
+                    {"id": "docgen_cancel", "title": "Cancelar"},
+                ],
+            )
+
+        except Exception as e:
+            logger.error("wa_docgen_extraction_error", error=str(e))
+            await whatsapp_service.send_text(
+                phone, "Error al procesar las fotos. Intenta de nuevo o envia 'menu'."
+            )
+
+    # ── Collect images handler ──
 
     async def _docgen_collect_images(
         self, tenant_id: UUID, phone: str, staff: Dict[str, Any],
@@ -1039,6 +1187,7 @@ class WAMenuHandler:
     ) -> None:
         input_type = user_input.get('type', '')
         input_id = user_input.get('id', '')
+        has_categories = bool(session.get('docgen_categories'))
 
         # Received an image — store progressively + evaluate
         if input_type == 'media' and user_input.get('media_id'):
@@ -1048,7 +1197,6 @@ class WAMenuHandler:
             image_index = len(images)
             media_id = user_input['media_id']
 
-            # Download + store in Supabase
             store_result = await wa_docgen_service.store_image_progressively(
                 tenant_id=str(tenant_id),
                 phone=phone,
@@ -1062,15 +1210,28 @@ class WAMenuHandler:
                 )
                 return
 
-            # Save image record to session
-            images.append({
+            image_record = {
                 'storage_path': store_result['storage_path'],
                 'mime_type': store_result['mime_type'],
-            })
+            }
+
+            # Save to flat list
+            images.append(image_record)
             session['docgen_images'] = images
+
+            # Save to category bucket if applicable
+            if has_categories:
+                cats = session['docgen_categories']
+                idx = session.get('docgen_current_cat_index', 0)
+                current_cat = cats[idx]
+                images_by_cat = session.get('docgen_images_by_cat', {})
+                images_by_cat.setdefault(current_cat, []).append(image_record)
+                session['docgen_images_by_cat'] = images_by_cat
+                session['docgen_cat_warned'] = False  # reset warning on new photo
+
             await self._save_session(tenant_id, phone, session)
 
-            # Quick evaluation with Claude
+            # Quick evaluation
             doc_type = session.get('docgen_type', 'compraventa')
             evaluation = await wa_docgen_service.evaluate_image_quick(
                 image_bytes=store_result['content_bytes'],
@@ -1078,7 +1239,6 @@ class WAMenuHandler:
                 doc_type=doc_type,
             )
 
-            # Format feedback message
             quality = evaluation.get('quality', '?')
             readable = evaluation.get('readable', 'unknown')
             doc_label = evaluation.get('document_type', 'No evaluado')
@@ -1104,109 +1264,86 @@ class WAMenuHandler:
                 )
 
             await whatsapp_service.send_text(phone, feedback)
-            await whatsapp_service.send_interactive_buttons(
-                to_phone=phone,
-                body_text=f"{len(images)} foto(s) recibida(s). Envia mas o presiona Listo.",
-                buttons=[{"id": "docgen_done_images", "title": "Listo"}],
-            )
-            return
 
-        # "Listo" button pressed — extract + validate + show completeness report
-        if input_id == 'docgen_done_images':
-            images = session.get('docgen_images', [])
-            if not images:
-                await whatsapp_service.send_text(
-                    phone, "No has enviado fotos. Envia al menos una foto antes de presionar Listo."
-                )
-                return
-
-            prev_count = session.get('docgen_prev_image_count', 0)
-            new_images = images[prev_count:]
-
-            if not new_images:
-                await whatsapp_service.send_text(
-                    phone, "No hay fotos nuevas. Envia mas fotos o escribe 'menu' para cancelar."
-                )
-                return
-
-            await whatsapp_service.send_text(
-                phone, f"Procesando {len(new_images)} foto(s) nueva(s)... esto puede tardar unos segundos."
-            )
-
-            try:
-                from app.services.wa_docgen_service import wa_docgen_service
-                from app.services.anthropic_service import AnthropicExtractionService
-
-                # Load only new images from storage
-                downloaded = await wa_docgen_service.load_stored_images(new_images)
-                if not downloaded:
-                    await whatsapp_service.send_text(
-                        phone, "Error: no se pudieron cargar las fotos. Intenta de nuevo."
-                    )
-                    return
-
-                doc_type = session.get('docgen_type', 'compraventa')
-
-                # Extract data from new images
-                new_extracted = await wa_docgen_service.extract_from_images(
-                    images=downloaded,
-                    doc_type=doc_type,
-                    tenant_id=tenant_id,
-                )
-
-                # Merge with existing if this is an "add more" round
-                existing_extracted = session.get('docgen_extracted', {})
-                if existing_extracted:
-                    extracted = wa_docgen_service.merge_extracted_data(existing_extracted, new_extracted)
-                else:
-                    extracted = new_extracted
-
-                # Validate completeness
-                extraction_service = AnthropicExtractionService()
-                validation = extraction_service.validate_extracted_data(extracted, doc_type)
-
-                # Get field sources for tips
-                field_sources = wa_docgen_service.get_field_sources(doc_type)
-
-                # Save to session
-                session['docgen_step'] = 'completeness_report'
-                session['docgen_extracted'] = extracted
-                session['docgen_validation'] = validation
-                session['docgen_prev_image_count'] = len(images)
-                await self._save_session(tenant_id, phone, session)
-
-                # Format and send completeness report
-                report = self._format_completeness_report(
-                    extracted, validation, field_sources
-                )
-                await whatsapp_service.send_text(phone, report)
-
+            # Show appropriate button
+            if has_categories:
                 await whatsapp_service.send_interactive_buttons(
                     to_phone=phone,
-                    body_text="Selecciona una opcion:",
-                    buttons=[
-                        {"id": "docgen_generate_anyway", "title": "Generar asi"},
-                        {"id": "docgen_add_more", "title": "Agregar fotos"},
-                        {"id": "docgen_cancel", "title": "Cancelar"},
-                    ],
+                    body_text=f"{len(images)} foto(s) recibida(s). Envia mas o presiona Siguiente.",
+                    buttons=[{"id": "docgen_next_cat", "title": "Siguiente"}],
                 )
+            else:
+                await whatsapp_service.send_interactive_buttons(
+                    to_phone=phone,
+                    body_text=f"{len(images)} foto(s) recibida(s). Envia mas o presiona Listo.",
+                    buttons=[{"id": "docgen_done_images", "title": "Listo"}],
+                )
+            return
 
-            except Exception as e:
-                logger.error("wa_docgen_extraction_error", error=str(e))
+        # "Siguiente" button (category mode) — advance to next category or finish
+        if input_id == 'docgen_next_cat' and has_categories:
+            from app.services.wa_docgen_service import wa_docgen_service
+
+            cats = session['docgen_categories']
+            idx = session.get('docgen_current_cat_index', 0)
+            current_cat = cats[idx]
+            cat_labels = wa_docgen_service.get_category_labels(session.get('docgen_type', '')) or {}
+            cat_images = session.get('docgen_images_by_cat', {}).get(current_cat, [])
+
+            # Warn if no photos in current category (first click)
+            if not cat_images and not session.get('docgen_cat_warned'):
+                label = cat_labels.get(current_cat, current_cat).split(' - ', 1)[0]
                 await whatsapp_service.send_text(
-                    phone, "Error al procesar las fotos. Intenta de nuevo o envia 'menu'."
+                    phone,
+                    f"No enviaste fotos de *{label}*. "
+                    f"Los campos de esta seccion quedaran vacios.\n"
+                    f"Presiona *Siguiente* otra vez para continuar."
                 )
+                session['docgen_cat_warned'] = True
+                await self._save_session(tenant_id, phone, session)
+                await whatsapp_service.send_interactive_buttons(
+                    to_phone=phone,
+                    body_text="Envia fotos o presiona Siguiente para saltar.",
+                    buttons=[{"id": "docgen_next_cat", "title": "Siguiente"}],
+                )
+                return
+
+            # Advance to next category
+            next_idx = idx + 1
+            if next_idx < len(cats):
+                session['docgen_current_cat_index'] = next_idx
+                session['docgen_cat_warned'] = False
+                await self._save_session(tenant_id, phone, session)
+                await self._docgen_send_category_prompt(phone, session)
+            else:
+                # All categories done — proceed to extraction
+                await self._docgen_finish_collection(tenant_id, phone, staff, session)
+            return
+
+        # "Listo" button (flat mode) — extract + validate
+        if input_id == 'docgen_done_images' and not has_categories:
+            await self._docgen_finish_collection(tenant_id, phone, staff, session)
             return
 
         # Unrecognized input while collecting images
-        await whatsapp_service.send_text(
-            phone, "Envia fotos de los documentos o presiona *Listo* cuando termines."
-        )
-        await whatsapp_service.send_interactive_buttons(
-            to_phone=phone,
-            body_text="Esperando fotos...",
-            buttons=[{"id": "docgen_done_images", "title": "Listo"}],
-        )
+        if has_categories:
+            await whatsapp_service.send_text(
+                phone, "Envia fotos de los documentos o presiona *Siguiente* cuando termines con esta seccion."
+            )
+            await whatsapp_service.send_interactive_buttons(
+                to_phone=phone,
+                body_text="Esperando fotos...",
+                buttons=[{"id": "docgen_next_cat", "title": "Siguiente"}],
+            )
+        else:
+            await whatsapp_service.send_text(
+                phone, "Envia fotos de los documentos o presiona *Listo* cuando termines."
+            )
+            await whatsapp_service.send_interactive_buttons(
+                to_phone=phone,
+                body_text="Esperando fotos...",
+                buttons=[{"id": "docgen_done_images", "title": "Listo"}],
+            )
 
     async def _docgen_completeness_report(
         self, tenant_id: UUID, phone: str, staff: Dict[str, Any],
@@ -1223,19 +1360,19 @@ class WAMenuHandler:
 
         if input_id == 'docgen_add_more':
             # Go back to collect_images, keeping existing data
-            session['docgen_step'] = 'collect_images'
-            await self._save_session(tenant_id, phone, session)
+            # Reset category index to start for category mode
+            if session.get('docgen_categories'):
+                session['docgen_current_cat_index'] = 0
+                session['docgen_cat_warned'] = False
+                # Reset per-category image lists (flat list keeps all)
+                session['docgen_images_by_cat'] = {
+                    c: [] for c in session['docgen_categories']
+                }
 
             await whatsapp_service.send_text(
-                phone,
-                "Envia las fotos adicionales de los documentos faltantes.\n"
-                "Cuando termines, presiona *Listo*."
+                phone, "Envia las fotos adicionales de los documentos faltantes."
             )
-            await whatsapp_service.send_interactive_buttons(
-                to_phone=phone,
-                body_text="Esperando fotos adicionales...",
-                buttons=[{"id": "docgen_done_images", "title": "Listo"}],
-            )
+            await self._docgen_enter_collect_images(tenant_id, phone, session)
             return
 
         if input_id == 'docgen_generate_anyway':
