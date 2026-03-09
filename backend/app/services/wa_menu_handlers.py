@@ -12,7 +12,7 @@ from app.services.whatsapp_service import whatsapp_service
 logger = structlog.get_logger()
 
 # Triggers that reset to main menu
-MENU_TRIGGERS = {'menu', 'hola', 'inicio', 'home', '0'}
+MENU_TRIGGERS = {'menu', 'hola', 'inicio', 'home', '0', 'cancelar'}
 
 
 class WAMenuHandler:
@@ -1082,7 +1082,10 @@ class WAMenuHandler:
         await whatsapp_service.send_interactive_buttons(
             to_phone=phone,
             body_text="Esperando fotos...",
-            buttons=[{"id": "docgen_next_cat", "title": "Siguiente"}],
+            buttons=[
+                {"id": "docgen_next_cat", "title": "Siguiente"},
+                {"id": "menu_principal", "title": "Cancelar"},
+            ],
         )
 
     async def _docgen_enter_collect_images(
@@ -1103,7 +1106,10 @@ class WAMenuHandler:
             await whatsapp_service.send_interactive_buttons(
                 to_phone=phone,
                 body_text="Esperando fotos...",
-                buttons=[{"id": "docgen_done_images", "title": "Listo"}],
+                buttons=[
+                    {"id": "docgen_done_images", "title": "Listo"},
+                    {"id": "menu_principal", "title": "Cancelar"},
+                ],
             )
 
     async def _docgen_finish_collection(
@@ -1279,13 +1285,19 @@ class WAMenuHandler:
                 await whatsapp_service.send_interactive_buttons(
                     to_phone=phone,
                     body_text=f"{len(images)} foto(s) recibida(s). Envia mas o presiona Siguiente.",
-                    buttons=[{"id": "docgen_next_cat", "title": "Siguiente"}],
+                    buttons=[
+                        {"id": "docgen_next_cat", "title": "Siguiente"},
+                        {"id": "menu_principal", "title": "Cancelar"},
+                    ],
                 )
             else:
                 await whatsapp_service.send_interactive_buttons(
                     to_phone=phone,
                     body_text=f"{len(images)} foto(s) recibida(s). Envia mas o presiona Listo.",
-                    buttons=[{"id": "docgen_done_images", "title": "Listo"}],
+                    buttons=[
+                        {"id": "docgen_done_images", "title": "Listo"},
+                        {"id": "menu_principal", "title": "Cancelar"},
+                    ],
                 )
             return
 
@@ -1313,7 +1325,10 @@ class WAMenuHandler:
                 await whatsapp_service.send_interactive_buttons(
                     to_phone=phone,
                     body_text="Envia fotos o presiona Siguiente para saltar.",
-                    buttons=[{"id": "docgen_next_cat", "title": "Siguiente"}],
+                    buttons=[
+                        {"id": "docgen_next_cat", "title": "Siguiente"},
+                        {"id": "menu_principal", "title": "Cancelar"},
+                    ],
                 )
                 return
 
@@ -1337,21 +1352,27 @@ class WAMenuHandler:
         # Unrecognized input while collecting images
         if has_categories:
             await whatsapp_service.send_text(
-                phone, "Envia fotos de los documentos o presiona *Siguiente* cuando termines con esta seccion."
+                phone, "Envia fotos de los documentos o presiona *Siguiente* cuando termines con esta seccion.\nEscribe *cancelar* o presiona *Cancelar* para salir."
             )
             await whatsapp_service.send_interactive_buttons(
                 to_phone=phone,
                 body_text="Esperando fotos...",
-                buttons=[{"id": "docgen_next_cat", "title": "Siguiente"}],
+                buttons=[
+                    {"id": "docgen_next_cat", "title": "Siguiente"},
+                    {"id": "menu_principal", "title": "Cancelar"},
+                ],
             )
         else:
             await whatsapp_service.send_text(
-                phone, "Envia fotos de los documentos o presiona *Listo* cuando termines."
+                phone, "Envia fotos de los documentos o presiona *Listo* cuando termines.\nEscribe *cancelar* o presiona *Cancelar* para salir."
             )
             await whatsapp_service.send_interactive_buttons(
                 to_phone=phone,
                 body_text="Esperando fotos...",
-                buttons=[{"id": "docgen_done_images", "title": "Listo"}],
+                buttons=[
+                    {"id": "docgen_done_images", "title": "Listo"},
+                    {"id": "menu_principal", "title": "Cancelar"},
+                ],
             )
 
     async def _docgen_completeness_report(
