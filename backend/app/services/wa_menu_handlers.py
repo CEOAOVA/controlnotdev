@@ -2,6 +2,8 @@
 ControlNot v2 - WhatsApp Menu Handlers
 Interactive menu system for staff management via WhatsApp.
 """
+import asyncio
+import traceback
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 import structlog
@@ -10,6 +12,18 @@ from app.repositories.wa_repository import wa_repository
 from app.services.whatsapp_service import whatsapp_service
 
 logger = structlog.get_logger()
+
+# Per-phone locks to serialize image processing and prevent race conditions
+_phone_locks: Dict[str, asyncio.Lock] = {}
+
+def _get_phone_lock(tenant_id: UUID, phone: str) -> asyncio.Lock:
+    key = f"{tenant_id}:{phone}"
+    if key not in _phone_locks:
+        _phone_locks[key] = asyncio.Lock()
+    return _phone_locks[key]
+
+# Pending photo summary tasks (debounce button spam)
+_photo_summary_tasks: Dict[str, asyncio.Task] = {}
 
 # Triggers that reset to main menu
 MENU_TRIGGERS = {'menu', 'hola', 'inicio', 'home', '0', 'cancelar'}
@@ -1173,6 +1187,19 @@ class WAMenuHandler:
             session['docgen_prev_image_count'] = len(images)
             await self._save_session(tenant_id, phone, session)
 
+            # Track extraction usage
+            await wa_repository.log_command(
+                tenant_id=tenant_id,
+                staff_phone=phone,
+                command='docgen_extraction',
+                payload={
+                    'doc_type': doc_type,
+                    'images_processed': len(new_images),
+                    'total_images': len(images),
+                },
+                result='success',
+            )
+
             report = self._format_completeness_report(
                 extracted, validation, field_sources
             )
@@ -1189,10 +1216,51 @@ class WAMenuHandler:
             )
 
         except Exception as e:
-            logger.error("wa_docgen_extraction_error", error=str(e))
+            logger.error("wa_docgen_extraction_error", error=str(e), traceback=traceback.format_exc())
+            await wa_repository.log_command(
+                tenant_id=tenant_id,
+                staff_phone=phone,
+                command='docgen_extraction',
+                payload={'doc_type': session.get('docgen_type', 'unknown'), 'images_attempted': len(new_images)},
+                result=f'error: {str(e)[:200]}',
+            )
             await whatsapp_service.send_text(
                 phone, "Error al procesar las fotos. Intenta de nuevo o envia 'menu'."
             )
+
+    async def _send_delayed_photo_summary(
+        self, tenant_id: UUID, phone: str, has_categories: bool, delay: float = 4.0,
+    ) -> None:
+        """Send a single summary message after a batch of photos (debounced)."""
+        try:
+            await asyncio.sleep(delay)
+        except asyncio.CancelledError:
+            return  # Another photo arrived, this summary is superseded
+
+        # Re-read session for accurate counts
+        staff = await wa_repository.get_staff_by_phone(tenant_id, phone)
+        session = staff.get('session_state', {}) if staff else {}
+        images = session.get('docgen_images', [])
+        count = len(images)
+
+        if has_categories:
+            cats = session.get('docgen_categories', [])
+            idx = session.get('docgen_current_cat_index', 0)
+            current_cat = cats[idx] if idx < len(cats) else '?'
+            cat_images = session.get('docgen_images_by_cat', {}).get(current_cat, [])
+            body = f"{count} foto(s) total, {len(cat_images)} en seccion actual. Envia mas o presiona Siguiente."
+            buttons = [
+                {"id": "docgen_next_cat", "title": "Siguiente"},
+                {"id": "menu_principal", "title": "Cancelar"},
+            ]
+        else:
+            body = f"{count} foto(s) recibida(s). Envia mas o presiona Listo."
+            buttons = [
+                {"id": "docgen_done_images", "title": "Listo"},
+                {"id": "menu_principal", "title": "Cancelar"},
+            ]
+
+        await whatsapp_service.send_interactive_buttons(to_phone=phone, body_text=body, buttons=buttons)
 
     # ── Collect images handler ──
 
@@ -1208,45 +1276,53 @@ class WAMenuHandler:
         if input_type == 'media' and user_input.get('media_id'):
             from app.services.wa_docgen_service import wa_docgen_service
 
-            images = session.get('docgen_images', [])
-            image_index = len(images)
             media_id = user_input['media_id']
 
-            store_result = await wa_docgen_service.store_image_progressively(
-                tenant_id=str(tenant_id),
-                phone=phone,
-                media_id=media_id,
-                image_index=image_index,
-            )
+            # Acquire per-phone lock to serialize concurrent image webhooks
+            async with _get_phone_lock(tenant_id, phone):
+                # Re-read session from DB to get latest state (avoid race condition)
+                fresh_staff = await wa_repository.get_staff_by_phone(tenant_id, phone)
+                if fresh_staff:
+                    session = fresh_staff.get('session_state', {}) or {}
 
-            if not store_result:
-                await whatsapp_service.send_text(
-                    phone, f"Foto {image_index + 1}: Error al descargar. Intenta enviarla de nuevo."
+                images = session.get('docgen_images', [])
+                image_index = len(images)
+
+                store_result = await wa_docgen_service.store_image_progressively(
+                    tenant_id=str(tenant_id),
+                    phone=phone,
+                    media_id=media_id,
+                    image_index=image_index,
                 )
-                return
 
-            image_record = {
-                'storage_path': store_result['storage_path'],
-                'mime_type': store_result['mime_type'],
-            }
+                if not store_result:
+                    await whatsapp_service.send_text(
+                        phone, f"Foto {image_index + 1}: Error al descargar. Intenta enviarla de nuevo."
+                    )
+                    return
 
-            # Save to flat list
-            images.append(image_record)
-            session['docgen_images'] = images
+                image_record = {
+                    'storage_path': store_result['storage_path'],
+                    'mime_type': store_result['mime_type'],
+                }
 
-            # Save to category bucket if applicable
-            if has_categories:
-                cats = session['docgen_categories']
-                idx = session.get('docgen_current_cat_index', 0)
-                current_cat = cats[idx]
-                images_by_cat = session.get('docgen_images_by_cat', {})
-                images_by_cat.setdefault(current_cat, []).append(image_record)
-                session['docgen_images_by_cat'] = images_by_cat
-                session['docgen_cat_warned'] = False  # reset warning on new photo
+                # Save to flat list
+                images.append(image_record)
+                session['docgen_images'] = images
 
-            await self._save_session(tenant_id, phone, session)
+                # Save to category bucket if applicable
+                if has_categories:
+                    cats = session['docgen_categories']
+                    idx = session.get('docgen_current_cat_index', 0)
+                    current_cat = cats[idx]
+                    images_by_cat = session.get('docgen_images_by_cat', {})
+                    images_by_cat.setdefault(current_cat, []).append(image_record)
+                    session['docgen_images_by_cat'] = images_by_cat
+                    session['docgen_cat_warned'] = False  # reset warning on new photo
 
-            # Quick evaluation
+                await self._save_session(tenant_id, phone, session)
+
+            # Quick evaluation (outside lock to not block other photos)
             doc_type = session.get('docgen_type', 'compraventa')
             evaluation = await wa_docgen_service.evaluate_image_quick(
                 image_bytes=store_result['content_bytes'],
@@ -1280,25 +1356,14 @@ class WAMenuHandler:
 
             await whatsapp_service.send_text(phone, feedback)
 
-            # Show appropriate button
-            if has_categories:
-                await whatsapp_service.send_interactive_buttons(
-                    to_phone=phone,
-                    body_text=f"{len(images)} foto(s) recibida(s). Envia mas o presiona Siguiente.",
-                    buttons=[
-                        {"id": "docgen_next_cat", "title": "Siguiente"},
-                        {"id": "menu_principal", "title": "Cancelar"},
-                    ],
-                )
-            else:
-                await whatsapp_service.send_interactive_buttons(
-                    to_phone=phone,
-                    body_text=f"{len(images)} foto(s) recibida(s). Envia mas o presiona Listo.",
-                    buttons=[
-                        {"id": "docgen_done_images", "title": "Listo"},
-                        {"id": "menu_principal", "title": "Cancelar"},
-                    ],
-                )
+            # Debounced photo summary — cancel pending and schedule new one
+            summary_key = f"{tenant_id}:{phone}"
+            if summary_key in _photo_summary_tasks and not _photo_summary_tasks[summary_key].done():
+                _photo_summary_tasks[summary_key].cancel()
+
+            _photo_summary_tasks[summary_key] = asyncio.create_task(
+                self._send_delayed_photo_summary(tenant_id, phone, has_categories, delay=4.0)
+            )
             return
 
         # "Siguiente" button (category mode) — advance to next category or finish

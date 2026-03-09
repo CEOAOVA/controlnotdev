@@ -192,7 +192,14 @@ async def audit_middleware(request: Request, call_next):
     start_time = time.time()
 
     # Procesar request
-    response = await call_next(request)
+    try:
+        response = await call_next(request)
+    except RuntimeError as e:
+        if "No response returned" in str(e):
+            logger.warning("audit_middleware_no_response", path=request.url.path)
+            from starlette.responses import Response
+            return Response(status_code=500)
+        raise
 
     # Calcular duración
     duration_ms = (time.time() - start_time) * 1000

@@ -239,7 +239,16 @@ async def log_requests(request: Request, call_next):
             client=request.client.host if request.client else None
         )
 
-    response = await call_next(request)
+    try:
+        response = await call_next(request)
+    except RuntimeError as e:
+        if "No response returned" in str(e):
+            logger.warning("middleware_no_response", path=path, correlation_id=correlation_id)
+            from starlette.responses import Response as StarletteResponse
+            response = StarletteResponse(status_code=500)
+        else:
+            raise
+
     process_time = time.time() - start_time
 
     # Solo loguear respuestas de rutas no silenciosas o errores
