@@ -5,7 +5,14 @@
 
 export const env = {
   // API
-  apiUrl: import.meta.env.VITE_API_URL || 'http://localhost:8000',
+  apiUrl: (() => {
+    const url = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    // Force HTTPS for non-localhost URLs (production safety net)
+    if (!url.includes('localhost') && url.startsWith('http://')) {
+      return url.replace('http://', 'https://');
+    }
+    return url;
+  })(),
   
   // App
   appName: import.meta.env.VITE_APP_NAME || 'ControlNot v2',
