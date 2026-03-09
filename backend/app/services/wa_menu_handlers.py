@@ -996,7 +996,7 @@ class WAMenuHandler:
             {
                 "id": f"tmpl_{t['id']}",
                 "title": (t.get('name', 'Plantilla'))[:24],
-                "description": (t.get('document_type', ''))[:72],
+                "description": (t.get('description', '') or f"{len(t.get('placeholders', []))} campos")[:72],
             }
             for t in templates[:10]
         ]

@@ -87,24 +87,24 @@ class SupabaseStorageService:
                 db_start = time.time()
                 if tenant_id and include_public:
                     # Templates del tenant + públicos (tenant_id es null)
-                    # FILTRO: Solo templates con storage_path válido, ordenados por fecha desc
+                    # FILTRO: Solo templates activos con storage_path válido, ordenados por fecha desc
                     result = self.client.table('templates').select("*").or_(
                         f"tenant_id.eq.{tenant_id},tenant_id.is.null"
-                    ).not_.is_('storage_path', 'null').order(
+                    ).eq('activo', True).not_.is_('storage_path', 'null').order(
                         'created_at', desc=True
                     ).execute()
                 elif tenant_id:
                     # Solo templates del tenant
                     result = self.client.table('templates').select("*").eq(
                         'tenant_id', tenant_id
-                    ).not_.is_('storage_path', 'null').order(
+                    ).eq('activo', True).not_.is_('storage_path', 'null').order(
                         'created_at', desc=True
                     ).execute()
                 else:
                     # Solo templates públicos
                     result = self.client.table('templates').select("*").is_(
                         'tenant_id', 'null'
-                    ).not_.is_('storage_path', 'null').order(
+                    ).eq('activo', True).not_.is_('storage_path', 'null').order(
                         'created_at', desc=True
                     ).execute()
 
@@ -128,6 +128,7 @@ class SupabaseStorageService:
                         'id': str(record.get('id', '')),
                         'name': template_name,
                         'document_type': record.get('tipo_documento'),  # CLAVE: Incluir tipo
+                        'description': record.get('descripcion', ''),
                         'source': 'supabase',
                         'storage_path': record.get('storage_path', ''),
                         'placeholders': record.get('placeholders', []),
