@@ -1,0 +1,459 @@
+{
+  "_description": "Payloads de prueba para simular mensajes entrantes de WhatsApp. Usar con curl o Postman contra POST /api/whatsapp/webhook",
+
+  "scenario_01_client_text_dedicated_number": {
+    "_desc": "Cliente envia texto al numero dedicado de Notaria 14",
+    "_phone": "Juan Perez (vinculado, caso compraventa)",
+    "entry": [{
+      "changes": [{
+        "value": {
+          "messaging_product": "whatsapp",
+          "metadata": {"phone_number_id": "DEDICATED_N14_TEST_001"},
+          "contacts": [{"wa_id": "5215512345678", "profile": {"name": "Juan Perez"}}],
+          "messages": [{
+            "from": "5215512345678",
+            "id": "wamid_live_001",
+            "type": "text",
+            "timestamp": "1709078000",
+            "text": {"body": "Hola, ya tengo todos los documentos listos"}
+          }]
+        }
+      }]
+    }]
+  },
+
+  "scenario_02_client_image_dedicated": {
+    "_desc": "Cliente envia imagen (foto de documento) al numero dedicado",
+    "_phone": "Juan Perez envia INE como foto",
+    "entry": [{
+      "changes": [{
+        "value": {
+          "messaging_product": "whatsapp",
+          "metadata": {"phone_number_id": "DEDICATED_N14_TEST_001"},
+          "contacts": [{"wa_id": "5215512345678", "profile": {"name": "Juan Perez"}}],
+          "messages": [{
+            "from": "5215512345678",
+            "id": "wamid_live_002",
+            "type": "image",
+            "timestamp": "1709078100",
+            "image": {
+              "id": "media_img_001",
+              "mime_type": "image/jpeg",
+              "sha256": "abc123",
+              "caption": "Aqui esta mi INE"
+            }
+          }]
+        }
+      }]
+    }]
+  },
+
+  "scenario_03_client_document": {
+    "_desc": "Cliente envia documento PDF",
+    "_phone": "Juan Perez envia constancia fiscal",
+    "entry": [{
+      "changes": [{
+        "value": {
+          "messaging_product": "whatsapp",
+          "metadata": {"phone_number_id": "DEDICATED_N14_TEST_001"},
+          "contacts": [{"wa_id": "5215512345678", "profile": {"name": "Juan Perez"}}],
+          "messages": [{
+            "from": "5215512345678",
+            "id": "wamid_live_003",
+            "type": "document",
+            "timestamp": "1709078200",
+            "document": {
+              "id": "media_doc_001",
+              "mime_type": "application/pdf",
+              "sha256": "def456",
+              "filename": "constancia_fiscal_2025.pdf"
+            }
+          }]
+        }
+      }]
+    }]
+  },
+
+  "scenario_04_client_audio": {
+    "_desc": "Cliente envia nota de voz",
+    "entry": [{
+      "changes": [{
+        "value": {
+          "messaging_product": "whatsapp",
+          "metadata": {"phone_number_id": "DEDICATED_N14_TEST_001"},
+          "contacts": [{"wa_id": "5215512345678", "profile": {"name": "Juan Perez"}}],
+          "messages": [{
+            "from": "5215512345678",
+            "id": "wamid_live_004",
+            "type": "audio",
+            "timestamp": "1709078300",
+            "audio": {
+              "id": "media_audio_001",
+              "mime_type": "audio/ogg"
+            }
+          }]
+        }
+      }]
+    }]
+  },
+
+  "scenario_05_staff_text_platform": {
+    "_desc": "Staff (notario tenant A) envia 'menu' al numero plataforma AuriNot",
+    "_expected": "Debe mostrar menu principal interactivo",
+    "entry": [{
+      "changes": [{
+        "value": {
+          "messaging_product": "whatsapp",
+          "metadata": {"phone_number_id": "910944215432464"},
+          "contacts": [{"wa_id": "5215599990001", "profile": {"name": "Patricia Servin"}}],
+          "messages": [{
+            "from": "5215599990001",
+            "id": "wamid_live_005",
+            "type": "text",
+            "timestamp": "1709078400",
+            "text": {"body": "menu"}
+          }]
+        }
+      }]
+    }]
+  },
+
+  "scenario_06_staff_interactive_cases": {
+    "_desc": "Staff selecciona 'Mis Expedientes' del menu interactivo",
+    "_expected": "Debe listar expedientes asignados al notario",
+    "entry": [{
+      "changes": [{
+        "value": {
+          "messaging_product": "whatsapp",
+          "metadata": {"phone_number_id": "910944215432464"},
+          "contacts": [{"wa_id": "5215599990001", "profile": {"name": "Patricia Servin"}}],
+          "messages": [{
+            "from": "5215599990001",
+            "id": "wamid_live_006",
+            "type": "interactive",
+            "timestamp": "1709078500",
+            "interactive": {
+              "type": "list_reply",
+              "list_reply": {
+                "id": "main_cases",
+                "title": "Mis Expedientes"
+              }
+            }
+          }]
+        }
+      }]
+    }]
+  },
+
+  "scenario_07_staff_interactive_alerts": {
+    "_desc": "Staff (abogado) selecciona 'Alertas' del menu",
+    "_expected": "Debe mostrar tramites vencidos (hay 1 vencido en EXP-2025-004)",
+    "entry": [{
+      "changes": [{
+        "value": {
+          "messaging_product": "whatsapp",
+          "metadata": {"phone_number_id": "910944215432464"},
+          "contacts": [{"wa_id": "5215599990003", "profile": {"name": "Carlos Ruiz"}}],
+          "messages": [{
+            "from": "5215599990003",
+            "id": "wamid_live_007",
+            "type": "interactive",
+            "timestamp": "1709078600",
+            "interactive": {
+              "type": "list_reply",
+              "list_reply": {
+                "id": "main_alerts",
+                "title": "Alertas"
+              }
+            }
+          }]
+        }
+      }]
+    }]
+  },
+
+  "scenario_08_staff_summary": {
+    "_desc": "Asistente solicita resumen diario",
+    "entry": [{
+      "changes": [{
+        "value": {
+          "messaging_product": "whatsapp",
+          "metadata": {"phone_number_id": "910944215432464"},
+          "contacts": [{"wa_id": "5215599990002", "profile": {"name": "Maria Garcia"}}],
+          "messages": [{
+            "from": "5215599990002",
+            "id": "wamid_live_008",
+            "type": "interactive",
+            "timestamp": "1709078700",
+            "interactive": {
+              "type": "list_reply",
+              "list_reply": {
+                "id": "main_summary",
+                "title": "Resumen del Dia"
+              }
+            }
+          }]
+        }
+      }]
+    }]
+  },
+
+  "scenario_09_staff_search": {
+    "_desc": "Staff busca expediente por numero",
+    "entry": [{
+      "changes": [{
+        "value": {
+          "messaging_product": "whatsapp",
+          "metadata": {"phone_number_id": "910944215432464"},
+          "contacts": [{"wa_id": "5215599990003", "profile": {"name": "Carlos Ruiz"}}],
+          "messages": [{
+            "from": "5215599990003",
+            "id": "wamid_live_009",
+            "type": "text",
+            "timestamp": "1709078800",
+            "text": {"body": "EXP-2025-001"}
+          }]
+        }
+      }]
+    }]
+  },
+
+  "scenario_10_staff_ai_question": {
+    "_desc": "Staff hace pregunta al AI (modo chat natural)",
+    "_expected": "Debe activar AI chat y responder sobre los datos del tenant",
+    "entry": [{
+      "changes": [{
+        "value": {
+          "messaging_product": "whatsapp",
+          "metadata": {"phone_number_id": "910944215432464"},
+          "contacts": [{"wa_id": "5215599990001", "profile": {"name": "Patricia Servin"}}],
+          "messages": [{
+            "from": "5215599990001",
+            "id": "wamid_live_010",
+            "type": "text",
+            "timestamp": "1709078900",
+            "text": {"body": "Cuantos expedientes tengo activos y cuales tienen tramites vencidos?"}
+          }]
+        }
+      }]
+    }]
+  },
+
+  "scenario_11_unknown_sender_platform": {
+    "_desc": "Persona desconocida envia mensaje al numero plataforma",
+    "_expected": "Debe recibir mensaje de rechazo/bienvenida",
+    "entry": [{
+      "changes": [{
+        "value": {
+          "messaging_product": "whatsapp",
+          "metadata": {"phone_number_id": "910944215432464"},
+          "contacts": [{"wa_id": "5215500009999", "profile": {"name": "Random Person"}}],
+          "messages": [{
+            "from": "5215500009999",
+            "id": "wamid_live_011",
+            "type": "text",
+            "timestamp": "1709079000",
+            "text": {"body": "Hola, quiero informacion"}
+          }]
+        }
+      }]
+    }]
+  },
+
+  "scenario_12_staff_tenant_b_platform": {
+    "_desc": "Staff de Tenant B envia al numero plataforma (cross-tenant routing)",
+    "_expected": "Debe rutear a tenant B aunque el numero plataforma esta mapeado a tenant A",
+    "entry": [{
+      "changes": [{
+        "value": {
+          "messaging_product": "whatsapp",
+          "metadata": {"phone_number_id": "910944215432464"},
+          "contacts": [{"wa_id": "5213399990001", "profile": {"name": "Roberto Mendez"}}],
+          "messages": [{
+            "from": "5213399990001",
+            "id": "wamid_live_012",
+            "type": "text",
+            "timestamp": "1709079100",
+            "text": {"body": "menu"}
+          }]
+        }
+      }]
+    }]
+  },
+
+  "scenario_13_new_client_dedicated": {
+    "_desc": "Cliente NUEVO (no existe en wa_contacts) envia al numero dedicado",
+    "_expected": "Debe crear contacto automaticamente y crear conversacion",
+    "entry": [{
+      "changes": [{
+        "value": {
+          "messaging_product": "whatsapp",
+          "metadata": {"phone_number_id": "DEDICATED_N14_TEST_001"},
+          "contacts": [{"wa_id": "5215577778888", "profile": {"name": "Cliente Nuevo Test"}}],
+          "messages": [{
+            "from": "5215577778888",
+            "id": "wamid_live_013",
+            "type": "text",
+            "timestamp": "1709079200",
+            "text": {"body": "Buenas tardes, necesito una escritura de compraventa"}
+          }]
+        }
+      }]
+    }]
+  },
+
+  "scenario_14_status_delivered": {
+    "_desc": "Callback de entrega de mensaje (delivered)",
+    "entry": [{
+      "changes": [{
+        "value": {
+          "messaging_product": "whatsapp",
+          "metadata": {"phone_number_id": "DEDICATED_N14_TEST_001"},
+          "statuses": [{
+            "id": "wamid_test_042",
+            "status": "delivered",
+            "timestamp": "1709079300",
+            "recipient_id": "5215587654321"
+          }]
+        }
+      }]
+    }]
+  },
+
+  "scenario_15_status_read": {
+    "_desc": "Callback de lectura de mensaje (read)",
+    "entry": [{
+      "changes": [{
+        "value": {
+          "messaging_product": "whatsapp",
+          "metadata": {"phone_number_id": "DEDICATED_N14_TEST_001"},
+          "statuses": [{
+            "id": "wamid_test_005",
+            "status": "read",
+            "timestamp": "1709079400",
+            "recipient_id": "5215512345678"
+          }]
+        }
+      }]
+    }]
+  },
+
+  "scenario_16_status_failed": {
+    "_desc": "Callback de fallo de mensaje",
+    "entry": [{
+      "changes": [{
+        "value": {
+          "messaging_product": "whatsapp",
+          "metadata": {"phone_number_id": "DEDICATED_N14_TEST_001"},
+          "statuses": [{
+            "id": "wamid_test_006",
+            "status": "failed",
+            "timestamp": "1709079500",
+            "recipient_id": "5215512345678",
+            "errors": [{"code": 131047, "title": "Re-engagement message"}]
+          }]
+        }
+      }]
+    }]
+  },
+
+  "scenario_17_staff_case_detail_button": {
+    "_desc": "Staff selecciona un caso especifico del listado",
+    "_expected": "Debe mostrar detalle del caso con opciones (checklist, tramites, pagos)",
+    "entry": [{
+      "changes": [{
+        "value": {
+          "messaging_product": "whatsapp",
+          "metadata": {"phone_number_id": "910944215432464"},
+          "contacts": [{"wa_id": "5215599990003", "profile": {"name": "Carlos Ruiz"}}],
+          "messages": [{
+            "from": "5215599990003",
+            "id": "wamid_live_017",
+            "type": "interactive",
+            "timestamp": "1709079600",
+            "interactive": {
+              "type": "button_reply",
+              "button_reply": {
+                "id": "case_a0000000-0000-0000-0000-000000001001",
+                "title": "EXP-2025-001"
+              }
+            }
+          }]
+        }
+      }]
+    }]
+  },
+
+  "scenario_18_staff_gendoc": {
+    "_desc": "Staff solicita generar documento a partir de fotos",
+    "entry": [{
+      "changes": [{
+        "value": {
+          "messaging_product": "whatsapp",
+          "metadata": {"phone_number_id": "910944215432464"},
+          "contacts": [{"wa_id": "5215599990002", "profile": {"name": "Maria Garcia"}}],
+          "messages": [{
+            "from": "5215599990002",
+            "id": "wamid_live_018",
+            "type": "interactive",
+            "timestamp": "1709079700",
+            "interactive": {
+              "type": "list_reply",
+              "list_reply": {
+                "id": "main_gendoc",
+                "title": "Generar Documento"
+              }
+            }
+          }]
+        }
+      }]
+    }]
+  },
+
+  "scenario_19_client_empresa_tenant_b": {
+    "_desc": "Cliente de Tenant B envia mensaje al numero dedicado de Tenant B",
+    "_expected": "Debe procesarse en contexto de Tenant B (aislamiento multi-tenant)",
+    "entry": [{
+      "changes": [{
+        "value": {
+          "messaging_product": "whatsapp",
+          "metadata": {"phone_number_id": "DEDICATED_N7_TEST_001"},
+          "contacts": [{"wa_id": "5213312345678", "profile": {"name": "Sofia Ramirez"}}],
+          "messages": [{
+            "from": "5213312345678",
+            "id": "wamid_live_019",
+            "type": "text",
+            "timestamp": "1709079800",
+            "text": {"body": "Buen dia, ya tengo el avaluo listo"}
+          }]
+        }
+      }]
+    }]
+  },
+
+  "scenario_20_staff_notify_client": {
+    "_desc": "Staff selecciona 'Notificar Cliente' del menu",
+    "entry": [{
+      "changes": [{
+        "value": {
+          "messaging_product": "whatsapp",
+          "metadata": {"phone_number_id": "910944215432464"},
+          "contacts": [{"wa_id": "5215599990002", "profile": {"name": "Maria Garcia"}}],
+          "messages": [{
+            "from": "5215599990002",
+            "id": "wamid_live_020",
+            "type": "interactive",
+            "timestamp": "1709079900",
+            "interactive": {
+              "type": "list_reply",
+              "list_reply": {
+                "id": "main_notify",
+                "title": "Notificar Cliente"
+              }
+            }
+          }]
+        }
+      }]
+    }]
+  }
+}

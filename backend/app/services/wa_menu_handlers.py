@@ -37,6 +37,11 @@ class WAMenuHandler:
             await self._show_main_menu(phone, staff)
             return
 
+        # If user selected a main menu option while in a sub-menu, reset to main
+        if current_menu != 'main' and input_id.startswith('main_'):
+            await self._save_session(tenant_id, phone, {'menu': 'main'})
+            current_menu = 'main'
+
         # Route based on current menu context
         handlers = {
             'main': self._handle_main_menu,
@@ -317,6 +322,7 @@ class WAMenuHandler:
         case_id = session.get('case_id')
 
         if not case_id:
+            await self._save_session(tenant_id, phone, {'menu': 'main'})
             await self._show_main_menu(phone, staff)
             return
 
@@ -757,6 +763,8 @@ class WAMenuHandler:
             else:
                 await whatsapp_service.send_text(phone, "No hay tramites proximos a vencer.")
 
+        # Always return to main menu after alerts
+        await self._save_session(tenant_id, phone, {'menu': 'main'})
         await self._show_main_menu(phone, staff)
 
     # ── Notify Client ──
@@ -814,6 +822,7 @@ class WAMenuHandler:
         input_id = user_input.get('id', '')
 
         if not input_id.startswith('nf_'):
+            await self._save_session(tenant_id, phone, {'menu': 'main'})
             await self._show_main_menu(phone, staff)
             return
 
