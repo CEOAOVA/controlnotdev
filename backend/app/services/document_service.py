@@ -7,7 +7,7 @@ Migrado de por_partes.py líneas 1688-1743, 1939-1956
 import re
 import time
 import tempfile
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 from io import BytesIO
 import structlog
@@ -17,6 +17,22 @@ from docx.shared import RGBColor
 from docx.oxml import OxmlElement
 
 logger = structlog.get_logger()
+
+# Alias mapping: template placeholders that don't match model field names
+# e.g. donacion templates reuse compraventa placeholders
+PLACEHOLDER_ALIASES = {
+    "donacion": {
+        "Parte_Compradora_Nombre_Completo": "Parte_Donataria_Nombre_Completo",
+        "Parte_Vendedora_Nombre_Completo": "Parte_Donadora_Nombre_Completo",
+        "Tratamiento_Comprador": "Tratamiento_Donatario",
+        "Tratamiento_Vendedor": "Tratamiento_Donador",
+    },
+}
+
+
+def _normalize_key(key: str) -> str:
+    """Normalize a key for case-insensitive matching"""
+    return key.lower().replace(" ", "_").replace("-", "_")
 
 
 class DocumentGenerator:
@@ -351,7 +367,8 @@ class DocumentGenerator:
         template_content: bytes,
         responses: Dict[str, str],
         placeholders: List[str],
-        output_filename: str
+        output_filename: str,
+        doc_type: Optional[str] = None
     ) -> Tuple[bytes, Dict]:
         """
         Genera un documento Word desde un template
@@ -363,25 +380,12 @@ class DocumentGenerator:
             responses: Diccionario con valores {placeholder: valor}
             placeholders: Lista de placeholders del template
             output_filename: Nombre del archivo de salida
+            doc_type: Tipo de documento (e.g. 'donacion') for alias resolution
 
         Returns:
             Tuple[bytes, Dict]:
                 - bytes: Contenido del documento generado
                 - Dict: Estadísticas de generación
-
-        Example:
-            >>> with open('template.docx', 'rb') as f:
-            ...     template = f.read()
-            >>> responses = {
-            ...     'Cliente_Nombre': 'Juan Pérez',
-            ...     'Fecha': '15/01/2024'
-            ... }
-            >>> placeholders = ['Cliente_Nombre', 'Fecha', 'Notario']
-            >>> content, stats = generator.generate_document(
-            ...     template, responses, placeholders, 'output.docx'
-            ... )
-            >>> print(stats)
-            {'total_replaced': 2, 'missing': 1, ...}
         """
         gen_start = time.time()
 
@@ -392,6 +396,30 @@ class DocumentGenerator:
             responses_count=len(responses),
             template_size_bytes=len(template_content)
         )
+
+        # --- Normalize response keys (case-insensitive matching) ---
+        normalized = dict(responses)
+        for key, value in responses.items():
+            norm = _normalize_key(key)
+            if norm not in normalized:
+                normalized[norm] = value
+        for placeholder in placeholders:
+            norm_ph = _normalize_key(placeholder)
+            if placeholder not in normalized and norm_ph in normalized:
+                normalized[placeholder] = normalized[norm_ph]
+
+        # --- Resolve placeholder aliases for this doc_type ---
+        if doc_type and doc_type in PLACEHOLDER_ALIASES:
+            aliases = PLACEHOLDER_ALIASES[doc_type]
+            for alias, real_key in aliases.items():
+                if alias not in normalized:
+                    value = normalized.get(real_key) or normalized.get(_normalize_key(real_key))
+                    if value:
+                        normalized[alias] = value
+                        normalized[_normalize_key(alias)] = value
+                        logger.debug("alias_resolved", alias=alias, real_key=real_key)
+
+        responses = normalized
 
         # Crear archivo temporal para el template
         with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as temp_template:
@@ -536,7 +564,8 @@ def generate_document_with_dynamic_placeholders(
     responses: Dict[str, str],
     template_content: bytes,
     placeholders: List[str],
-    output_filename: str
+    output_filename: str,
+    doc_type: Optional[str] = None
 ) -> Tuple[bytes, Dict]:
     """
     Función pública para generar documentos
@@ -557,5 +586,6 @@ def generate_document_with_dynamic_placeholders(
         template_content,
         responses,
         placeholders,
-        output_filename
+        output_filename,
+        doc_type=doc_type
     )

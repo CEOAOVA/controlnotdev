@@ -164,10 +164,15 @@ Si el antecedente es JUICIO SUCESORIO, este campo debe ser: '**[NO ENCONTRADO]**
 
     Escritura_Privada_Notario: Optional[str] = Field(
         None,
-        description="""Nombre del Notario del instrumento antecedente con título profesional.
+        description="""Nombre del Notario del instrumento antecedente SIN título profesional.
 
 APLICA PARA: Escrituras notariales (NO juicios sucesorios)
-Ejemplo: Licenciado Gilberto Rivera Martínez
+Ejemplo: Gilberto Rivera Martínez
+
+IMPORTANTE: NO incluir "Licenciado", "Licenciada", "Lic." antes del nombre.
+El template ya incluye el título profesional.
+- CORRECTO: Gilberto Rivera Martínez
+- INCORRECTO: Licenciado Gilberto Rivera Martínez
 
 IMPORTANTE - DISTINGUIR:
 - Si viene de una ESCRITURA NOTARIAL → extraer el notario de esa escritura
@@ -269,10 +274,13 @@ Si el antecedente NO es juicio sucesorio: '**[NO ENCONTRADO]**'""",
 
     Juicio_Sucesorio_Notario_Protocolizacion: Optional[str] = Field(
         None,
-        description="""Notario que protocolizó la sentencia del juicio sucesorio.
+        description="""Notario que protocolizó la sentencia del juicio sucesorio SIN título profesional.
 
-FORMATO: Nombre completo con título profesional
-EJEMPLOS: Lic. Ana Mariela Servin Pita, Licenciado Roberto García López
+FORMATO: Nombre completo SIN título profesional
+EJEMPLOS: Ana Mariela Servin Pita, Roberto García López
+
+IMPORTANTE: NO incluir "Licenciado", "Licenciada", "Lic." antes del nombre.
+El template ya incluye el título profesional.
 
 BUSCAR: "PROTOCOLIZADO ANTE", "NOTARIO QUE PROTOCOLIZO", después de la sentencia
 
@@ -410,8 +418,8 @@ FORMATO: numero + M2 + (numero en palabras MAYUSCULAS + METROS CUADRADOS)"""
         None,
         description="""CALCULAR la edad del DONADOR a partir de su fecha de nacimiento.
 
-FORMATO DE SALIDA: número en palabras + "años"
-Ejemplo: ochenta años, sesenta y un años
+FORMATO DE SALIDA: SOLO número en palabras, SIN la palabra "años"
+Ejemplo: ochenta, sesenta y un, cuarenta y cinco
 
 PROCESO DE CÁLCULO:
 1. Localiza la fecha de nacimiento del DONADOR en:
@@ -422,11 +430,9 @@ PROCESO DE CÁLCULO:
 3. Si el cumpleaños de este año aún no ha pasado, resta 1
 4. Convierte el número a palabras en español
 
-CONVERSIÓN A PALABRAS:
-- 45 = cuarenta y cinco años
-- 61 = sesenta y un años
-- 78 = setenta y ocho años
-- 82 = ochenta y dos años
+IMPORTANTE: NO incluir "años" al final. El template ya agrega "años".
+- CORRECTO: sesenta y un
+- INCORRECTO: sesenta y un años
 
 Si no encuentras fecha de nacimiento: '**[NO ENCONTRADO]**'"""
     )
@@ -540,8 +546,8 @@ Si no encuentras ocupación explícita: '**[NO ENCONTRADO]**'"""
         None,
         description="""CALCULAR la edad del DONATARIO a partir de su fecha de nacimiento.
 
-FORMATO DE SALIDA: número en palabras + "años"
-Ejemplo: treinta y siete años, cuarenta y cinco años
+FORMATO DE SALIDA: SOLO número en palabras, SIN la palabra "años"
+Ejemplo: treinta y siete, cuarenta y cinco, cincuenta y dos
 
 PROCESO DE CÁLCULO:
 1. Localiza la fecha de nacimiento del DONATARIO en:
@@ -552,10 +558,9 @@ PROCESO DE CÁLCULO:
 3. Si el cumpleaños de este año aún no ha pasado, resta 1
 4. Convierte el número a palabras en español
 
-CONVERSIÓN A PALABRAS:
-- 37 = treinta y siete años
-- 45 = cuarenta y cinco años
-- 52 = cincuenta y dos años
+IMPORTANTE: NO incluir "años" al final. El template ya agrega "años".
+- CORRECTO: treinta y siete
+- INCORRECTO: treinta y siete años
 
 Si no encuentras fecha de nacimiento: '**[NO ENCONTRADO]**'"""
     )
@@ -736,8 +741,15 @@ FORMATO: TITULO + NOMBRE COMPLETO EN MAYUSCULAS""",
     Parentezco: Optional[str] = Field(
         None,
         description="""Parentesco del donatario respecto del donador en minúsculas.
-Ejemplos: hija, hijo, nieto, sobrina
-Fuente: comparecencia, cláusulas, constancias, acta de nacimiento o lógica de apellidos.
+Ejemplos: hija, hijo, nieto, sobrina, hermano, hermana
+
+MÉTODO DE INFERENCIA (en orden de prioridad):
+1. MENCIÓN EXPLÍCITA: Buscar "su hijo/a", "su nieto/a", "parentesco de..." en documentos
+2. ACTA DE NACIMIENTO: Si el acta del donatario menciona al donador como padre/madre → hijo/hija
+3. APELLIDOS COMPARTIDOS + EDAD: Si comparten apellido(s) y hay diferencia de edad >15 años → hijo/hija
+4. CONTEXTO DE SUCESIÓN: Si el antecedente es juicio sucesorio y el donador heredó → puede ser hermano/a
+
+Fuente: comparecencia, cláusulas, constancias, acta de nacimiento, lógica de apellidos.
 Si no aparece: 'NO LOCALIZADO'"""
     )
 
@@ -849,8 +861,8 @@ La aceptación es requisito legal para la validez de la donación."""
                 "Parte_Donadora_Nombre_Completo": "JUAN PEREZ GOMEZ",
                 "Parte_Donataria_Nombre_Completo": "MARIA PEREZ LOPEZ",
                 "Parentezco": "hija",
-                "Edad_Parte_Donadora": "setenta años",
-                "Edad_Parte_Donataria": "cuarenta años",
+                "Edad_Parte_Donadora": "setenta",
+                "Edad_Parte_Donataria": "cuarenta",
                 "RFC_Parte_Donadora": "PEGJ540310JJ8",
                 "RFC_Parte_Donataria": "PELM840520EG6",
                 "Tratamiento_Donador": "el señor",

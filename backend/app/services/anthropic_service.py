@@ -515,6 +515,68 @@ def post_process_extracted_data(extracted_data: dict, document_type: str) -> dic
                         logger.debug(f"Mapeado SAT actividad a ocupacion: {val} -> {ocupacion}")
                         break
 
+        # === NORMALIZACIÓN DE CAMPOS DONACIÓN (evitar duplicaciones con template) ===
+
+        # 1. Strip "años" de edades (template ya agrega "años")
+        for campo_edad in ["Edad_Parte_Donadora", "Edad_Parte_Donataria"]:
+            val = processed.get(campo_edad, "")
+            if val and not _is_empty(val):
+                import re as _re
+                processed[campo_edad] = _re.sub(r'\s*años\s*$', '', val, flags=_re.IGNORECASE).strip()
+                logger.debug(f"Normalizado {campo_edad}: stripped 'años'")
+
+        # 2. Strip título profesional de notarios (template ya lo incluye)
+        for campo_notario in ["Escritura_Privada_Notario", "Juicio_Sucesorio_Notario_Protocolizacion"]:
+            val = processed.get(campo_notario, "")
+            if val and not _is_empty(val):
+                import re as _re
+                val_clean = _re.sub(
+                    r'^(Licenciado|Licenciada|Lic\.?)\s+',
+                    '', val, flags=_re.IGNORECASE
+                ).strip()
+                if val_clean:
+                    processed[campo_notario] = val_clean
+                    logger.debug(f"Normalizado {campo_notario}: stripped título profesional")
+
+        # 3. Strip trailing comma from origin fields (template adds comma)
+        for campo_origen in ["Origen_Parte_Donadora", "Origen_Parte_Donataria"]:
+            val = processed.get(campo_origen, "")
+            if val and not _is_empty(val):
+                processed[campo_origen] = val.rstrip(', ').strip()
+                logger.debug(f"Normalizado {campo_origen}: stripped trailing comma")
+
+        # 4. Validate occupation is not CURP/RFC (regex check)
+        import re as _re
+        _CURP_RFC_PATTERN = _re.compile(r'^[A-Z]{4}\d{6}[A-Z0-9]{2,8}$', _re.IGNORECASE)
+        for campo_ocup in ["Parte_Donadora_Ocupacion", "Parte_Donataria_Ocupacion"]:
+            val = processed.get(campo_ocup, "")
+            if val and not _is_empty(val):
+                val_stripped = val.strip()
+                if _CURP_RFC_PATTERN.match(val_stripped) or len(val_stripped) == 18 or len(val_stripped) == 13:
+                    # Looks like CURP (18) or RFC (13), not an occupation
+                    if _CURP_RFC_PATTERN.match(val_stripped):
+                        processed[campo_ocup] = "hogar"
+                        logger.warning(f"Campo {campo_ocup} contenía CURP/RFC '{val_stripped}', reemplazado con 'hogar'")
+
+        # 5. Infer Parentezco from shared surnames
+        if _is_empty(processed.get("Parentezco")):
+            nombre_donador = processed.get("Parte_Donadora_Nombre_Completo", "")
+            nombre_donatario = processed.get("Parte_Donataria_Nombre_Completo", "")
+            if nombre_donador and nombre_donatario and not _is_empty(nombre_donador) and not _is_empty(nombre_donatario):
+                partes_donador = nombre_donador.upper().split()
+                partes_donatario = nombre_donatario.upper().split()
+                # Get last two words as potential surnames
+                apellidos_donador = set(partes_donador[-2:]) if len(partes_donador) >= 3 else set(partes_donador[-1:])
+                apellidos_donatario = set(partes_donatario[-2:]) if len(partes_donatario) >= 3 else set(partes_donatario[-1:])
+                apellidos_comunes = apellidos_donador & apellidos_donatario
+                if apellidos_comunes:
+                    trat_donatario = processed.get("Tratamiento_Donatario", "").lower()
+                    if "señora" in trat_donatario:
+                        processed["Parentezco"] = "hija"
+                    else:
+                        processed["Parentezco"] = "hijo"
+                    logger.debug(f"Inferido Parentezco desde apellidos comunes: {apellidos_comunes}")
+
     # === DEFAULT PARA FECHA INSTRUMENTO (aplica a todos los tipos) ===
     if _is_empty(processed.get("fecha_instrumento")):
         from datetime import datetime

@@ -579,40 +579,17 @@ async def generate_document(
             template_size_bytes=len(template_content),
             tipo_documento=template_session.get('tipo_documento', 'unknown'))
 
-        # === Case-insensitive matching para responses ===
-        # Normaliza las claves para mapear placeholders del template con responses
-        def normalize_key(key: str) -> str:
-            """Normaliza una clave para matching case-insensitive"""
-            return key.lower().replace(" ", "_").replace("-", "_")
-
-        # Crear diccionario de responses ampliado con claves normalizadas
-        # Esto permite que {{Placeholder}} encuentre valores de "placeholder"
-        normalized_responses = dict(request.responses)  # Copia original
-        for key, value in request.responses.items():
-            normalized = normalize_key(key)
-            # Agregar versiones normalizadas si no existen
-            if normalized not in normalized_responses:
-                normalized_responses[normalized] = value
-
-        # También agregar mappings inversos: si el placeholder es "ABC" y tenemos "abc", agregar "ABC"
-        for placeholder in request.placeholders:
-            normalized_ph = normalize_key(placeholder)
-            if placeholder not in normalized_responses and normalized_ph in normalized_responses:
-                normalized_responses[placeholder] = normalized_responses[normalized_ph]
-
-        logger.debug("responses_normalized",
-            original_count=len(request.responses),
-            normalized_count=len(normalized_responses))
-
-        # Generar documento
+        # Generar documento (normalization + alias resolution handled inside generate_document)
+        tipo_doc = template_session.get('tipo_documento', '')
         gen_start = time.time()
         generator = DocumentGenerator()
 
         document_content, stats = generator.generate_document(
             template_content=template_content,
-            responses=normalized_responses,
+            responses=request.responses,
             placeholders=request.placeholders,
-            output_filename=request.output_filename
+            output_filename=request.output_filename,
+            doc_type=tipo_doc,
         )
         gen_duration = (time.time() - gen_start) * 1000
 
@@ -631,7 +608,7 @@ async def generate_document(
             doc_id=doc_id,
             data={
                 'content': document_content,
-                'filename': f"{request.output_filename}.docx",
+                'filename': f"{request.output_filename.removesuffix('.docx')}.docx",
                 'size': len(document_content),
                 'stats': stats
             },
@@ -700,7 +677,7 @@ async def generate_document(
                 'user_id': user.get('id'),  # ID del usuario autenticado
                 'template_id': str(UUID(request.template_id)),
                 'tipo_documento': template_session.get('tipo_documento', 'desconocido'),
-                'nombre_documento': f"{request.output_filename}.docx",
+                'nombre_documento': f"{request.output_filename.removesuffix('.docx')}.docx",
                 'estado': 'completado',
                 'storage_path': storage_path,
                 'extracted_data': request.responses,
@@ -778,7 +755,7 @@ async def generate_document(
         logger.info("generate_endpoint_complete",
             doc_id=doc_id,
             tenant_id=tenant_id,
-            filename=f"{request.output_filename}.docx",
+            filename=f"{request.output_filename.removesuffix('.docx')}.docx",
             size_bytes=len(document_content),
             total_replaced=stats['total_replaced'],
             missing=len(missing_list),
@@ -791,7 +768,7 @@ async def generate_document(
         return DocumentGenerationResponse(
             success=True,
             document_id=doc_id,
-            filename=f"{request.output_filename}.docx",
+            filename=f"{request.output_filename.removesuffix('.docx')}.docx",
             download_url=f"/api/documents/download/{doc_id}",
             size_bytes=len(document_content),
             stats=generation_stats,

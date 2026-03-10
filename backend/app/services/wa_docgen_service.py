@@ -171,6 +171,7 @@ class WADocgenService:
             responses=extracted_data,
             placeholders=placeholders,
             output_filename=output_filename,
+            doc_type=doc_type,
         )
 
         # 4. Store in Supabase Storage
