@@ -58,6 +58,7 @@ class WADocgenService:
                 # Encode to base64 for Claude Vision
                 b64 = base64.b64encode(processed_bytes).decode('utf-8')
                 images.append({
+                    'name': f'wa_{media_id}',
                     'content': b64,
                     'media_type': processed_type or mime_type,
                     'source_type': 'base64',
@@ -291,6 +292,9 @@ class WADocgenService:
                 mime_type = record.get('mime_type', 'image/jpeg')
 
                 content = storage.read_stored_file(path)
+                if not content:
+                    logger.warning("wa_docgen_load_stored_empty", path=path)
+                    continue
 
                 processed_bytes, processed_type = preprocessor.preprocess(
                     content, filename=path.split('/')[-1]
@@ -298,6 +302,7 @@ class WADocgenService:
 
                 b64 = base64.b64encode(processed_bytes).decode('utf-8')
                 images.append({
+                    'name': path.split('/')[-1],
                     'content': b64,
                     'media_type': processed_type or mime_type,
                     'source_type': 'base64',

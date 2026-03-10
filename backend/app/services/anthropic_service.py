@@ -1268,19 +1268,24 @@ RESPONDE SOLO CON JSON (sin markdown ni explicaciones):"""
 
                 image_count += 1
 
-                # Codificar a base64
-                img_b64 = base64.b64encode(img_content).decode('utf-8')
-
-                # Determinar media type
-                name_lower = img_name.lower()
-                if name_lower.endswith('.png'):
-                    media_type = "image/png"
-                elif name_lower.endswith('.gif'):
-                    media_type = "image/gif"
-                elif name_lower.endswith('.webp'):
-                    media_type = "image/webp"
+                # Codificar a base64 (si ya es str base64, usarlo directo)
+                if img.get('source_type') == 'base64' or isinstance(img_content, str):
+                    img_b64 = img_content
                 else:
-                    media_type = "image/jpeg"  # Default para jpg, jpeg y otros
+                    img_b64 = base64.b64encode(img_content).decode('utf-8')
+
+                # Determinar media type (usar el proporcionado si existe)
+                media_type = img.get('media_type')
+                if not media_type:
+                    name_lower = img_name.lower()
+                    if name_lower.endswith('.png'):
+                        media_type = "image/png"
+                    elif name_lower.endswith('.gif'):
+                        media_type = "image/gif"
+                    elif name_lower.endswith('.webp'):
+                        media_type = "image/webp"
+                    else:
+                        media_type = "image/jpeg"  # Default para jpg, jpeg y otros
 
                 # === CLAUDE VISION BEST PRACTICE ===
                 # "Introduce each image with Image 1:, Image 2:"
