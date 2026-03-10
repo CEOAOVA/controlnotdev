@@ -1305,6 +1305,12 @@ class WAMenuHandler:
                     'storage_path': store_result['storage_path'],
                     'mime_type': store_result['mime_type'],
                 }
+                # Add category if in category mode
+                if has_categories:
+                    cats = session['docgen_categories']
+                    idx = session.get('docgen_current_cat_index', 0)
+                    current_cat = cats[idx]
+                    image_record['category'] = current_cat
 
                 # Save to flat list
                 images.append(image_record)

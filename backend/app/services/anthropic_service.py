@@ -1260,7 +1260,7 @@ RESPONDE SOLO CON JSON (sin markdown ni explicaciones):"""
             for i, img in enumerate(images, 1):
                 img_name = img.get('name', 'documento')
                 img_content = img.get('content', b'')
-                img_category = img.get('category', 'otros')
+                img_category = img.get('category')
 
                 if not img_content:
                     logger.warning(f"Imagen vacía: {img_name}")
@@ -1290,10 +1290,15 @@ RESPONDE SOLO CON JSON (sin markdown ni explicaciones):"""
                 # === CLAUDE VISION BEST PRACTICE ===
                 # "Introduce each image with Image 1:, Image 2:"
                 category_labels = CATEGORY_LABELS.get(document_type, {})
-                category_desc = category_labels.get(img_category, img_category)
+                if img_category and img_category in category_labels:
+                    category_desc = category_labels[img_category]
+                    label = f"Image {image_count}: {img_name} ({category_desc})"
+                else:
+                    # No category (flat mode / WhatsApp without categories) — neutral label
+                    label = f"Image {image_count}: {img_name}"
                 content.append({
                     "type": "text",
-                    "text": f"Image {image_count}: {img_name} ({category_desc})"
+                    "text": label
                 })
 
                 # Agregar imagen DESPUÉS del label (image-then-text)

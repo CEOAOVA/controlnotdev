@@ -306,6 +306,7 @@ class WADocgenService:
                     'content': b64,
                     'media_type': processed_type or mime_type,
                     'source_type': 'base64',
+                    'category': record.get('category'),
                 })
             except Exception as e:
                 logger.error("wa_docgen_load_stored_error", path=record.get('storage_path'), error=str(e))
