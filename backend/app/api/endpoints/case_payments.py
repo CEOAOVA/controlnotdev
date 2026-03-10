@@ -4,7 +4,7 @@ Endpoints REST para pagos de un expediente
 """
 from uuid import UUID
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, BackgroundTasks
 from pydantic import BaseModel, Field
 import structlog
 
@@ -85,6 +85,7 @@ async def list_payments(
 async def create_payment(
     case_id: UUID,
     request: PaymentCreateRequest,
+    background_tasks: BackgroundTasks,
     tenant_id: str = Depends(get_current_tenant_id)
 ):
     """Registra un nuevo pago"""
@@ -107,6 +108,16 @@ async def create_payment(
 
         if not payment:
             raise HTTPException(status_code=500, detail="Error al registrar pago")
+
+        # WhatsApp notification
+        from app.services.wa_notification_dispatcher import dispatch_case_notification
+        background_tasks.add_task(
+            dispatch_case_notification,
+            tenant_id=tenant_id,
+            case_id=str(case_id),
+            event_type='payment_received',
+            message=f"Pago registrado: ${request.monto:,.2f} - {request.concepto}. Gracias.",
+        )
 
         return {"message": "Pago registrado", "payment": payment}
     except HTTPException:

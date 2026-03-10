@@ -560,6 +560,50 @@ class WARepository:
             logger.error("wa_phone_tenant_map_delete_failed", error=str(e))
             return False
 
+    # === Idempotency & Cleanup ===
+
+    async def get_message_by_wa_id(self, whatsapp_message_id: str) -> Optional[Dict[str, Any]]:
+        """Check if a message with this WhatsApp message ID already exists."""
+        try:
+            result = self.client.table('wa_messages')\
+                .select('id, whatsapp_message_id')\
+                .eq('whatsapp_message_id', whatsapp_message_id)\
+                .limit(1)\
+                .execute()
+            return result.data[0] if result.data else None
+        except APIError as e:
+            logger.warning("wa_get_message_by_wa_id_failed", wa_id=whatsapp_message_id, error=str(e))
+            return None
+
+    async def cleanup_stale_sessions(self, older_than_hours: int = 72) -> int:
+        """Clear session_state for staff phones inactive for more than N hours."""
+        try:
+            from datetime import datetime, timedelta, timezone
+            cutoff = (datetime.now(timezone.utc) - timedelta(hours=older_than_hours)).isoformat()
+
+            # Get staff with non-empty session_state updated before cutoff
+            result = self.client.table('wa_staff_phones')\
+                .select('id, session_state, updated_at')\
+                .lt('updated_at', cutoff)\
+                .execute()
+
+            cleaned = 0
+            for staff in (result.data or []):
+                session = staff.get('session_state')
+                if session and isinstance(session, dict) and len(str(session)) > 100:
+                    self.client.table('wa_staff_phones')\
+                        .update({'session_state': {}})\
+                        .eq('id', staff['id'])\
+                        .execute()
+                    cleaned += 1
+
+            if cleaned:
+                logger.info("wa_stale_sessions_cleaned", count=cleaned)
+            return cleaned
+        except APIError as e:
+            logger.warning("wa_cleanup_stale_sessions_failed", error=str(e))
+            return 0
+
     # === Message Media Update ===
 
     async def update_message_media(self, message_id: UUID, media_path: str):

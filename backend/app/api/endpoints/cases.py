@@ -4,7 +4,7 @@ Endpoints REST para gestión de casos/expedientes con workflow CRM
 """
 from typing import Optional
 from uuid import UUID
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, BackgroundTasks
 import structlog
 
 from app.repositories.case_repository import case_repository
@@ -42,6 +42,7 @@ router = APIRouter(prefix="/cases", tags=["Cases"])
 @router.post("", response_model=CaseWithClientResponse, status_code=201)
 async def create_case(
     request: CaseCreateRequest,
+    background_tasks: BackgroundTasks,
     tenant_id: str = Depends(get_current_tenant_id)
 ):
     """Crea un nuevo caso/expediente con campos CRM"""
@@ -86,6 +87,16 @@ async def create_case(
         case_with_client = await case_repository.get_case_with_client(UUID(case['id']))
 
         logger.info("case_created", case_id=case['id'], case_number=request.case_number)
+
+        # WhatsApp notification
+        from app.services.wa_notification_dispatcher import dispatch_case_notification
+        background_tasks.add_task(
+            dispatch_case_notification,
+            tenant_id=tenant_id,
+            case_id=case['id'],
+            event_type='case_created',
+            message=f"Se ha creado su expediente {request.case_number.upper()} ({request.document_type}). Le mantendremos informado del avance.",
+        )
 
         return CaseWithClientResponse(**(case_with_client or case))
 
@@ -302,6 +313,7 @@ async def update_case(
 async def update_case_status(
     case_id: UUID,
     request: CaseUpdateStatusRequest,
+    background_tasks: BackgroundTasks,
     tenant_id: str = Depends(get_current_tenant_id)
 ):
     """Actualiza el estado de un caso (legacy, sin validación de state machine)"""
@@ -319,6 +331,18 @@ async def update_case_status(
             raise HTTPException(status_code=500, detail="Error al actualizar estado")
 
         logger.info("case_status_updated", case_id=str(case_id), new_status=request.status)
+
+        # WhatsApp notification
+        new_label = STATUS_LABELS.get(request.status, request.status)
+        from app.services.wa_notification_dispatcher import dispatch_case_notification
+        background_tasks.add_task(
+            dispatch_case_notification,
+            tenant_id=tenant_id,
+            case_id=str(case_id),
+            event_type='status_change',
+            message=f"Su expediente ha sido actualizado a: {new_label}",
+        )
+
         return CaseResponse(**updated_case)
 
     except HTTPException:

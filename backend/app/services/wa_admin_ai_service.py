@@ -187,6 +187,12 @@ class WAAdminAIService:
     ) -> None:
         """Main entry: run agentic loop and send response via WhatsApp."""
         try:
+            # Guard: truncate session if too large (>50KB)
+            session_size = len(json.dumps(session, default=str))
+            if session_size > 50_000:
+                logger.warning("wa_admin_session_too_large", phone=phone, size=session_size)
+                session['ai_history'] = session.get('ai_history', [])[-4:]
+
             # Restore conversation history
             history: List[Dict] = session.get('ai_history', [])
 

@@ -3,7 +3,7 @@ ControlNot v2 - Case Checklist Endpoints
 Endpoints REST para gestión del checklist documental de un caso
 """
 from uuid import UUID
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 import structlog
 
 from app.repositories.case_repository import case_repository
@@ -106,6 +106,7 @@ async def update_checklist_item(
     case_id: UUID,
     item_id: UUID,
     request: ChecklistItemUpdateRequest,
+    background_tasks: BackgroundTasks,
     tenant_id: str = Depends(get_current_tenant_id)
 ):
     """Actualiza el status de un item del checklist"""
@@ -126,6 +127,19 @@ async def update_checklist_item(
 
         if not updated:
             raise HTTPException(status_code=500, detail="Error al actualizar item")
+
+        # WhatsApp notification when document is received
+        if request.status == 'recibido':
+            doc_name = item.get('nombre', 'documento')
+            from app.services.wa_notification_dispatcher import dispatch_case_notification
+            background_tasks.add_task(
+                dispatch_case_notification,
+                tenant_id=tenant_id,
+                case_id=str(case_id),
+                event_type='checklist_updated',
+                message=f"Documento recibido: {doc_name}. Gracias por enviarlo.",
+                notify_staff=False,
+            )
 
         return ChecklistItemResponse(**updated)
 

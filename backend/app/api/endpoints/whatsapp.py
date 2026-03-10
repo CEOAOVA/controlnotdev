@@ -87,6 +87,13 @@ async def _process_incoming_message(
     try:
         tid = UUID(tenant_id)
 
+        # --- Idempotency: skip if message already processed ---
+        if msg_id:
+            existing = await wa_repository.get_message_by_wa_id(msg_id)
+            if existing:
+                logger.debug("whatsapp_duplicate_skipped", msg_id=msg_id)
+                return
+
         # --- Hybrid routing for platform number ---
         from app.services.wa_staff_router import wa_staff_router
 
@@ -185,6 +192,51 @@ async def _process_incoming_message(
 
         # Increment unread count
         await wa_repository.increment_unread(UUID(conversation['id']))
+
+        # --- Auto-reply AI for unassigned conversations (text only) ---
+        if msg_type == 'text' and content and not conversation.get('assigned_to'):
+            try:
+                # Check if auto_reply is enabled for this tenant
+                auto_reply_rules = await wa_repository.get_notification_rules(tid, 'auto_reply')
+                auto_reply_enabled = bool(auto_reply_rules) and auto_reply_rules[0].get('is_active', False)
+
+                if auto_reply_enabled:
+                    from app.services.wa_client_ai_service import wa_client_ai_service
+
+                    # Get recent messages for context
+                    recent = await wa_repository.list_messages(
+                        conversation_id=UUID(conversation['id']),
+                        limit=6,
+                    )
+
+                    # Get client_id if contact is linked
+                    client_id = contact.get('client_id')
+
+                    reply = await wa_client_ai_service.generate_reply(
+                        tenant_id=tid,
+                        phone=phone,
+                        message_text=content,
+                        recent_messages=recent,
+                        client_id=client_id,
+                    )
+
+                    if reply:
+                        result = await whatsapp_service.send_text(phone, reply)
+                        if result:
+                            wa_reply_id = result.get('messages', [{}])[0].get('id')
+                            await wa_repository.create_message(
+                                tenant_id=tid,
+                                conversation_id=UUID(conversation['id']),
+                                content=reply,
+                                sender_type='bot',
+                                message_type='text',
+                                whatsapp_message_id=wa_reply_id,
+                                status='sent',
+                            )
+                            logger.info("wa_auto_reply_sent", phone=phone)
+
+            except Exception as auto_err:
+                logger.warning("wa_auto_reply_failed", phone=phone, error=str(auto_err))
 
         logger.info(
             "whatsapp_message_processed",
@@ -648,12 +700,10 @@ async def get_suggested_reply(
 ):
     """Get AI-suggested reply for the last client message in a conversation"""
     try:
-        from app.services.wa_ai_responder import wa_auto_responder
-
-        # Get last few messages to find the latest client message
+        # Get last few messages for context
         messages = await wa_repository.list_messages(
             conversation_id=conversation_id,
-            limit=5,
+            limit=6,
             offset=0,
         )
 
@@ -667,6 +717,31 @@ async def get_suggested_reply(
         if not last_client_msg or not last_client_msg.get('content'):
             return {"suggestion": None}
 
+        # Try LLM first
+        try:
+            from app.services.wa_client_ai_service import wa_client_ai_service
+
+            # Get conversation to find contact's client_id
+            convs = await wa_repository.list_conversations(UUID(tenant_id), limit=200)
+            conv = next((c for c in convs if c['id'] == str(conversation_id)), None)
+            client_id = None
+            if conv and conv.get('wa_contacts'):
+                client_id = conv['wa_contacts'].get('client_id')
+
+            suggestion = await wa_client_ai_service.generate_reply(
+                tenant_id=UUID(tenant_id),
+                phone="",  # Not sending, just suggesting
+                message_text=last_client_msg['content'],
+                recent_messages=messages,
+                client_id=client_id,
+            )
+            if suggestion:
+                return {"suggestion": suggestion}
+        except Exception as llm_err:
+            logger.warning("wa_suggest_llm_fallback", error=str(llm_err))
+
+        # Fallback to keyword matcher
+        from app.services.wa_ai_responder import wa_auto_responder
         suggestion = wa_auto_responder.suggest_reply(last_client_msg['content'])
         return {"suggestion": suggestion}
 
@@ -938,6 +1013,26 @@ async def create_phone_tenant_map(
     except Exception as e:
         logger.error("wa_create_phone_tenant_map_failed", error=str(e))
         raise HTTPException(status_code=500, detail="Error al crear mapeo")
+
+
+# === Admin: Session Cleanup ===
+
+@router.post("/admin/cleanup")
+async def cleanup_stale_sessions(
+    older_than_hours: int = Query(72, ge=1, le=720, description="Limpiar sesiones inactivas por mas de N horas"),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """Clean up stale staff session states.
+
+    Should be called periodically (e.g., daily via cron/scheduler).
+    Clears session_state for staff phones inactive for more than N hours.
+    """
+    try:
+        cleaned = await wa_repository.cleanup_stale_sessions(older_than_hours=older_than_hours)
+        return {"message": f"Sesiones limpiadas: {cleaned}", "cleaned_count": cleaned}
+    except Exception as e:
+        logger.error("wa_cleanup_failed", error=str(e))
+        raise HTTPException(status_code=500, detail="Error al limpiar sesiones")
 
 
 @router.delete("/phone-tenant-map/{map_id}")

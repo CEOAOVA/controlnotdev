@@ -1,12 +1,40 @@
 """
 ControlNot v2 - WhatsApp Service
-Meta Cloud API client for sending/receiving WhatsApp messages
+Meta Cloud API client for sending/receiving WhatsApp messages.
+Includes retry with backoff, rate limiting, and connection pooling.
 """
+import asyncio
+import time
 from typing import Any, Dict, List, Optional
 import httpx
 import structlog
 
 logger = structlog.get_logger()
+
+
+class TokenBucketRateLimiter:
+    """Simple in-memory token bucket rate limiter."""
+
+    def __init__(self, rate: float = 20.0, capacity: float = 20.0):
+        self._rate = rate          # tokens per second
+        self._capacity = capacity  # max burst
+        self._tokens = capacity
+        self._last_refill = time.monotonic()
+        self._lock = asyncio.Lock()
+
+    async def acquire(self) -> None:
+        async with self._lock:
+            now = time.monotonic()
+            elapsed = now - self._last_refill
+            self._tokens = min(self._capacity, self._tokens + elapsed * self._rate)
+            self._last_refill = now
+
+            if self._tokens < 1.0:
+                wait = (1.0 - self._tokens) / self._rate
+                await asyncio.sleep(wait)
+                self._tokens = 0.0
+            else:
+                self._tokens -= 1.0
 
 
 class WhatsAppService:
@@ -18,6 +46,8 @@ class WhatsAppService:
         self._access_token: Optional[str] = None
         self._verify_token: Optional[str] = None
         self._waba_id: Optional[str] = None
+        self._http_client: Optional[httpx.AsyncClient] = None
+        self._rate_limiter = TokenBucketRateLimiter(rate=20.0, capacity=20.0)
 
     def _load_config(self):
         """Lazy load config to avoid import-time settings validation"""
@@ -38,6 +68,15 @@ class WhatsAppService:
             self._verify_token = 'controlnot_verify'
             self._waba_id = ''
 
+    def _get_http_client(self) -> httpx.AsyncClient:
+        """Get or create a shared httpx client for connection pooling."""
+        if self._http_client is None or self._http_client.is_closed:
+            self._http_client = httpx.AsyncClient(
+                timeout=httpx.Timeout(30.0, connect=10.0),
+                limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+            )
+        return self._http_client
+
     @property
     def _headers(self) -> Dict[str, str]:
         self._load_config()
@@ -50,6 +89,68 @@ class WhatsAppService:
     def verify_token(self) -> str:
         self._load_config()
         return self._verify_token or 'controlnot_verify'
+
+    async def _send_with_retry(
+        self,
+        url: str,
+        payload: Dict[str, Any],
+        max_retries: int = 3,
+        timeout: float = 30.0,
+    ) -> httpx.Response:
+        """
+        POST to Meta API with retry on 429 (rate limit) and 5xx errors.
+        Uses exponential backoff: 1s, 2s, 4s.
+        """
+        await self._rate_limiter.acquire()
+
+        client = self._get_http_client()
+        last_exc: Optional[Exception] = None
+
+        for attempt in range(max_retries):
+            try:
+                response = await client.post(
+                    url,
+                    json=payload,
+                    headers=self._headers,
+                    timeout=timeout,
+                )
+
+                if response.status_code == 429 or response.status_code >= 500:
+                    if attempt < max_retries - 1:
+                        wait = 2 ** attempt
+                        logger.warning(
+                            "whatsapp_retry",
+                            status=response.status_code,
+                            attempt=attempt + 1,
+                            wait=wait,
+                        )
+                        await asyncio.sleep(wait)
+                        continue
+
+                response.raise_for_status()
+                return response
+
+            except httpx.TimeoutException as e:
+                last_exc = e
+                if attempt < max_retries - 1:
+                    wait = 2 ** attempt
+                    logger.warning("whatsapp_timeout_retry", attempt=attempt + 1, wait=wait)
+                    await asyncio.sleep(wait)
+                    continue
+                raise
+
+            except httpx.HTTPStatusError:
+                raise
+
+            except Exception as e:
+                last_exc = e
+                if attempt < max_retries - 1:
+                    wait = 2 ** attempt
+                    await asyncio.sleep(wait)
+                    continue
+                raise
+
+        raise last_exc or Exception("Max retries exceeded")
 
     async def send_text(
         self,
@@ -72,12 +173,10 @@ class WhatsAppService:
         }
 
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(url, json=payload, headers=self._headers, timeout=30)
-                response.raise_for_status()
-                data = response.json()
-                logger.info("whatsapp_text_sent", to=to_phone, message_id=data.get('messages', [{}])[0].get('id'))
-                return data
+            response = await self._send_with_retry(url, payload)
+            data = response.json()
+            logger.info("whatsapp_text_sent", to=to_phone, message_id=data.get('messages', [{}])[0].get('id'))
+            return data
         except Exception as e:
             logger.error("whatsapp_send_failed", to=to_phone, error=str(e))
             return None
@@ -112,12 +211,10 @@ class WhatsAppService:
         }
 
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(url, json=payload, headers=self._headers, timeout=30)
-                response.raise_for_status()
-                data = response.json()
-                logger.info("whatsapp_template_sent", to=to_phone, template=template_name)
-                return data
+            response = await self._send_with_retry(url, payload)
+            data = response.json()
+            logger.info("whatsapp_template_sent", to=to_phone, template=template_name)
+            return data
         except Exception as e:
             logger.error("whatsapp_template_send_failed", to=to_phone, error=str(e))
             return None
@@ -162,17 +259,15 @@ class WhatsAppService:
         }
 
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(url, json=payload, headers=self._headers, timeout=30)
-                response.raise_for_status()
-                data = response.json()
-                logger.info(
-                    "whatsapp_media_sent",
-                    to=to_phone,
-                    media_type=media_type,
-                    message_id=data.get('messages', [{}])[0].get('id')
-                )
-                return data
+            response = await self._send_with_retry(url, payload, timeout=60.0)
+            data = response.json()
+            logger.info(
+                "whatsapp_media_sent",
+                to=to_phone,
+                media_type=media_type,
+                message_id=data.get('messages', [{}])[0].get('id')
+            )
+            return data
         except Exception as e:
             logger.error("whatsapp_media_send_failed", to=to_phone, media_type=media_type, error=str(e))
             return None
@@ -182,8 +277,8 @@ class WhatsAppService:
         Download media from Meta API.
 
         Two-step process:
-        1. GET media_id → get download URL + mime_type
-        2. GET download URL → get actual bytes
+        1. GET media_id -> get download URL + mime_type
+        2. GET download URL -> get actual bytes
 
         Returns:
             tuple[bytes, str] of (content, mime_type) or None on failure
@@ -194,32 +289,33 @@ class WhatsAppService:
             return None
 
         try:
-            async with httpx.AsyncClient() as client:
-                # Step 1: Get media URL + mime_type
-                url_resp = await client.get(
-                    f"{self._api_url}/{media_id}",
-                    headers={'Authorization': f'Bearer {self._access_token}'},
-                    timeout=30,
-                )
-                url_resp.raise_for_status()
-                url_data = url_resp.json()
-                media_url = url_data.get('url')
-                mime_type = url_data.get('mime_type', 'application/octet-stream')
+            client = self._get_http_client()
 
-                if not media_url:
-                    logger.warning("whatsapp_media_no_url", media_id=media_id)
-                    return None
+            # Step 1: Get media URL + mime_type
+            url_resp = await client.get(
+                f"{self._api_url}/{media_id}",
+                headers={'Authorization': f'Bearer {self._access_token}'},
+                timeout=30,
+            )
+            url_resp.raise_for_status()
+            url_data = url_resp.json()
+            media_url = url_data.get('url')
+            mime_type = url_data.get('mime_type', 'application/octet-stream')
 
-                # Step 2: Download actual file
-                file_resp = await client.get(
-                    media_url,
-                    headers={'Authorization': f'Bearer {self._access_token}'},
-                    timeout=60,
-                )
-                file_resp.raise_for_status()
+            if not media_url:
+                logger.warning("whatsapp_media_no_url", media_id=media_id)
+                return None
 
-                logger.info("whatsapp_media_downloaded", media_id=media_id, size=len(file_resp.content), mime_type=mime_type)
-                return (file_resp.content, mime_type)
+            # Step 2: Download actual file
+            file_resp = await client.get(
+                media_url,
+                headers={'Authorization': f'Bearer {self._access_token}'},
+                timeout=60,
+            )
+            file_resp.raise_for_status()
+
+            logger.info("whatsapp_media_downloaded", media_id=media_id, size=len(file_resp.content), mime_type=mime_type)
+            return (file_resp.content, mime_type)
 
         except Exception as e:
             logger.error("whatsapp_media_download_failed", media_id=media_id, error=str(e))
@@ -237,15 +333,14 @@ class WhatsAppService:
         url = f"{self._api_url}/{self._waba_id}/subscribed_apps"
 
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(url, headers=self._headers, timeout=30)
-                data = response.json()
-                logger.info("waba_subscribe_result", waba_id=self._waba_id, status=response.status_code, data=data)
+            response = await self._send_with_retry(url, {})
+            data = response.json()
+            logger.info("waba_subscribe_result", waba_id=self._waba_id, status=response.status_code, data=data)
 
-                if response.status_code == 200 and data.get('success'):
-                    return {"success": True, "data": data}
-                else:
-                    return {"success": False, "error": data.get('error', {}).get('message', str(data))}
+            if response.status_code == 200 and data.get('success'):
+                return {"success": True, "data": data}
+            else:
+                return {"success": False, "error": data.get('error', {}).get('message', str(data))}
         except Exception as e:
             logger.error("waba_subscribe_failed", waba_id=self._waba_id, error=str(e))
             return {"success": False, "error": str(e)}
@@ -307,12 +402,10 @@ class WhatsAppService:
         }
 
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(url, json=payload, headers=self._headers, timeout=30)
-                response.raise_for_status()
-                data = response.json()
-                logger.info("whatsapp_buttons_sent", to=to_phone)
-                return data
+            response = await self._send_with_retry(url, payload)
+            data = response.json()
+            logger.info("whatsapp_buttons_sent", to=to_phone)
+            return data
         except Exception as e:
             logger.error("whatsapp_buttons_send_failed", to=to_phone, error=str(e))
             return None
@@ -365,12 +458,10 @@ class WhatsAppService:
         }
 
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(url, json=payload, headers=self._headers, timeout=30)
-                response.raise_for_status()
-                data = response.json()
-                logger.info("whatsapp_list_sent", to=to_phone)
-                return data
+            response = await self._send_with_retry(url, payload)
+            data = response.json()
+            logger.info("whatsapp_list_sent", to=to_phone)
+            return data
         except Exception as e:
             logger.error("whatsapp_list_send_failed", to=to_phone, error=str(e))
             return None
@@ -385,7 +476,7 @@ class WhatsAppService:
 
         Args:
             template_components: Original template component definitions
-            parameters: Dict of parameter name → value
+            parameters: Dict of parameter name -> value
 
         Returns:
             Components array ready for the Meta API
@@ -408,6 +499,12 @@ class WhatsAppService:
             else:
                 result.append(comp)
         return result
+
+    async def close(self) -> None:
+        """Close the shared HTTP client."""
+        if self._http_client and not self._http_client.is_closed:
+            await self._http_client.aclose()
+            self._http_client = None
 
 
 # Singleton

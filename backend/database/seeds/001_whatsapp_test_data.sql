@@ -712,6 +712,22 @@ INSERT INTO wa_notification_rules (id, tenant_id, event_type, template_id, is_ac
  'Pago recibido: ${{monto}} - {{concepto}} para expediente {{case_number}}',
  '{"roles": ["asistente", "admin"]}'::jsonb),
 
+-- Auto-reply AI habilitado (P0-2)
+('a0000000-0000-0000-0000-00000000d007', 'a0000000-0000-0000-0000-000000000001',
+ 'auto_reply', NULL, true, false,
+ NULL, '{}'::jsonb),
+
+-- Notificar cuando se actualiza un item del checklist (P0-1)
+('a0000000-0000-0000-0000-00000000d008', 'a0000000-0000-0000-0000-000000000001',
+ 'checklist_updated', NULL, true, true,
+ 'Se ha recibido el documento "{{documento}}" para el expediente {{case_number}}.',
+ '{"roles": ["asistente"]}'::jsonb),
+
+-- Daily digest para staff (P0-1)
+('a0000000-0000-0000-0000-00000000d009', 'a0000000-0000-0000-0000-000000000001',
+ 'daily_digest', NULL, true, true,
+ NULL, '{"roles": ["notario", "asistente"]}'::jsonb),
+
 -- Tenant B: regla basica
 ('b0000000-0000-0000-0000-00000000d001', 'b0000000-0000-0000-0000-000000000001',
  'case_created', 'b0000000-0000-0000-0000-00000000c001', true, true,

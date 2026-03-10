@@ -98,8 +98,17 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
-    logger.info("🛑 Deteniendo ControlNot v2...")
-    logger.info("✅ Shutdown completado")
+    logger.info("Deteniendo ControlNot v2...")
+
+    # Close WhatsApp httpx connection pool
+    try:
+        from app.services.whatsapp_service import whatsapp_service
+        await whatsapp_service.close()
+        logger.info("WhatsApp HTTP client closed")
+    except Exception as e:
+        logger.warning("whatsapp_client_close_failed", error=str(e))
+
+    logger.info("Shutdown completado")
 
 
 # Crear aplicación FastAPI
@@ -158,12 +167,7 @@ RATE_LIMIT_RULES: dict[str, int] = {
 # Permitir requests desde el frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",  # React dev
-        "http://localhost:5173",  # Vite dev
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
