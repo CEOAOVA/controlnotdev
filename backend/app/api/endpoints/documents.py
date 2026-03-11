@@ -649,7 +649,7 @@ async def generate_document(
                 metadata={
                     'doc_id': doc_id,
                     'original_filename': request.output_filename,
-                    'tipo_documento': template_session.get('tipo_documento', 'desconocido')
+                    'tipo_documento': template_session.get('tipo_documento', 'otros')
                 }
             )
 
@@ -676,7 +676,7 @@ async def generate_document(
                 'tenant_id': tenant_id,
                 'user_id': user.get('id'),  # ID del usuario autenticado
                 'template_id': str(UUID(request.template_id)),
-                'tipo_documento': template_session.get('tipo_documento', 'desconocido'),
+                'tipo_documento': template_session.get('tipo_documento', 'otros'),
                 'nombre_documento': f"{request.output_filename.removesuffix('.docx')}.docx",
                 'estado': 'completado',
                 'storage_path': storage_path,

@@ -125,7 +125,8 @@ router = APIRouter(prefix="/extraction", tags=["Extraction"])
 async def process_ocr(
     session_id: str,
     ocr_service: OCRService = Depends(get_ocr_service),
-    session_manager: SessionManager = Depends(get_session_manager)
+    session_manager: SessionManager = Depends(get_session_manager),
+    tenant_id: str = Depends(get_current_tenant_id)
 ):
     """
     Procesa OCR de documentos categorizados en paralelo
@@ -448,7 +449,8 @@ async def extract_with_ai(
 @router.post("/edit", response_model=SuccessResponse)
 async def edit_extracted_data(
     request: DataEditRequest,
-    session_manager: SessionManager = Depends(get_session_manager)
+    session_manager: SessionManager = Depends(get_session_manager),
+    tenant_id: str = Depends(get_current_tenant_id)
 ):
     """
     Usuario edita/confirma los datos extraídos
@@ -502,7 +504,8 @@ async def edit_extracted_data(
 @router.get("/{session_id}/results")
 async def get_extraction_results(
     session_id: str,
-    session_manager: SessionManager = Depends(get_session_manager)
+    session_manager: SessionManager = Depends(get_session_manager),
+    tenant_id: str = Depends(get_current_tenant_id)
 ):
     """
     Obtiene todos los resultados de extracción de una sesión

@@ -8,9 +8,12 @@ Rutas:
 """
 from fastapi import APIRouter, Depends
 import structlog
+import asyncio
 
 from app.schemas import HealthCheckResponse
 from app.core.config import settings
+from app.database import get_supabase_admin_client
+from app.core.cache import get_redis_client
 
 logger = structlog.get_logger()
 router = APIRouter(prefix="/health", tags=["Health"])
@@ -31,7 +34,46 @@ async def health_check():
     # Verificar servicios externos
     services_status = {}
 
-    # 1. OpenAI/OpenRouter
+    # 1. Supabase (real connectivity check)
+    try:
+        supabase = get_supabase_admin_client()
+        result = await asyncio.wait_for(
+            asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: supabase.table('tenants').select('id').limit(1).execute()
+            ),
+            timeout=3.0
+        )
+        services_status['supabase'] = 'ok'
+    except asyncio.TimeoutError:
+        services_status['supabase'] = 'error'
+        logger.error("Supabase health check timeout")
+    except Exception as e:
+        services_status['supabase'] = 'error'
+        logger.error("Error verificando Supabase", error=str(e))
+
+    # 2. Redis (real connectivity check)
+    try:
+        redis_client = get_redis_client()
+        if redis_client:
+            pong = await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(
+                    None,
+                    redis_client.ping
+                ),
+                timeout=3.0
+            )
+            services_status['redis'] = 'ok' if pong else 'error'
+        else:
+            services_status['redis'] = 'not_configured'
+    except asyncio.TimeoutError:
+        services_status['redis'] = 'error'
+        logger.error("Redis health check timeout")
+    except Exception as e:
+        services_status['redis'] = 'error'
+        logger.error("Error verificando Redis", error=str(e))
+
+    # 3. OpenAI/OpenRouter
     try:
         if settings.use_openrouter:
             if settings.OPENROUTER_API_KEY and settings.OPENROUTER_API_KEY != "TU_OPENROUTER_API_KEY_AQUI":
@@ -47,7 +89,7 @@ async def health_check():
         services_status['openai'] = 'error'
         logger.error("Error verificando OpenAI", error=str(e))
 
-    # 2. Google Cloud Vision
+    # 4. Google Cloud Vision
     try:
         if hasattr(settings, 'GOOGLE_CREDENTIALS_JSON') and settings.GOOGLE_CREDENTIALS_JSON:
             services_status['google_vision'] = 'ok'
@@ -57,16 +99,7 @@ async def health_check():
         services_status['google_vision'] = 'error'
         logger.error("Error verificando Google Vision", error=str(e))
 
-    # 3. Google Drive (opcional)
-    try:
-        if hasattr(settings, 'GOOGLE_DRIVE_FOLDER_ID') and settings.GOOGLE_DRIVE_FOLDER_ID:
-            services_status['google_drive'] = 'ok'
-        else:
-            services_status['google_drive'] = 'not_configured'
-    except Exception as e:
-        services_status['google_drive'] = 'error'
-
-    # 4. SMTP
+    # 5. SMTP
     try:
         if settings.SMTP_SERVER and settings.SMTP_EMAIL:
             services_status['smtp'] = 'ok'

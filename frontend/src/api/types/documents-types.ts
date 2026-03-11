@@ -61,11 +61,8 @@ export interface DocumentListResponse {
  */
 export interface DocumentStatsResponse {
   total_documents: number;
-  completed: number;
-  processing: number;
-  error: number;
-  by_type: Record<DocumentType, number>;
-  recent_count: number;
+  by_status: Record<string, number>;
+  by_type: Record<string, number>;
 }
 
 /**

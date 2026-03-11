@@ -139,9 +139,9 @@ export function History() {
       setStats({
         totalDocuments: statsResponse.total_documents,
         byStatus: {
-          completed: statsResponse.completed || 0,
-          processing: statsResponse.processing || 0,
-          error: statsResponse.error || 0,
+          completed: statsResponse.by_status?.completado || 0,
+          processing: statsResponse.by_status?.procesando || 0,
+          error: statsResponse.by_status?.error || 0,
         },
         byType: statsResponse.by_type || {},
       });

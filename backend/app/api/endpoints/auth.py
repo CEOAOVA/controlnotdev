@@ -5,13 +5,14 @@ Endpoints para registrar eventos de autenticación desde el frontend
 Los eventos de login/logout se manejan directamente con Supabase Auth en el frontend,
 pero necesitamos registrarlos en el backend para auditoría y métricas.
 """
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, Depends
 from pydantic import BaseModel, Field
 from typing import Optional, Literal
 from datetime import datetime
 import structlog
 
-from app.database import get_supabase_admin_client
+from app.database import get_supabase_admin_client, get_current_tenant_id
+from app.core.dependencies import get_authenticated_user
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 logger = structlog.get_logger()
@@ -158,18 +159,19 @@ async def log_auth_event(
 @router.get("/events/recent")
 async def get_recent_auth_events(
     limit: int = 50,
-    event_type: Optional[str] = None
+    event_type: Optional[str] = None,
+    user: dict = Depends(get_authenticated_user),
+    tenant_id: str = Depends(get_current_tenant_id)
 ):
     """
     Obtiene eventos de autenticación recientes (para dashboard de admin)
-
-    Requiere permisos de administrador (TODO: agregar auth check)
     """
     try:
         supabase = get_supabase_admin_client()
 
         query = supabase.table("audit_logs")\
             .select("*")\
+            .eq("tenant_id", tenant_id)\
             .like("action", "auth_%")\
             .order("created_at", desc=True)\
             .limit(limit)
@@ -193,7 +195,10 @@ async def get_recent_auth_events(
 
 
 @router.get("/stats")
-async def get_auth_stats():
+async def get_auth_stats(
+    user: dict = Depends(get_authenticated_user),
+    tenant_id: str = Depends(get_current_tenant_id)
+):
     """
     Obtiene estadísticas de autenticación (para métricas)
 
@@ -210,6 +215,7 @@ async def get_auth_stats():
         # Contar logins exitosos hoy
         logins_result = supabase.table("audit_logs")\
             .select("id", count="exact")\
+            .eq("tenant_id", tenant_id)\
             .eq("action", "auth_login_success")\
             .gte("created_at", f"{today}T00:00:00")\
             .execute()
@@ -217,6 +223,7 @@ async def get_auth_stats():
         # Contar logins fallidos hoy
         failed_result = supabase.table("audit_logs")\
             .select("id", count="exact")\
+            .eq("tenant_id", tenant_id)\
             .eq("action", "auth_login_failed")\
             .gte("created_at", f"{today}T00:00:00")\
             .execute()
@@ -224,6 +231,7 @@ async def get_auth_stats():
         # Contar logouts hoy
         logouts_result = supabase.table("audit_logs")\
             .select("id", count="exact")\
+            .eq("tenant_id", tenant_id)\
             .eq("action", "auth_logout")\
             .gte("created_at", f"{today}T00:00:00")\
             .execute()
